@@ -559,13 +559,83 @@ function overallStats(){
     const a=getAns(p.id,s,c,name);
     if(a.status!=='pending')done++;
     else{
-      pending.push({pi,name});
+      const item={pi,pid:p.id,programName:p.name,exit:p.exit,s,c,name};
+      pending.push(item);
       const logical=logicalCourseKey(p.id,s,c,name);
-      if(!pendingLogical.has(logical))pendingLogical.set(logical,{pi,name});
+      if(!pendingLogical.has(logical))pendingLogical.set(logical,item);
     }
     if(['X','XX'].includes(a.status)&&!(a.origins||[]).length)invalid++;
   })));
   return{total,done,invalid,pending,pendingUnique:[...pendingLogical.values()],remainingUnique:pendingLogical.size}
+}
+function captureIssues(){
+  const issues=[];
+  programs().forEach((p,pi)=>p.semesters.forEach((sem,s)=>sem.forEach((name,c)=>{
+    if(isEnglish(name))return;
+    const a=getAns(p.id,s,c,name);
+    if(a.status==='pending'){
+      issues.push({
+        type:'competence',
+        pi,pid:p.id,programName:p.name,exit:p.exit,s,c,name,
+        message:'Seleccione el nivel de competencia X o XX, o deshabilite la materia si no puede impartirla.'
+      });
+    }else if(['X','XX'].includes(a.status)&&!(a.origins||[]).length){
+      issues.push({
+        type:'area',
+        pi,pid:p.id,programName:p.name,exit:p.exit,s,c,name,
+        message:'Seleccione de dónde proviene el conocimiento: 1, 2, 3, 12, 13, 23 o 123.'
+      });
+    }
+  })));
+  return issues;
+}
+let captureErrorModeActive=false;
+
+function captureIssuePanel(issues){
+  const grouped=new Map();
+  issues.forEach(issue=>{
+    const key=`${issue.pi}|${issue.s}`;
+    if(!grouped.has(key))grouped.set(key,{...issue,items:[]});
+    grouped.get(key).items.push(issue);
+  });
+  const groups=[...grouped.values()];
+  return `<div class="capture-error-panel">
+    <div class="capture-error-title"><span class="capture-error-icon">!</span><div><b>No puede pasar a revisión todavía</b><span>Complete los campos señalados. La alerta desaparecerá automáticamente cuando quede corregido.</span></div></div>
+    <div class="capture-error-groups">
+      ${groups.map(g=>`<button type="button" class="capture-error-group" onclick="goToCaptureIssue(${g.pi},${g.s},${g.items[0].c})">
+        <strong>${escapeHtml(g.programName)}</strong>
+        <span>${g.s+1}.° cuatrimestre · ${g.items.length} pendiente${g.items.length===1?'':'s'}</span>
+        <small>${g.items.slice(0,3).map(x=>escapeHtml(subjectCase(x.name))).join(' · ')}${g.items.length>3?' · …':''}</small>
+      </button>`).join('')}
+    </div>
+  </div>`;
+}
+window.goToCaptureIssue=function(pi,s,c){
+  currentProgramIndex=pi;
+  persist();
+  renderCurrentProgram();
+  requestAnimationFrame(()=>{
+    const row=document.querySelector(`[data-course-loc="${pi}|${s}|${c}"]`);
+    if(row)row.scrollIntoView({behavior:'smooth',block:'center'});
+  });
+}
+function refreshCaptureErrorState(){
+  if(!captureErrorModeActive)return;
+  const root=$('captureErrors');
+  if(!root)return;
+  const issues=captureIssues();
+  const profileCheck=validateProfile();
+  if(!issues.length&&profileCheck.ok){
+    root.innerHTML='';
+    captureErrorModeActive=false;
+    toast('Captura corregida. Ya puede continuar a revisión.');
+    return;
+  }
+  if(issues.length){
+    root.innerHTML=captureIssuePanel(issues);
+  }else{
+    root.innerHTML=statusBox(profileCheck.errors,'Complete los datos del profesor.');
+  }
 }
 function favoriteCount(){const u=new Set();programs().forEach(p=>p.semesters.forEach((sem,s)=>sem.forEach((name,c)=>{if(getAns(p.id,s,c,name).ideal)u.add(`${p.id}|${s}|${c}`)})));return u.size}
 function updateProgress(){
@@ -610,26 +680,89 @@ function renderCurrentProgram(){
   $('programFlowName').textContent=`${p.name} — ${p.exit}`;
   const st=programStats(p);
   let bg = pastelTitles[currentProgramIndex % pastelTitles.length];
-  let h=`<article class="program"><div class="program-head" style="background:${bg}"><div class="program-title"><strong>${p.name}</strong><span><b>Salida lateral:</b> ${p.exit}</span></div><div class="program-progress">${st.done}/${st.total} revisadas${st.missing?` · ${st.missing} pendientes`:''}</div></div>${commonRuleForProgram(p.id)?`<div class="common-note"><b>↔ Tronco común · sincronizado</b><span>${commonDescription(p.id)}</span></div>`:''}${renderCoordinator(p)}<div class="program-scroll-wrap"><div class="scroll-hint">↔ Si la pantalla es más angosta, desplácese horizontalmente para ver todas las columnas.</div><div class="semesters-grid">`;
+
+  const guideText='Guía rápida: activa la asignatura que puedes impartir · selecciona tu nivel de dominio (X = medio, XX = alto) · indica el origen del conocimiento (1 formación, 2 experiencia docente, 3 experiencia laboral o 12, 13, 23, 123) · marca ✓ si ya coordinaste esa materia · opcional: marca ★ Favorito si es una de tus asignaturas ideales para impartir.';
+
+  let h=`<article class="program">
+    <div class="program-head" style="background:${bg}">
+      <div class="program-title"><strong>${p.name}</strong><span><b>Salida lateral:</b> ${p.exit}</span></div>
+      <div class="program-progress">${st.done}/${st.total} revisadas${st.missing?` · ${st.missing} pendientes`:''}</div>
+    </div>
+    <div class="capture-marquee" aria-label="${guideText}">
+      <div class="capture-marquee-track"><span>${guideText}</span><span aria-hidden="true">${guideText}</span></div>
+    </div>
+    ${commonRuleForProgram(p.id)?`<div class="common-note"><b>↔ Tronco común · sincronizado</b><span>${commonDescription(p.id)}</span></div>`:''}
+    ${renderCoordinator(p)}
+    <div class="program-scroll-wrap">
+      <div class="scroll-hint">↔ Si la pantalla es más angosta, desplácese horizontalmente para ver todas las columnas.</div>
+      <div class="semesters-grid">`;
+
   p.semesters.forEach((sem,s)=>{
-    h+=`<div class="semester-card"><h4>${s+1}.° cuatrimestre <span>${sem.length} asignaturas</span></h4><div class="course-columns"><span>Asignatura</span><span>Habilitar</span><span>Competencia</span><span class="area-head">Área de<br>conocimiento</span><span class="coord-head">¿Has coordinado<br>la materia?</span><span>Favorito</span></div>`;
+    h+=`<div class="semester-card">
+      <h4>${s+1}.° cuatrimestre <span>${sem.length} asignaturas</span></h4>
+      <div class="course-columns">
+        <span>Asignatura</span>
+        <span>Habilitar</span>
+        <span>Competencia</span>
+        <span class="area-head">Área de conocimiento</span>
+        <span class="coord-head">¿Has coordinado la materia?</span>
+        <span class="fav-head">Favorito</span>
+      </div>`;
+
     sem.forEach((name,c)=>{
-      const a=getAns(p.id,s,c,name),na=isEnglish(name),enc=encodeURIComponent(name),enabled=!['off','na'].includes(a.status),pending=a.status==='pending',reviewed=!pending&&!na;
-      h+=`<div class="course ${pending?'pending':''} ${a.status==='off'?'off':''} ${reviewed&&a.status!=='off'?'reviewed':''} ${na?'na':''}">
-      <div class="name">${subjectCase(name)}${subjectHours(p.id,s,c)?` <small class="course-hours">(${subjectHours(p.id,s,c)} h)</small>`:'' }${na?' · NO APLICA':''}</div>
-      <label class="toggle ${na?'locked':''}"><input type="checkbox" ${enabled?'checked':''} ${na?'disabled':''} onchange="setEnabled('${p.id}',${s},${c},decodeURIComponent('${enc}'),this.checked)"><span class="switch"></span><span>${na?'Bloqueado':enabled?'Sí':'No'}</span></label>
-      <div class="comp-buttons"><button class="mini ${a.status==='X'?'on':''}" aria-label="Competencia media X" title="X = competencia media" ${!enabled?'disabled':''} onclick="setCompetence('${p.id}',${s},${c},decodeURIComponent('${enc}'),'X')">X</button><button class="mini ${a.status==='XX'?'on':''}" aria-label="Competencia alta XX" title="XX = competencia alta" ${!enabled?'disabled':''} onclick="setCompetence('${p.id}',${s},${c},decodeURIComponent('${enc}'),'XX')">XX</button></div>
-      <div class="area-buttons">${['1','2','3','12','13','23','123'].map(code=>`<button class="mini area ${originCode(a)===code?'on':''}" aria-label="Área de conocimiento ${code}" title="${code.split('').join(' + ')}" ${!['X','XX'].includes(a.status)?'disabled':''} onclick="setOriginCode('${p.id}',${s},${c},decodeURIComponent('${enc}'),'${code}')">${code}</button>`).join('')}</div>
-      <label class="coord-row-check ${rowCoordinatorChecked(p.id,s,c)?'on':''}" title="¿Has coordinado esta materia? Solo marque si previamente ha sido coordinador(a) de academia.">
-        <input type="checkbox" aria-label="¿Has coordinado ${subjectCase(name)}?" ${rowCoordinatorChecked(p.id,s,c)?'checked':''} ${rowCoordinatorEnabled(p.id,s,c,name)?'':'disabled'} onchange="toggleCoordinator('${p.id}','${s}|${c}',this.checked)">
-        <span>✓</span>
-      </label>
-      <button class="ideal-btn ${a.ideal?'on':''}" ${!enabled?'disabled':''} onclick="toggleIdeal('${p.id}',${s},${c},decodeURIComponent('${enc}'))">${a.ideal?'★ Favorito':'☆ Favorito'}</button></div>`
+      const a=getAns(p.id,s,c,name);
+      const na=isEnglish(name);
+      const enc=encodeURIComponent(name);
+      const enabled=!['off','na'].includes(a.status);
+      const pending=a.status==='pending';
+      const reviewed=!pending&&!na;
+      const needsCompetence=!na&&enabled&&pending;
+      const needsArea=!na&&enabled&&['X','XX'].includes(a.status)&&!(a.origins||[]).length;
+      const needsAttention=needsCompetence||needsArea;
+      const loc=`${currentProgramIndex}|${s}|${c}`;
+
+      h+=`<div class="course ${pending?'pending':''} ${a.status==='off'?'off':''} ${reviewed&&a.status!=='off'?'reviewed':''} ${na?'na na-clean':''} ${needsAttention?'needs-attention':''}" data-course-loc="${loc}">
+        <div class="name">${subjectCase(name)}${subjectHours(p.id,s,c)?` <small class="course-hours">(${subjectHours(p.id,s,c)} h)</small>`:''}${na?' · NO APLICA':''}</div>`;
+
+      if(na){
+        h+=`<div class="control-placeholder"></div><div class="control-placeholder"></div><div class="control-placeholder"></div><div class="control-placeholder"></div><div class="control-placeholder"></div>`;
+      }else{
+        h+=`<label class="toggle">
+          <input type="checkbox" ${enabled?'checked':''} onchange="setEnabled('${p.id}',${s},${c},decodeURIComponent('${enc}'),this.checked)">
+          <span class="switch"></span><span>${enabled?'Sí':'No'}</span>
+        </label>`;
+
+        if(enabled){
+          h+=`<div class="comp-buttons ${needsCompetence?'attention-target':''}">
+            <button class="mini ${a.status==='X'?'on':''}" aria-label="Competencia media X" title="X = competencia media" onclick="setCompetence('${p.id}',${s},${c},decodeURIComponent('${enc}'),'X')">X</button>
+            <button class="mini ${a.status==='XX'?'on':''}" aria-label="Competencia alta XX" title="XX = competencia alta" onclick="setCompetence('${p.id}',${s},${c},decodeURIComponent('${enc}'),'XX')">XX</button>
+          </div>
+          <div class="area-buttons ${needsArea?'attention-target':''}">
+            ${['1','2','3','12','13','23','123'].map(code=>`<button class="mini area ${originCode(a)===code?'on':''}" aria-label="Área de conocimiento ${code}" title="${code.split('').join(' + ')}" ${!['X','XX'].includes(a.status)?'disabled':''} onclick="setOriginCode('${p.id}',${s},${c},decodeURIComponent('${enc}'),'${code}')">${code}</button>`).join('')}
+          </div>
+          <label class="coord-row-check ${rowCoordinatorChecked(p.id,s,c)?'on':''}" title="Marque únicamente si ya coordinó esta materia.">
+            <input type="checkbox" aria-label="¿Has coordinado ${subjectCase(name)}?" ${rowCoordinatorChecked(p.id,s,c)?'checked':''} ${rowCoordinatorEnabled(p.id,s,c,name)?'':'disabled'} onchange="toggleCoordinator('${p.id}','${s}|${c}',this.checked)">
+            <span>✓</span>
+          </label>
+          <button class="ideal-btn ${a.ideal?'on':''}" onclick="toggleIdeal('${p.id}',${s},${c},decodeURIComponent('${enc}'))">${a.ideal?'★ Favorito':'☆ Favorito'}</button>`;
+        }else{
+          h+=`<div class="control-placeholder"></div><div class="control-placeholder"></div><div class="control-placeholder"></div><div class="control-placeholder"></div>`;
+        }
+      }
+
+      h+=`</div>`;
     });
     h+='</div>';
   });
+
   const lastProgram=currentProgramIndex===programs().length-1;
-  h+=`</div></div><div class="program-save"><small>${st.missing?'Las filas rojizas indican materias pendientes.':'Programa completo.'}</small><button class="save-btn" onclick="${lastProgram?'validateAndReview()':'saveAndNextProgram()'}">${lastProgram?'Continuar a revisión e impresión →':'Guardar y seguir →'}</button></div></article>`;
+  h+=`</div></div>
+    <div class="program-save">
+      <small>${st.missing?'Las filas resaltadas indican información pendiente.':'Programa completo.'}</small>
+      <button class="save-btn" onclick="${lastProgram?'validateAndReview()':'saveAndNextProgram()'}">${lastProgram?'Continuar a revisión e impresión →':'Guardar y seguir →'}</button>
+    </div>
+  </article>`;
+
   $('programs').innerHTML=h;
   const flowBtn=$('flowNextBtn');
   if(flowBtn){
@@ -637,6 +770,7 @@ function renderCurrentProgram(){
     flowBtn.onclick=lastProgram?()=>validateAndReview():()=>saveAndNextProgram();
   }
   updateProgress();lockRevisionNav();updateNavState();applyEditState();
+  refreshCaptureErrorState();
 }
 window.prevProgram=function(){currentProgramIndex=(currentProgramIndex-1+programs().length)%programs().length;persist();renderCurrentProgram();scrollTo({top:$('captura').offsetTop-55,behavior:'smooth'})}
 window.saveAndNextProgram=function(){
@@ -674,7 +808,23 @@ function reviewAvailable(){
   // seguir consultando y generar/imprimir el estado actual de su perfil.
   return validateAll().ok || cfg.editingLocked || deadlinePassed() || submissionLockedForCurrentPeriod();
 }
-function showCaptureErrors(errs){$('captureErrors').innerHTML=statusBox(errs,'No puede pasar a revisión todavía.');const p=overallStats().pendingUnique;if(p.length){currentProgramIndex=p[0].pi;renderCurrentProgram()}}
+function showCaptureErrors(errs){
+  captureErrorModeActive=true;
+  const issues=captureIssues();
+  if(issues.length){
+    currentProgramIndex=issues[0].pi;
+    persist();
+    renderCurrentProgram();
+    $('captureErrors').innerHTML=captureIssuePanel(issues);
+    requestAnimationFrame(()=>{
+      const first=issues[0];
+      const row=document.querySelector(`[data-course-loc="${first.pi}|${first.s}|${first.c}"]`);
+      if(row)row.scrollIntoView({behavior:'smooth',block:'center'});
+    });
+  }else{
+    $('captureErrors').innerHTML=statusBox(errs,'No puede pasar a revisión todavía.');
+  }
+}
 window.validateAndReview=function(){
   if(editingAllowed()) collectProfile();
   persist();
@@ -755,6 +905,12 @@ async function finalizeCurrentProfile(){
   await writeAudit('Perfil finalizado para impresión/guardado PDF');
   applyEditState();updateNavState();
 }
+function openProfilePrintDialog(){
+  document.body.classList.add('printing-profile');
+  const cleanup=()=>document.body.classList.remove('printing-profile');
+  window.addEventListener('afterprint',cleanup,{once:true});
+  requestAnimationFrame(()=>setTimeout(()=>window.print(),80));
+}
 window.printProfile=async function(){
   const v=validateAll();
   if(!reviewAvailable()){
@@ -766,7 +922,7 @@ window.printProfile=async function(){
 
   // Si ya estaba finalizado, permite reimprimir sin volver a modificar el estado.
   if(submissionLockedForCurrentPeriod() || isAdmin()){
-    window.print();
+    openProfilePrintDialog();
     return;
   }
 
@@ -774,7 +930,7 @@ window.printProfile=async function(){
     const proceed=window.confirm(
       'El perfil no cumple todavía todas las validaciones. Puede imprimir el estado actual, pero NO se marcará como concluido.\n\n¿Desea continuar con la impresión?'
     );
-    if(proceed)window.print();
+    if(proceed)openProfilePrintDialog();
     return;
   }
 
@@ -785,7 +941,7 @@ window.printProfile=async function(){
 
   await finalizeCurrentProfile();
   toast('Perfil concluido. La edición quedó bloqueada.');
-  window.print();
+  openProfilePrintDialog();
 }
 
 

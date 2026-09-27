@@ -1,0 +1,34 @@
+PERFIL PROFESOR DIN · V32
+
+CAMBIOS PRINCIPALES
+1. Cintillo animado bajo el nombre del programa con una guía breve e intuitiva.
+2. Las materias deshabilitadas ya NO se tachan:
+   - quedan en gris;
+   - sólo conservan el interruptor para volver a habilitarlas;
+   - desaparecen Competencia, Área, Coordinación y Favorito.
+3. Inglés:
+   - permanece como NO APLICA;
+   - no muestra ningún control seleccionable.
+4. Más espacio horizontal:
+   - Área de conocimiento queda en una sola línea en escritorio;
+   - Coordinación y Favorito tienen separación propia;
+   - se añaden divisores verticales muy discretos.
+5. Validación:
+   - cuando algo falta, se indica gráficamente Programa + Cuatrimestre;
+   - el campo faltante recibe un recuadro naranja vibrante;
+   - al corregirlo la alerta se actualiza o desaparece automáticamente.
+6. Impresión:
+   - antes de abrir el diálogo se oculta físicamente toda la interfaz web;
+   - sólo queda #printArea;
+   - se refuerza también con @media print;
+   - firmas y sello quedan centrados al pie.
+7. Logo DIN:
+   - se elimina el icono con marco negro;
+   - se usa el emblema D+IN transparente derivado del logo DIN ya aprobado.
+
+DEPLOY-PAGES.YML
+- NO requiere actualización si ya está usando el deploy-pages.yml de V30/V31.
+- Se conservan exactamente los mismos nombres de archivos (icon-din.png, icon-192.png, etc.).
+
+FIRESTORE
+- No requiere cambios.
