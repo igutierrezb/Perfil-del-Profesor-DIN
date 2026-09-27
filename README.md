@@ -1,27 +1,18 @@
-# Perfil Académico Docente DIN · Versión 22
+# Perfil Académico Docente DIN · Versión 23
 
-Ajuste visual final sobre V21, sin cambios a la lógica funcional.
+Actualización puntual del formato de impresión sobre V22.
 
 ## Cambios
-- Guía “Cómo capturar cada asignatura” reorganizada en 5 recuadros homogéneos.
-- Asignatura + Habilitación unificadas.
-- Se enfatiza que interruptor apagado = no puede impartir y la materia se imprime en blanco.
-- Competencia:
-  - X = competencia media
-  - XX = competencia alta
-- Área de conocimiento conserva sus códigos y la banda azul queda en una línea cuando hay espacio.
-- Coordinación y Favorito se destacan con aviso, ✓ y ★.
-- Coordinación y Favorito indican expresamente que no aparecen en impresión y son referencia para el coordinador.
-- Impresión/PDF:
-  - filas con altura natural;
-  - materias alineadas a la izquierda y centradas verticalmente;
-  - X/XX y números centrados horizontal y verticalmente.
-- Administración:
-  - Control de captura se mantiene antes de Profesores y cierre;
-  - botones más pequeños, homogéneos y alineados horizontalmente.
+- Todas las celdas de **Asignatura** de todos los cuatrimestres quedan:
+  - alineadas a la izquierda;
+  - centradas verticalmente.
+- X, XX y códigos de área permanecen centrados horizontal y verticalmente.
+- Se agregan **firma del profesor, sello y firma del Jefe de Unidad** al pie de cada hoja de programas.
+- Las firmas usan el espacio libre inferior y no estiran las filas ni las tablas.
+- La última hoja continúa usando altura natural para sus programas.
 
 ## Deploy
-deploy-pages.yml: NO necesita actualización.
+`deploy-pages.yml`: NO necesita actualización.
 
 ## Firestore
-firestore.rules: NO necesita actualización respecto a V21.
+`firestore.rules`: NO necesita actualización respecto a V21.

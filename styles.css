@@ -3374,3 +3374,100 @@ label.required-wrap-error{
     flex-wrap:wrap!important;
   }
 }
+
+
+/* =========================================================
+   V23 · corrección final de impresión
+   ========================================================= */
+
+/* TODAS las columnas de Asignatura, no solo la primera columna física */
+#printArea .program-trio .currTable td.subject{
+  text-align:left!important;
+  vertical-align:middle!important;
+  padding-left:4px!important;
+  padding-right:3px!important;
+}
+
+/* Nivel y Área permanecen centrados en ambos ejes */
+#printArea .program-trio .currTable td.level,
+#printArea .program-trio .currTable td.area{
+  text-align:center!important;
+  vertical-align:middle!important;
+}
+
+/* Cada hoja de programas conserva estructura vertical para anclar firmas al pie */
+#printArea .sheet.program-trio,
+#printArea .sheet.program-trio.compact-last{
+  display:flex!important;
+  flex-direction:column!important;
+}
+#printArea .program-trio .print-program{
+  flex:none!important;
+  height:auto!important;
+  min-height:0!important;
+}
+#printArea .program-trio .sign{
+  margin-top:auto!important;
+  padding-top:8px!important;
+  flex:0 0 auto!important;
+}
+
+/* Firma/sello compactos para no deformar las tablas */
+#printArea .program-trio .sign{
+  grid-template-columns:1fr 105px 1fr!important;
+  gap:22px!important;
+}
+#printArea .program-trio .signature-line{
+  font-size:6.4px!important;
+  padding-top:3px!important;
+}
+#printArea .program-trio .stamp-box{
+  height:34px!important;
+  font-size:6.5px!important;
+}
+
+@media print{
+  /* Materia: izquierda + centro vertical en todos los cuatrimestres */
+  .program-trio .currTable td.subject{
+    text-align:left!important;
+    vertical-align:middle!important;
+    padding-left:4px!important;
+    padding-right:3px!important;
+  }
+
+  /* X / XX / códigos de área: centro total */
+  .program-trio .currTable td.level,
+  .program-trio .currTable td.area{
+    text-align:center!important;
+    vertical-align:middle!important;
+  }
+
+  /* Última hoja sigue compacta: no estira tablas; el espacio libre queda antes de firmas */
+  .sheet.program-trio,
+  .sheet.program-trio.compact-last{
+    display:flex!important;
+    flex-direction:column!important;
+  }
+  .program-trio .print-program{
+    flex:none!important;
+    height:auto!important;
+    min-height:0!important;
+  }
+
+  /* Firmas y sello al pie de cada hoja */
+  .program-trio .sign{
+    margin-top:auto!important;
+    padding-top:7px!important;
+    flex:0 0 auto!important;
+    grid-template-columns:1fr 105px 1fr!important;
+    gap:22px!important;
+  }
+  .program-trio .signature-line{
+    font-size:6.3px!important;
+    padding-top:3px!important;
+  }
+  .program-trio .stamp-box{
+    height:33px!important;
+    font-size:6.4px!important;
+  }
+}

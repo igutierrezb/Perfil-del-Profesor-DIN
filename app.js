@@ -735,7 +735,7 @@ function buildPrint(){
     const remaining=Math.min(3,ps.length-i);
     const isLast=(i+3)>=ps.length;
     const sheetClass=`sheet program-trio${isLast&&remaining<3?' compact-last':''}`;
-    html+=`<div class="${sheetClass}" data-program-count="${remaining}">${printHeader()}${metaCentered()}${printProgram(ps[i],i)}${ps[i+1]?printProgram(ps[i+1],i+1):''}${ps[i+2]?printProgram(ps[i+2],i+2):''}</div>`
+    html+=`<div class="${sheetClass}" data-program-count="${remaining}">${printHeader()}${metaCentered()}${printProgram(ps[i],i)}${ps[i+1]?printProgram(ps[i+1],i+1):''}${ps[i+2]?printProgram(ps[i+2],i+2):''}${signatures()}</div>`
   }
   $('printArea').innerHTML=html
 }
