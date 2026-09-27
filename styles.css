@@ -1831,3 +1831,178 @@ textarea:focus-visible,
   }
   .admin-quickbar{overflow:auto;justify-content:flex-start}
 }
+
+
+/* ============================
+   V14 refinamientos
+   ============================ */
+
+/* Perfil por programa: compactación adicional */
+.course-columns,.course{
+  grid-template-columns:
+    minmax(176px,1.5fr)
+    66px
+    74px
+    minmax(138px,.60fr)
+    60px
+    58px!important;
+}
+.area-buttons{
+  grid-template-columns:repeat(4,minmax(20px,1fr))!important;
+  gap:2px!important;
+}
+.course-columns .area-head{
+  max-width:118px;
+  margin:0 auto;
+}
+.coord-row-check{
+  width:24px!important;
+  height:24px!important;
+}
+.ideal-btn{
+  min-width:54px!important;
+  max-width:58px!important;
+  padding:4px 4px!important;
+  font-size:8.9px!important;
+}
+.ideal-btn.on{font-weight:800}
+.ideal-btn[disabled], .coord-row-check[disabled], .coord-row-check input:disabled + span{
+  opacity:.42;
+  cursor:not-allowed;
+}
+
+/* Botonera de navegación bajo la licenciatura actual */
+.program-title-block{
+  display:flex;
+  flex-direction:column;
+  align-items:flex-start!important;
+  gap:8px;
+}
+.flow-buttons-inline{
+  display:flex;
+  align-items:center;
+  gap:10px;
+  margin-top:2px;
+}
+.flow-buttons-inline .ghost{
+  background:#eef5fa!important;
+  border:1px solid #88aec9!important;
+  color:#143f61!important;
+}
+.flow-buttons-inline .prev-emphasis{
+  box-shadow:0 0 0 2px rgba(40,106,150,.08), 0 3px 12px rgba(16,63,97,.08)!important;
+}
+.profile-actions.compact{
+  padding-top:8px;
+}
+
+/* Tronco común visible pero más armónico */
+.common-note{
+  display:grid!important;
+  grid-template-columns:auto 1fr;
+  gap:7px 10px;
+  align-items:center;
+}
+.common-note b{margin:0}
+.common-note span{
+  display:block;
+  line-height:1.22;
+}
+
+.common-rule-editor{
+  padding:18px 20px!important;
+}
+.common-editor-head{
+  display:grid;
+  grid-template-columns:1fr auto;
+  align-items:start;
+  gap:10px;
+}
+.close-common{
+  align-self:start;
+  justify-self:end;
+}
+.common-editor-block{
+  padding:10px!important;
+}
+.common-program-checks{
+  display:grid!important;
+  grid-template-columns:1fr 1fr!important;
+  gap:8px!important;
+}
+.common-program-checks label{
+  min-height:42px;
+  display:grid!important;
+  grid-template-columns:26px 1fr!important;
+  align-items:center!important;
+  gap:8px;
+  padding:8px 10px!important;
+}
+.common-semester-checks{
+  display:flex!important;
+  gap:8px;
+  flex-wrap:wrap;
+}
+.common-semester-checks label{
+  min-width:52px;
+  justify-content:center;
+  text-align:center;
+}
+
+/* Administración en una sola línea visual */
+.admin-adminline{
+  display:grid;
+  grid-template-columns:1.15fr 1fr;
+  gap:12px;
+}
+.capture-control-card .capture-grid{
+  grid-template-columns:1.08fr .92fr!important;
+  gap:12px!important;
+}
+.admin-details .details-body{
+  padding-top:10px!important;
+}
+.admin-quickbar{
+  justify-content:space-between!important;
+  padding:12px 14px!important;
+}
+.admin-quickbar .primary{
+  background:linear-gradient(135deg,#0f5c8f,#0a3760)!important;
+  color:#fff!important;
+  padding:11px 16px!important;
+  border-radius:12px!important;
+  font-size:11.3px!important;
+  box-shadow:0 4px 0 #07233b,0 10px 22px rgba(9,48,84,.15)!important;
+}
+
+/* Mejor armonía del bloque institucional */
+.admin-details .institutional-grid{
+  align-items:end!important;
+}
+
+/* Impresión: evitar que la última hoja se estire artificialmente */
+@media print{
+  .print-page{
+    height:auto!important;
+    min-height:0!important;
+  }
+  .print-page.last-page,
+  .print-page.compact-last{
+    height:auto!important;
+    min-height:0!important;
+  }
+  .print-page .program-trio{
+    align-content:start!important;
+  }
+}
+
+/* Visualmente más legible en pantallas medianas */
+@media(max-width:1220px){
+  .admin-adminline{grid-template-columns:1fr}
+}
+
+.coord-row-check input:disabled + span{
+  color:#b8c4cd!important;
+  border-color:#d9e2e8!important;
+  background:#f5f8fa!important;
+}

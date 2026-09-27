@@ -498,7 +498,7 @@ function rowCoordinatorChecked(pid,s,c){
 }
 function rowCoordinatorEnabled(pid,s,c,name){
   const a=getAns(pid,s,c,name);
-  return !isEnglish(name) && a.status!=='off' && ['X','XX'].includes(a.status);
+  return !isEnglish(name) && !/no\s+aplica/i.test(name) && a.status!=='off' && ['X','XX'].includes(a.status);
 }
 
 const pastelTitles=['#eef4f9','#f7efe7','#edf6f0','#f2effa','#fff4ea','#ecf6f8','#f8eef1','#eef5e9'];
@@ -527,11 +527,11 @@ function renderCurrentProgram(){
     h+='</div>';
   });
   const lastProgram=currentProgramIndex===programs().length-1;
-  h+=`</div></div><div class="program-save"><small>${st.missing?'Las filas rojizas indican materias pendientes.':'Programa completo.'}</small><button class="save-btn" onclick="${lastProgram?'validateAndReview()':'saveAndNextProgram()'}">${lastProgram?'Continuar a revisión e impresión →':'Guardar y seguir al siguiente programa →'}</button></div></article>`;
+  h+=`</div></div><div class="program-save"><small>${st.missing?'Las filas rojizas indican materias pendientes.':'Programa completo.'}</small><button class="save-btn" onclick="${lastProgram?'validateAndReview()':'saveAndNextProgram()'}">${lastProgram?'Continuar a revisión e impresión →':'Guardar y seguir →'}</button></div></article>`;
   $('programs').innerHTML=h;
   const flowBtn=$('flowNextBtn');
   if(flowBtn){
-    flowBtn.textContent=lastProgram?'Continuar a revisión e impresión →':'Guardar y seguir al siguiente programa →';
+    flowBtn.textContent=lastProgram?'Continuar a revisión e impresión →':'Guardar y seguir →';
     flowBtn.onclick=lastProgram?()=>validateAndReview():()=>saveAndNextProgram();
   }
   updateProgress();lockRevisionNav();updateNavState();applyEditState();
@@ -950,12 +950,14 @@ async function exportWorkbook(){
       const addr=XLSX.utils.encode_cell({r,c:matrixCol}),v=String(aoa[r]?.[matrixCol]||'');
       const coord=teacherCoordinator(t,pr.id,s,c);
       if(v){
-        styleCell(addr,{
-          font:{bold:v.includes('★'),color:{rgb:coord?'B42318':'243746'}},
+        const st={
+          font:{name:'Aptos',sz:10,bold:v.includes('★'),color:{rgb:coord?'C62828':'243746'}},
           fill:{fgColor:{rgb:'FFFFFF'}},
           alignment:{horizontal:'center',vertical:'center'},
           border:{top:{style:'thin',color:{rgb:'D4DCE3'}},bottom:{style:'thin',color:{rgb:'D4DCE3'}},left:{style:'thin',color:{rgb:'D4DCE3'}},right:{style:'thin',color:{rgb:'D4DCE3'}}}
-        });
+        };
+        styleCell(addr,st);
+        if(ws[addr]) ws[addr].s=st;
       }
       matrixCol++;
     })));
