@@ -10,13 +10,26 @@ const DEFAULT_COMMON_RULES=[
   {id:'TC_IND',name:'Tronco común Industrial',programIds:['ind_plasticos','ind_procesos'],semesters:[0,1,2]},
   {id:'TC_MEC',name:'Tronco común Mecánica',programIds:['mec_ind','mec_moldes','mec_auto'],semesters:[0,1,2]}
 ];
-let answers=store.answers||{},programMeta=store.programMeta||{},customPrograms=store.customPrograms||[],disabledPrograms=store.disabledPrograms||[],programAcronyms=store.programAcronyms||{},commonRules=Array.isArray(store.commonRules)?store.commonRules:JSON.parse(JSON.stringify(DEFAULT_COMMON_RULES));
+let answers=store.answers||{},programMeta=store.programMeta||{},customPrograms=store.customPrograms||[],programOverrides=store.programOverrides||{},disabledPrograms=store.disabledPrograms||[],programAcronyms=store.programAcronyms||{},commonRules=Array.isArray(store.commonRules)?store.commonRules:JSON.parse(JSON.stringify(DEFAULT_COMMON_RULES));
 let currentProgramIndex=Number.isInteger(store.currentProgramIndex)?store.currentProgramIndex:0;
-let newSemesterCount=5,auth=null,currentUser=null,authReady=false,db=null,cloudSettingsUnsub=null,remoteProfileLoaded=false,cloudAvailable=false,cloudSaveTimer=null,countdownTimer=null,lastSavedAt=store.lastSavedAt||null,editingCommonRuleId=null;
+let newSemesterCount=5,auth=null,currentUser=null,authReady=false,db=null,cloudSettingsUnsub=null,remoteProfileLoaded=false,cloudAvailable=false,cloudSaveTimer=null,countdownTimer=null,lastSavedAt=store.lastSavedAt||null,editingCommonRuleId=null,editingProgramId=null;
 const allowedDomain=(window.PAD_ALLOWED_DOMAIN||'uteq.edu.mx').toLowerCase();
 const adminEmail=(window.PAD_ADMIN_EMAIL||'ivan.gutierrez@uteq.edu.mx').toLowerCase();
 
-function allPrograms(){return [...PROGRAMS,...customPrograms]}
+function allPrograms(){
+  const base=PROGRAMS.map(p=>{
+    const ov=programOverrides[p.id];
+    if(!ov)return {...p,hours:(typeof PROGRAM_HOURS!=='undefined'&&PROGRAM_HOURS[p.id])?JSON.parse(JSON.stringify(PROGRAM_HOURS[p.id])):p.hours};
+    return {
+      ...p,
+      name:ov.name??p.name,
+      exit:ov.exit??p.exit,
+      semesters:Array.isArray(ov.semesters)?JSON.parse(JSON.stringify(ov.semesters)):JSON.parse(JSON.stringify(p.semesters)),
+      hours:Array.isArray(ov.hours)?JSON.parse(JSON.stringify(ov.hours)):((typeof PROGRAM_HOURS!=='undefined'&&PROGRAM_HOURS[p.id])?JSON.parse(JSON.stringify(PROGRAM_HOURS[p.id])):p.hours)
+    };
+  });
+  return [...base,...customPrograms];
+}
 function programs(){return allPrograms().filter(p=>!disabledPrograms.includes(p.id))}
 function key(pid,s,c){return `${pid}|${s}|${c}`}
 function fullName(){return [$('apPat').value.trim(),$('apMat').value.trim(),$('nombres').value.trim()].filter(Boolean).join(' ')}
@@ -47,11 +60,11 @@ function programAcronym(pr){
 
 
 function subjectHours(pid,s,c){
-  const rows=(typeof PROGRAM_HOURS!=='undefined'&&PROGRAM_HOURS[pid])||[];
-  const base=Number(rows?.[s]?.[c])||0;
-  if(base)return base;
   const pr=allPrograms().find(x=>x.id===pid);
-  return Number(pr?.hours?.[s]?.[c])||0;
+  const edited=Number(pr?.hours?.[s]?.[c])||0;
+  if(edited)return edited;
+  const rows=(typeof PROGRAM_HOURS!=='undefined'&&PROGRAM_HOURS[pid])||[];
+  return Number(rows?.[s]?.[c])||0;
 }
 function weeklyHours(pid,s,c){
   const total=subjectHours(pid,s,c);
@@ -176,7 +189,7 @@ function getAns(pid,s,c,name){
 function toast(msg){const t=$('toast');t.textContent=msg;t.classList.add('show');clearTimeout(toast.timer);toast.timer=setTimeout(()=>t.classList.remove('show'),2400)}
 function persist(){
   cfg.periodo=cfg.periodo||'SEP 2026 - AGO 2027';
-  store.cfg=cfg;store.answers=answers;store.programMeta=programMeta;store.customPrograms=customPrograms;store.disabledPrograms=disabledPrograms;store.programAcronyms=programAcronyms;store.commonRules=commonRules;store.currentProgramIndex=currentProgramIndex;store.lastSavedAt=Date.now();
+  store.cfg=cfg;store.answers=answers;store.programMeta=programMeta;store.customPrograms=customPrograms;store.programOverrides=programOverrides;store.disabledPrograms=disabledPrograms;store.programAcronyms=programAcronyms;store.commonRules=commonRules;store.currentProgramIndex=currentProgramIndex;store.lastSavedAt=Date.now();
   lastSavedAt=store.lastSavedAt;
   localStorage.setItem('PAD_UTEQ',JSON.stringify(store));
   updateLastSavedUI();
@@ -199,6 +212,7 @@ function globalSettingsPayload(){
     cfg:{...cfg},
     disabledPrograms:[...disabledPrograms],
     customPrograms:JSON.parse(JSON.stringify(customPrograms)),
+    programOverrides:JSON.parse(JSON.stringify(programOverrides)),
     programAcronyms:{...programAcronyms},
     commonRules:JSON.parse(JSON.stringify(commonRules))
   };
@@ -208,10 +222,11 @@ function applyGlobalSettings(data){
   if(data.cfg)Object.assign(cfg,data.cfg);
   if(Array.isArray(data.disabledPrograms))disabledPrograms=data.disabledPrograms;
   if(Array.isArray(data.customPrograms))customPrograms=data.customPrograms;
+  if(data.programOverrides&&typeof data.programOverrides==='object')programOverrides=data.programOverrides;
   if(data.programAcronyms&&typeof data.programAcronyms==='object')programAcronyms=data.programAcronyms;
   if(Array.isArray(data.commonRules))commonRules=data.commonRules;
   currentProgramIndex=Math.min(currentProgramIndex,Math.max(0,programs().length-1));
-  localStorage.setItem('PAD_UTEQ',JSON.stringify({...store,cfg,answers,programMeta,customPrograms,disabledPrograms,programAcronyms,commonRules,currentProgramIndex,lastSavedAt}));
+  localStorage.setItem('PAD_UTEQ',JSON.stringify({...store,cfg,answers,programMeta,customPrograms,programOverrides,disabledPrograms,programAcronyms,commonRules,currentProgramIndex,lastSavedAt}));
   updatePeriodBadges();renderCurrentProgram();renderAdmin();updateCountdownUI();updateNavState();
 }
 async function saveGlobalSettings(action='Configuración global actualizada'){
@@ -268,7 +283,7 @@ async function loadRemoteProfile(){
       if(d.programMeta)programMeta=d.programMeta;
       if('submittedPeriod' in d)store.submittedPeriod=d.submittedPeriod||null;
       store.answers=answers;store.programMeta=programMeta;
-      localStorage.setItem('PAD_UTEQ',JSON.stringify({...store,cfg,customPrograms,disabledPrograms,programAcronyms,commonRules,currentProgramIndex,lastSavedAt}));
+      localStorage.setItem('PAD_UTEQ',JSON.stringify({...store,cfg,customPrograms,programOverrides,disabledPrograms,programAcronyms,commonRules,currentProgramIndex,lastSavedAt}));
       loadProfileValuesOnly();
       renderCurrentProgram();
       updateProgress();
@@ -717,32 +732,122 @@ function renderAdmin(){
   const st=$('editModeStatus'),btn=$('editModeBtn');
   if(st){st.textContent=cfg.editingLocked?'Edición desactivada':'Edición activa';st.className='edit-mode-status '+(cfg.editingLocked?'locked':'open')}
   if(btn){btn.textContent=cfg.editingLocked?'Activar edición de perfiles':'Desactivar edición de perfiles';btn.className='edit-mode-btn '+(cfg.editingLocked?'activate':'deactivate')}
-  renderSemesterEditors();renderProgramAdminList();renderCustomPrograms();renderRules();applyEditState()
+  if(!editingProgramId && !$('newProgramSemesters')?.children?.length)renderSemesterEditors();
+  renderProgramAdminList();renderCustomPrograms();renderRules();applyEditState()
 }
-function renderSemesterEditors(){
+function renderSemesterEditors(values=null){
   let h='';
   for(let i=0;i<newSemesterCount;i++)h+=`<div class="semester-editor"><div class="semester-editor-head"><b>${i+1}.° cuatrimestre</b>${newSemesterCount>1?`<button onclick="removeSemesterEditor(${i})">Borrar</button>`:''}</div><textarea id="newSem${i}" placeholder="Ejemplo:\nCálculo diferencial - 90\nFísica - 75"></textarea><small class="semester-help">Formato: Asignatura - horas totales del cuatrimestre</small></div>`;
-  $('newProgramSemesters').innerHTML=h
+  $('newProgramSemesters').innerHTML=h;
+  if(Array.isArray(values)) values.forEach((v,i)=>{const el=$(`newSem${i}`);if(el)el.value=v||''});
 }
-window.addSemesterEditor=function(){newSemesterCount++;renderSemesterEditors()}
-window.removeSemesterEditor=function(i){const vals=Array.from({length:newSemesterCount},(_,x)=>$(`newSem${x}`)?.value||'');vals.splice(i,1);newSemesterCount=Math.max(1,newSemesterCount-1);renderSemesterEditors();vals.forEach((v,x)=>$(`newSem${x}`).value=v)}
+window.addSemesterEditor=function(){
+  const vals=Array.from({length:newSemesterCount},(_,x)=>$(`newSem${x}`)?.value||'');
+  newSemesterCount++;
+  renderSemesterEditors(vals);
+}
+window.removeSemesterEditor=function(i){
+  const vals=Array.from({length:newSemesterCount},(_,x)=>$(`newSem${x}`)?.value||'');
+  vals.splice(i,1);
+  newSemesterCount=Math.max(1,newSemesterCount-1);
+  renderSemesterEditors(vals);
+}
 function slug(s){return 'custom_'+s.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/[^a-z0-9]+/g,'_')+'_'+Date.now()}
 function parseCustomSubjectLine(line){
   const clean=String(line||'').trim();
-  const m=clean.match(/^(.*?)\s*-\s*(\d+(?:[.,]\d+)?)\s*$/);
+  const m=clean.match(/^(.*?)\s*[-–—]\s*(\d+(?:[.,]\d+)?)\s*(?:h|hrs?|horas?)?\s*$/i);
   if(!m)return {name:clean,hours:0};
   return {name:m[1].trim(),hours:Number(m[2].replace(',','.'))||0};
 }
-window.saveNewProgram=function(){
+function formatProgramSemester(pr,s){
+  const sem=pr.semesters?.[s]||[],hrs=pr.hours?.[s]||[];
+  return sem.map((name,c)=>`${subjectCase(name)} - ${Number(hrs[c])||subjectHours(pr.id,s,c)||''}`).join('\n');
+}
+function resetProgramEditor(){
+  editingProgramId=null;
+  newSemesterCount=5;
+  $('newProgramName').value='';
+  $('newProgramExit').value='';
+  $('programEditorTitle').textContent='Agregar programa educativo';
+  $('programEditorHelp').textContent='Capture nombre, salida lateral y materias. Puede escribirlas manualmente o importar una imagen del mapa curricular.';
+  $('programEditorMode').textContent='Nuevo';
+  $('cancelProgramEditBtn').classList.add('hidden');
+  $('saveProgramEditorBtn').textContent='Guardar nuevo programa educativo';
+  renderSemesterEditors();
+}
+window.cancelProgramEdit=function(){
+  resetProgramEditor();
+  toast('Edición cancelada.');
+}
+function clearChangedCourseAnswers(pid,oldProgram,newProgram){
+  const maxS=Math.max(oldProgram?.semesters?.length||0,newProgram?.semesters?.length||0);
+  for(let s=0;s<maxS;s++){
+    const oldSem=oldProgram?.semesters?.[s]||[];
+    const newSem=newProgram?.semesters?.[s]||[];
+    const maxC=Math.max(oldSem.length,newSem.length);
+    for(let c=0;c<maxC;c++){
+      const oldName=normalizeSubjectName(oldSem[c]||'');
+      const newName=normalizeSubjectName(newSem[c]||'');
+      if(oldName!==newName){
+        delete answers[key(pid,s,c)];
+        const meta=programMeta[pid];
+        if(meta?.coordinators)meta.coordinators=meta.coordinators.filter(x=>x!==`${s}|${c}`);
+      }
+    }
+  }
+}
+window.openProgramEditor=function(id){
+  if(!isAdmin())return;
+  const pr=allPrograms().find(p=>p.id===id);
+  if(!pr)return;
+  editingProgramId=id;
+  $('newProgramName').value=pr.name||'';
+  $('newProgramExit').value=pr.exit||'';
+  newSemesterCount=Math.max(1,pr.semesters?.length||5);
+  const vals=Array.from({length:newSemesterCount},(_,s)=>formatProgramSemester(pr,s));
+  renderSemesterEditors(vals);
+  $('programEditorTitle').textContent='Editar programa educativo';
+  $('programEditorHelp').textContent='Puede modificar nombre, salida lateral, materias y horas. Los cambios se aplican al catálogo vigente.';
+  $('programEditorMode').textContent='Edición';
+  $('cancelProgramEditBtn').classList.remove('hidden');
+  $('saveProgramEditorBtn').textContent='Guardar cambios';
+  $('programEditorCard').scrollIntoView({behavior:'smooth',block:'start'});
+}
+window.saveProgramEditor=function(){
   const name=$('newProgramName').value.trim(),exit=$('newProgramExit').value.trim();
   const parsed=Array.from({length:newSemesterCount},(_,i)=>($(`newSem${i}`).value||'').split(/\n+/).map(parseCustomSubjectLine).filter(x=>x.name));
   const semesters=parsed.map(rows=>rows.map(x=>x.name));
   const hours=parsed.map(rows=>rows.map(x=>x.hours));
   if(!name||!exit||semesters.some(x=>!x.length)){toast('Complete nombre, salida lateral y materias.');return}
   if(parsed.some(rows=>rows.some(x=>!x.hours))){toast('Agregue las horas de cada materia con el formato: Asignatura - horas.');return}
-  customPrograms.push({id:slug(name),name,exit,common:null,semesters,hours});
-  $('newProgramName').value='';$('newProgramExit').value='';newSemesterCount=5;persist();saveGlobalSettings('Programa educativo agregado');renderAdmin();renderCurrentProgram();toast('Programa educativo agregado.');
+
+  if(editingProgramId){
+    const oldProgram=allPrograms().find(p=>p.id===editingProgramId);
+    const next={id:editingProgramId,name,exit,common:oldProgram?.common??null,semesters,hours};
+    clearChangedCourseAnswers(editingProgramId,oldProgram,next);
+    const customIndex=customPrograms.findIndex(p=>p.id===editingProgramId);
+    if(customIndex>=0){
+      customPrograms[customIndex]={...customPrograms[customIndex],name,exit,semesters,hours};
+    }else{
+      programOverrides[editingProgramId]={name,exit,semesters,hours};
+    }
+    persist();
+    saveGlobalSettings('Programa educativo actualizado');
+    renderAdmin();renderCurrentProgram();updateProgress();lockRevisionNav();
+    toast('Programa educativo actualizado.');
+    resetProgramEditor();
+    return;
+  }
+
+  const id=slug(name);
+  customPrograms.push({id,name,exit,common:null,semesters,hours});
+  persist();
+  saveGlobalSettings('Programa educativo agregado');
+  renderAdmin();renderCurrentProgram();
+  toast('Programa educativo agregado.');
+  resetProgramEditor();
 }
+window.saveNewProgram=window.saveProgramEditor;
 
 
 window.setProgramAcronym=function(id,value){
@@ -836,6 +941,7 @@ function renderProgramAdminList(){
     return `<div class="program-admin-item ${enabled?'':'disabled'}">
       <div><b>${p.name}</b><small>${p.exit}${custom?' · Programa agregado':''}${rule?` · <strong>Tronco común</strong>`:''}</small></div>
       <label class="acronym-edit">Acrónimo<input value="${programAcronym(p)}" maxlength="18" onchange="setProgramAcronym('${p.id}',this.value)"></label>
+      <button class="edit-program-btn" onclick="openProgramEditor('${p.id}')">Editar</button>
       <button class="common-program-btn ${rule?'active':''}" onclick="openCommonRuleEditor('${p.id}')">${rule?'Tronco común ✓':'Configurar tronco'}</button>
       <button class="${enabled?'disable-program':'enable-program'}" onclick="toggleProgramEnabled('${p.id}')">${enabled?'Deshabilitar':'Habilitar'}</button>
     </div>`
@@ -844,8 +950,113 @@ function renderProgramAdminList(){
 
 window.deleteCustomProgram=function(id){if(!confirm('¿Eliminar este programa?'))return;customPrograms=customPrograms.filter(p=>p.id!==id);disabledPrograms=disabledPrograms.filter(x=>x!==id);currentProgramIndex=Math.min(currentProgramIndex,Math.max(0,programs().length-1));persist();saveGlobalSettings('Programa educativo eliminado');renderAdmin();renderCurrentProgram()}
 function renderCustomPrograms(){
-  $('customProgramsList').innerHTML=customPrograms.length?`<h3 style="margin-top:16px">Programas agregados</h3>`+customPrograms.map(p=>`<div class="custom-program-item"><div><b>${p.name}</b><br>${p.exit}<br><small>${p.semesters.reduce((n,s)=>n+s.length,0)} materias · horas configuradas</small></div><button onclick="deleteCustomProgram('${p.id}')">Eliminar</button></div>`).join(''):''
+  $('customProgramsList').innerHTML=customPrograms.length?`<h3 style="margin-top:16px">Programas agregados</h3>`+customPrograms.map(p=>`<div class="custom-program-item"><div><b>${p.name}</b><br>${p.exit}<br><small>${p.semesters.reduce((n,s)=>n+s.length,0)} materias · horas configuradas</small></div><div class="custom-program-actions"><button onclick="openProgramEditor('${p.id}')">Editar</button><button onclick="deleteCustomProgram('${p.id}')">Eliminar</button></div></div>`).join(''):''
 }
+
+function normalizeOcrText(text){
+  return String(text||'').replace(/\r/g,'').replace(/[|]+/g,' ').replace(/[ \t]+/g,' ').replace(/\n{3,}/g,'\n\n').trim();
+}
+function detectSemesterHeading(line){
+  const s=String(line||'').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'');
+  const words={primer:1,primero:1,segundo:2,tercer:3,tercero:3,cuarto:4,quinto:5,sexto:6,septimo:7,octavo:8,noveno:9};
+  for(const [w,n] of Object.entries(words)){
+    if(new RegExp(`\\b${w}\\b.*cuatrimestre`).test(s))return n-1;
+  }
+  const m=s.match(/\b([1-9])\s*(?:[.°ºo]|er|do|ro|to)?\s*(?:cuatrimestre|cuatri)\b/);
+  return m?Number(m[1])-1:null;
+}
+function isLikelyOcrNoise(line){
+  const s=String(line||'').trim();
+  if(!s)return true;
+  if(/^(asignatura|materia|horas?|h\/?sem|cuatrimestre|nivel|area|competencia)$/i.test(s))return true;
+  if(/^(universidad|division|programa educativo)$/i.test(s))return true;
+  return false;
+}
+function parseCurriculumOcr(text){
+  const lines=normalizeOcrText(text).split('\n').map(x=>x.trim()).filter(Boolean);
+  let name='',exit='',current=null;
+  const rows=[];
+  function ensure(s){while(rows.length<=s)rows.push([])}
+  lines.forEach(raw=>{
+    const line=raw.replace(/[•·]/g,' ').replace(/\s+/g,' ').trim();
+    const sem=detectSemesterHeading(line);
+    if(sem!==null){current=sem;ensure(sem);return}
+    if(!name && /licenciatura|ingenieria|ingeniería/i.test(line) && line.length>12 && line.length<180){
+      name=line.trim();return;
+    }
+    if(!exit && /(t[eé]cnico superior universitario|tsu)/i.test(line) && line.length<190){
+      exit=line.trim();return;
+    }
+    if(current===null || isLikelyOcrNoise(line))return;
+
+    const onlyHours=line.match(/^(\d{2,3}(?:[.,]\d+)?)\s*(?:h|hrs?|horas?)?$/i);
+    if(onlyHours && rows[current]?.length){
+      const last=rows[current][rows[current].length-1];
+      if(!last.hours)last.hours=Number(onlyHours[1].replace(',','.'))||0;
+      return;
+    }
+
+    const parsed=parseCustomSubjectLine(line);
+    if(parsed.name && parsed.name.length>=3 && !/^\d+$/.test(parsed.name)){
+      rows[current].push(parsed);
+    }
+  });
+  return {name,exit,semesters:rows.length?rows:Array.from({length:5},()=>[])};
+}
+function applyParsedCurriculum(parsed){
+  if(parsed.name)$('newProgramName').value=parsed.name;
+  if(parsed.exit)$('newProgramExit').value=parsed.exit;
+  const count=Math.max(1,parsed.semesters.length||5);
+  newSemesterCount=count;
+  const values=Array.from({length:count},(_,s)=>{
+    const rows=parsed.semesters[s]||[];
+    return rows.map(x=>`${subjectCase(x.name)}${x.hours?` - ${x.hours}`:''}`).join('\n');
+  });
+  renderSemesterEditors(values);
+  return {
+    subjects:parsed.semesters.reduce((n,s)=>n+s.length,0),
+    missingHours:parsed.semesters.reduce((n,s)=>n+s.filter(x=>!x.hours).length,0)
+  };
+}
+window.importProgramFromImage=async function(){
+  if(!isAdmin())return;
+  const input=$('programImageImport'),file=input?.files?.[0],status=$('programImageStatus');
+  if(!file){toast('Seleccione primero una imagen.');return}
+  if(!window.Tesseract){toast('No fue posible cargar el módulo de reconocimiento de imagen.');return}
+  try{
+    status.textContent='Preparando imagen…';status.className='program-image-status working';
+    const result=await window.Tesseract.recognize(file,'spa',{
+      logger:m=>{
+        if(m.status==='recognizing text')status.textContent=`Leyendo imagen… ${Math.round((m.progress||0)*100)}%`;
+        else if(m.status)status.textContent='Procesando imagen…';
+      }
+    });
+    const text=normalizeOcrText(result?.data?.text||'');
+    $('ocrRawText').value=text;
+    $('ocrReview').classList.remove('hidden');
+    const stats=applyParsedCurriculum(parseCurriculumOcr(text));
+    status.textContent=`Importación lista: ${stats.subjects} materias detectadas${stats.missingHours?` · ${stats.missingHours} sin horas`:''}. Revise antes de guardar.`;
+    status.className='program-image-status ok';
+    toast('Información importada. Revise nombres, materias y horas.');
+  }catch(e){
+    console.error(e);
+    status.textContent='No fue posible leer la imagen. Intente con una captura más nítida.';
+    status.className='program-image-status error';
+    toast('No fue posible importar la imagen.');
+  }
+}
+window.applyOcrTextToProgram=function(){
+  const text=$('ocrRawText')?.value||'';
+  if(!text.trim()){toast('No hay texto para interpretar.');return}
+  const stats=applyParsedCurriculum(parseCurriculumOcr(text));
+  const st=$('programImageStatus');
+  if(st){
+    st.textContent=`Texto aplicado: ${stats.subjects} materias${stats.missingHours?` · ${stats.missingHours} sin horas`:''}.`;
+    st.className='program-image-status ok';
+  }
+  toast('Texto interpretado. Revise la información.');
+}
+
 function renderRules(){
   const root=$('commonRules');if(!root)return;
   root.innerHTML=commonRules.length?commonRules.map(r=>{

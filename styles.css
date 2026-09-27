@@ -2785,3 +2785,40 @@ textarea:focus-visible,
   #newProgramSemesters{grid-template-columns:1fr!important}
   .capture-main-actions{grid-template-columns:1fr!important}
 }
+
+
+/* =========================================================
+   V19 · edición de programas + importación desde imagen
+   ========================================================= */
+.editor-mode-badge{
+  flex:0 0 auto;padding:5px 9px;border-radius:999px;background:#eef5f9;border:1px solid #cbdde8;
+  color:#355d74;font-size:9px;font-weight:750;
+}
+.program-import-panel{
+  display:grid;grid-template-columns:minmax(280px,1fr) auto auto;align-items:center;gap:8px;
+  padding:10px 11px;margin-bottom:10px;border:1px solid #d4e3eb;border-left:4px solid #4b8fae;
+  border-radius:10px;background:linear-gradient(90deg,#f7fbfd,#eef7fb);
+}
+.program-import-panel>div{display:flex;flex-direction:column;gap:2px}
+.program-import-panel b{color:#174765;font-size:11px}
+.program-import-panel span{color:#637d8d;font-size:9px;line-height:1.25}
+.program-import-panel button{min-height:32px;white-space:nowrap}
+.program-image-status{grid-column:1/-1;min-height:16px;font-size:9px!important;font-weight:650}
+.program-image-status.working{color:#7a5b12!important}
+.program-image-status.ok{color:#287052!important}
+.program-image-status.error{color:#a33c34!important}
+.ocr-review{margin:0 0 10px;padding:8px 10px;border:1px solid #d6e2e8;border-radius:9px;background:#fbfdfe}
+.ocr-review summary{cursor:pointer;font-weight:750;color:#31586f;font-size:10px}
+.ocr-review textarea{width:100%;min-height:120px;margin-top:7px;line-height:1.25}
+.edit-program-btn{background:#eef5fa!important;color:#244f69!important;border:1px solid #bfd3df!important}
+.edit-program-btn:hover{background:#e1eef5!important}
+.program-admin-item{grid-template-columns:minmax(0,1fr) 120px 74px 126px 104px!important}
+.custom-program-actions{display:flex;gap:6px;align-items:center}
+@media(max-width:1180px){
+  .program-admin-item{grid-template-columns:minmax(0,1fr) 110px 70px 118px!important}
+}
+@media(max-width:900px){
+  .program-import-panel{grid-template-columns:1fr 1fr}
+  .program-import-panel>div,.program-image-status{grid-column:1/-1}
+}
+@media(max-width:700px){.program-import-panel{grid-template-columns:1fr}}

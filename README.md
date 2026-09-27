@@ -1,23 +1,16 @@
-# Perfil Académico Docente DIN · Versión 18
+# Perfil Académico Docente DIN · Versión 19
 
-Actualización puntual sobre V17.
+Actualización puntual del apartado Administración → Programas educativos.
 
 ## Cambios
-- Logo corregido usando `icono-industria.svg` autocontenido para evitar rutas rotas.
-- Administración más compacta:
-  - Jefe de Unidad en una línea;
-  - Periodo en la siguiente;
-  - Código / Revisión / Fecha en una tercera línea.
-- El botón Activar/Desactivar edición permanece junto a Guardar fecha y Borrar límite.
-- Con edición desactivada:
-  - el profesor puede consultar todos los programas;
-  - puede entrar a Revisión;
-  - puede imprimir/guardar PDF.
-- Al activar nuevamente la edición:
-  - puede modificar otra vez nombre, categoría y todos los campos del perfil, mientras la fecha límite siga vigente.
-- Crear programa educativo:
-  - dos cuatrimestres por fila en escritorio;
-  - bloques más compactos;
-  - botón `Borrar`.
-- Excel:
-  - materias coordinadas en rojo puro `#FF0000` y negrita.
+- Todos los programas educativos pueden editarse desde Administración.
+- El administrador puede modificar nombre, salida lateral, materias, horas y cantidad de cuatrimestres.
+- Los programas base se conservan en `catalog.js`; los cambios se guardan como `programOverrides`.
+- Si cambia una materia en una posición, se limpia solo la respuesta de esa posición para evitar heredar una competencia de otra materia.
+- Importación desde imagen mediante OCR en el navegador con Tesseract.js.
+- El OCR intenta detectar programa, salida lateral, cuatrimestres, materias y horas.
+- El texto detectado queda visible y editable antes de guardar.
+- Se conserva la captura manual `Asignatura - horas`.
+
+## Deploy
+`deploy-pages.yml`: NO necesita actualización.
