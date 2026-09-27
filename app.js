@@ -15,6 +15,29 @@ function programs(){return [...PROGRAMS,...customPrograms]}
 function key(pid,s,c){return `${pid}|${s}|${c}`}
 function fullName(){return [$('apPat').value.trim(),$('apMat').value.trim(),$('nombres').value.trim()].filter(Boolean).join(' ')}
 function isEnglish(name){return /^INGLÉS\b/i.test(name.trim())}
+function subjectCase(text){
+  if(!text)return '';
+  let s=String(text).trim().toLocaleLowerCase('es-MX');
+  s=s.charAt(0).toLocaleUpperCase('es-MX')+s.slice(1);
+  // Acrónimos y números romanos de uso frecuente
+  s=s.replace(/\bcad\b/gi,'CAD').replace(/\bcam\b/gi,'CAM');
+  s=s.replace(/\b(i|ii|iii|iv|v)\b/gi,m=>m.toUpperCase());
+  return s;
+}
+function programAcronym(pr){
+  const map={
+    auto_diseno:'IMA-DMA',
+    mec_ind:'IM-MI',
+    mec_moldes:'IM-MT',
+    mec_auto:'IM-MA',
+    ind_plasticos:'II-MP',
+    ind_procesos:'II-PP',
+    nano:'IN-N',
+    mantenimiento:'IMI-MI'
+  };
+  return map[pr.id]||pr.id.replace(/^custom_/,'PE-').slice(0,12).toUpperCase();
+}
+
 function getAns(pid,s,c,name){
   const k=key(pid,s,c);
   if(isEnglish(name)){answers[k]={status:'na',origins:[],ideal:false};return answers[k]}
@@ -118,7 +141,7 @@ function overallStats(){let total=0,done=0,invalid=0,pending=[];programs().forEa
 function idealCount(){const u=new Set();programs().forEach(p=>p.semesters.forEach((sem,s)=>sem.forEach((name,c)=>{if(getAns(p.id,s,c,name).ideal)u.add(`${p.id}|${s}|${c}`)})));return u.size}
 function updateProgress(){const x=overallStats(),pct=x.total?Math.round(x.done/x.total*100):0;$('progressText').textContent=`${x.done} de ${x.total} revisadas (${pct}%)`;$('progressBar').style.width=pct+'%';$('idealCounter').textContent=`Materias ideales: ${idealCount()} / mínimo 3`}
 function currentProgram(){return programs()[currentProgramIndex]}
-function eligibleCourses(p){const opts=[];p.semesters.forEach((sem,s)=>sem.forEach((name,c)=>{const a=getAns(p.id,s,c,name);if(['X','XX'].includes(a.status)&&(a.origins||[]).length)opts.push({id:`${s}|${c}`,text:`${s+1}.° · ${name}`})}));return opts}
+function eligibleCourses(p){const opts=[];p.semesters.forEach((sem,s)=>sem.forEach((name,c)=>{const a=getAns(p.id,s,c,name);if(['X','XX'].includes(a.status)&&(a.origins||[]).length)opts.push({id:`${s}|${c}`,text:`${s+1}.° · ${subjectCase(name)}`})}));return opts}
 window.toggleCoordinator=function(pid,id,checked){programMeta[pid]=programMeta[pid]||{};let arr=programMeta[pid].coordinators||[];arr=checked?[...new Set([...arr,id])]:arr.filter(x=>x!==id);programMeta[pid].coordinators=arr;persist()}
 function renderCoordinator(p){const eligible=eligibleCourses(p),chosen=(programMeta[p.id]||{}).coordinators||[];return `<details class="coordinator-panel"><summary>Coordinación de academia (opcional) · Puede seleccionar más de una materia</summary><div class="coord-options">${eligible.length?eligible.map(o=>`<label class="coord-chip"><input type="checkbox" ${chosen.includes(o.id)?'checked':''} onchange="toggleCoordinator('${p.id}','${o.id}',this.checked)">${o.text}</label>`).join(''):`<span class="coord-empty">Se habilita cuando existan materias con competencia capturada.</span>`}</div></details>`}
 
@@ -129,13 +152,13 @@ function renderCurrentProgram(){
   $('programFlowName').textContent=`${p.name} — ${p.exit}`;
   const st=programStats(p);
   let bg = pastelTitles[currentProgramIndex % pastelTitles.length];
-  let h=`<article class="program"><div class="program-head" style="background:${bg}"><div class="program-title"><strong>${p.name}</strong><span><b>Salida lateral:</b> ${p.exit}</span></div><div class="program-progress">${st.done}/${st.total} revisadas${st.missing?` · ${st.missing} pendientes`:''}</div></div>${p.common?`<div class="common-note">Tronco común: los cuatrimestres 1–3 se sincronizan automáticamente con los demás programas de esta familia.</div>`:''}${renderCoordinator(p)}<div class="semesters-grid">`;
+  let h=`<article class="program"><div class="program-head" style="background:${bg}"><div class="program-title"><strong>${p.name}</strong><span><b>Salida lateral:</b> ${p.exit}</span></div><div class="program-progress">${st.done}/${st.total} revisadas${st.missing?` · ${st.missing} pendientes`:''}</div></div>${p.common?`<div class="common-note">Tronco común: los cuatrimestres 1–3 se sincronizan automáticamente con los demás programas de esta familia.</div>`:''}${renderCoordinator(p)}<div class="program-scroll-wrap"><div class="scroll-hint">↔ Si la pantalla es más angosta, desplácese horizontalmente para ver todas las columnas.</div><div class="semesters-grid">`;
   p.semesters.forEach((sem,s)=>{
     h+=`<div class="semester-card"><h4>${s+1}.° cuatrimestre <span>${sem.length} asignaturas</span></h4><div class="course-columns"><span>Asignatura</span><span>Habilitar</span><span>Competencia</span><span>Área conocimiento</span><span>Materia ideal</span></div>`;
     sem.forEach((name,c)=>{
       const a=getAns(p.id,s,c,name),na=isEnglish(name),enc=encodeURIComponent(name),enabled=!['off','na'].includes(a.status),pending=a.status==='pending';
       h+=`<div class="course ${pending?'pending':''} ${a.status==='off'?'off':''} ${na?'na':''}">
-      <div class="name">${name}${na?' · NO APLICA':''}</div>
+      <div class="name">${subjectCase(name)}${na?' · NO APLICA':''}</div>
       <label class="toggle ${na?'locked':''}"><input type="checkbox" ${enabled?'checked':''} ${na?'disabled':''} onchange="setEnabled('${p.id}',${s},${c},decodeURIComponent('${enc}'),this.checked)"><span class="switch"></span><span>${na?'Bloqueado':enabled?'Sí':'No'}</span></label>
       <div class="comp-buttons"><button class="mini ${a.status==='X'?'on':''}" ${!enabled?'disabled':''} onclick="setCompetence('${p.id}',${s},${c},decodeURIComponent('${enc}'),'X')">X</button><button class="mini ${a.status==='XX'?'on':''}" ${!enabled?'disabled':''} onclick="setCompetence('${p.id}',${s},${c},decodeURIComponent('${enc}'),'XX')">XX</button></div>
       <div class="area-buttons">${['1','2','3','12','13','23','123'].map(code=>`<button class="mini area ${originCode(a)===code?'on':''}" ${!['X','XX'].includes(a.status)?'disabled':''} onclick="setOriginCode('${p.id}',${s},${c},decodeURIComponent('${enc}'),'${code}')">${code}</button>`).join('')}</div>
@@ -143,7 +166,7 @@ function renderCurrentProgram(){
     });
     h+='</div>';
   });
-  h+=`</div><div class="program-save"><small>${st.missing?'Las filas rojizas indican materias pendientes.':'Programa completo.'}</small><button class="save-btn" onclick="saveAndNextProgram()">Guardar y seguir al siguiente programa →</button></div></article>`;
+  h+=`</div></div><div class="program-save"><small>${st.missing?'Las filas rojizas indican materias pendientes.':'Programa completo.'}</small><button class="save-btn" onclick="saveAndNextProgram()">Guardar y seguir al siguiente programa →</button></div></article>`;
   $('programs').innerHTML=h;updateProgress();lockRevisionNav();
 }
 window.prevProgram=function(){currentProgramIndex=(currentProgramIndex-1+programs().length)%programs().length;persist();renderCurrentProgram();scrollTo({top:$('captura').offsetTop-55,behavior:'smooth'})}
@@ -159,7 +182,7 @@ window.saveAll=function(show=false){collectProfile();persist();updateProgress();
 function printHeader(){
   return `<div class="sheetHead">
     <div class="brandPrint">
-      <img src="logo-uteq-blue.png" class="print-logo">
+      <img src="logo-uteq-wordmark.svg" class="print-logo">
       <div class="printBrandText">UNIVERSIDAD TECNOLÓGICA<br>DE QUERÉTARO</div>
     </div>
     <div class="sheetTitle"><h2>PERFIL DEL PROFESOR</h2><b>DIVISIÓN: INDUSTRIAL</b><br><span>PERIODO DE VIGENCIA: ${cfg.periodo}</span></div>
@@ -187,7 +210,7 @@ function printProgram(pr, idx){
       const name=sem[r]||'';
       if(!name)return '<td></td><td class="level"></td><td class="area"></td>';
       const a=getAns(pr.id,s,r,name),comp=['X','XX'].includes(a.status)?a.status:'',area=['X','XX'].includes(a.status)?originCode(a):'';
-      return `<td class="subject">${name}</td><td class="level">${comp}</td><td class="area">${area}</td>`
+      return `<td class="subject">${subjectCase(name)}</td><td class="level">${comp}</td><td class="area">${area}</td>`
     }).join('')+'</tr>'
   }
   return `<div class="print-program" style="--program-pastel:${pastel}"><div class="print-program-title" style="background:${pastel}">${pr.name.toUpperCase()} · SALIDA LATERAL: ${pr.exit.toUpperCase()}</div><table class="currTable">${colgroup}<tr>${th}</tr><tr>${sub}</tr>${rows}</table></div>`
@@ -219,13 +242,168 @@ function renderCustomPrograms(){$('customProgramsList').innerHTML=customPrograms
 function renderRules(){$('commonRules').innerHTML=`<p><b>Ingeniería Industrial:</b> cuatrimestres 1–3 sincronizados entre Procesos Productivos y Moldeo de Plásticos.</p><p><b>Ingeniería Mecánica:</b> cuatrimestres 1–3 sincronizados entre Mecánica Industrial, Mecánica Automotriz y Mecánica Moldes y Troqueles.</p><p><b>Sin tronco común:</b> Mecánica Automotriz / Diseño y Manufactura Automotriz, Nanotecnología y Mantenimiento Industrial.</p>`}
 
 async function exportWorkbook(){
-  const XLSX=await import('https://cdn.jsdelivr.net/npm/xlsx@0.18.5/+esm');
-  collectProfile();const p=store.profile||{},base=[];
-  programs().forEach(pr=>pr.semesters.forEach((sem,s)=>sem.forEach((name,c)=>{const a=getAns(pr.id,s,c,name);base.push({Profesor:fullName(),Categoria:p.categoria||'',Periodo:cfg.periodo,Programa:pr.name,'Salida lateral':pr.exit,Cuatrimestre:s+1,Asignatura:name,'Estado interno':a.status,'Nivel competencia':['X','XX'].includes(a.status)?a.status:'','Área conocimiento':originCode(a),'Materia ideal':a.ideal?'Sí':'','Coordinador de academia':((programMeta[pr.id]||{}).coordinators||[]).includes(`${s}|${c}`)?'Sí':''})})));
+  const XLSX=window.XLSX;
+  if(!XLSX || !XLSX.utils){
+    throw new Error('No fue posible cargar el módulo de Excel con estilos.');
+  }
+
+  collectProfile();
+  const p=store.profile||{};
+  const ps=programs();
+
+  // Esta versión aún conserva los perfiles en localStorage.
+  // Por ello, el concentrado incluye los perfiles disponibles en este navegador.
+  // La estructura ya está preparada para múltiples profesores cuando se centralicen en Firestore.
+  const teachers=[{
+    name:fullName()||'(Profesor sin nombre)',
+    category:p.categoria||'',
+    answers:answers
+  }];
+
+  // --- Hoja 1: concentrado horizontal similar al archivo operativo ---
+  const headerRows=6;
+  const aoa=Array.from({length:headerRows+teachers.length},()=>[]);
+  aoa[0][0]='PROGRAMA EDUCATIVO';
+  aoa[1][0]='ASIGNATURA';
+  aoa[2][0]='HORAS AL CUATRIMESTRE';
+  aoa[3][0]='HORAS A LA SEMANA';
+  aoa[4][0]='CUATRIMESTRE';
+  aoa[5][0]='PROFESOR / CATEGORÍA';
+
+  let col=1;
+  const merges=[];
+  const programRanges=[];
+  ps.forEach((pr,pi)=>{
+    const startCol=col;
+    pr.semesters.forEach((sem,s)=>sem.forEach((name,c)=>{
+      aoa[1][col]=subjectCase(name);
+      aoa[2][col]=''; // Dato no disponible en el catálogo actual
+      aoa[3][col]=''; // Dato no disponible en el catálogo actual
+      aoa[4][col]=s+1;
+      teachers.forEach((t,ti)=>{
+        const a=getAns(pr.id,s,c,name);
+        aoa[headerRows+ti][0]=`${t.name}${t.category?` · ${t.category}`:''}`;
+        aoa[headerRows+ti][col]=['X','XX'].includes(a.status)?a.status:'';
+      });
+      col++;
+    }));
+    const endCol=col-1;
+    if(endCol>=startCol){
+      merges.push({s:{r:0,c:startCol},e:{r:0,c:endCol}});
+      aoa[0][startCol]=programAcronym(pr);
+      programRanges.push({start:startCol,end:endCol,index:pi});
+    }
+  });
+
+  const ws=XLSX.utils.aoa_to_sheet(aoa);
+  ws['!merges']=merges;
+  ws['!freeze']={xSplit:1,ySplit:6,topLeftCell:'B7',activePane:'bottomRight',state:'frozen'};
+  ws['!cols']=[{wch:34},...Array.from({length:col-1},()=>({wch:13}))];
+  ws['!rows']=[
+    {hpt:25},{hpt:86},{hpt:24},{hpt:24},{hpt:22},{hpt:28},
+    ...teachers.map(()=>({hpt:24}))
+  ];
+
+  const pastel=['DDEBF7','FCE4D6','E2F0D9','E4DFEC','FFF2CC','DDEBF7','F4CCCC','E2EFDA'];
+
+  function styleCell(addr,style){
+    if(!ws[addr])ws[addr]={t:'s',v:''};
+    ws[addr].s=style;
+  }
+
+  // Columna de profesores
+  for(let r=0;r<aoa.length;r++){
+    styleCell(XLSX.utils.encode_cell({r,c:0}),{
+      font:{bold:r<6,color:{rgb:'183B59'}},
+      fill:{fgColor:{rgb:r<6?'EAF2F8':'FFFFFF'}},
+      alignment:{vertical:'center',horizontal:r<6?'center':'left',wrapText:true},
+      border:{top:{style:'thin',color:{rgb:'AAB7C4'}},bottom:{style:'thin',color:{rgb:'AAB7C4'}},left:{style:'thin',color:{rgb:'AAB7C4'}},right:{style:'thin',color:{rgb:'AAB7C4'}}}
+    });
+  }
+
+  // Programas y materias
+  programRanges.forEach(range=>{
+    const fill=pastel[range.index%pastel.length];
+    for(let c=range.start;c<=range.end;c++){
+      // Encabezado de programa
+      styleCell(XLSX.utils.encode_cell({r:0,c}),{
+        font:{bold:true,color:{rgb:'173B57'}},
+        fill:{fgColor:{rgb:fill}},
+        alignment:{horizontal:'center',vertical:'center',wrapText:true},
+        border:{top:{style:'thin',color:{rgb:'7F8C8D'}},bottom:{style:'thin',color:{rgb:'7F8C8D'}},left:{style:'thin',color:{rgb:'7F8C8D'}},right:{style:'thin',color:{rgb:'7F8C8D'}}}
+      });
+      // Asignatura vertical
+      styleCell(XLSX.utils.encode_cell({r:1,c}),{
+        font:{bold:false,color:{rgb:'243746'}},
+        fill:{fgColor:{rgb:fill}},
+        alignment:{textRotation:90,horizontal:'center',vertical:'center',wrapText:true},
+        border:{top:{style:'thin',color:{rgb:'AAB7C4'}},bottom:{style:'thin',color:{rgb:'AAB7C4'}},left:{style:'thin',color:{rgb:'AAB7C4'}},right:{style:'thin',color:{rgb:'AAB7C4'}}}
+      });
+      for(let r=2;r<6;r++){
+        styleCell(XLSX.utils.encode_cell({r,c}),{
+          fill:{fgColor:{rgb:fill}},
+          alignment:{horizontal:'center',vertical:'center',wrapText:true},
+          border:{top:{style:'thin',color:{rgb:'AAB7C4'}},bottom:{style:'thin',color:{rgb:'AAB7C4'}},left:{style:'thin',color:{rgb:'AAB7C4'}},right:{style:'thin',color:{rgb:'AAB7C4'}}}
+        });
+      }
+      for(let r=6;r<aoa.length;r++){
+        styleCell(XLSX.utils.encode_cell({r,c}),{
+          font:{bold:false},
+          alignment:{horizontal:'center',vertical:'center'},
+          border:{top:{style:'thin',color:{rgb:'D4DCE3'}},bottom:{style:'thin',color:{rgb:'D4DCE3'}},left:{style:'thin',color:{rgb:'D4DCE3'}},right:{style:'thin',color:{rgb:'D4DCE3'}}}
+        });
+      }
+    }
+  });
+
+  // --- Hoja 2: Base maestra cruda (se conserva por compatibilidad) ---
+  const base=[];
+  ps.forEach(pr=>pr.semesters.forEach((sem,s)=>sem.forEach((name,c)=>{
+    const a=getAns(pr.id,s,c,name);
+    base.push({
+      Profesor:fullName(),
+      Categoria:p.categoria||'',
+      Periodo:cfg.periodo,
+      Programa:pr.name,
+      'Acrónimo PE':programAcronym(pr),
+      'Salida lateral':pr.exit,
+      Cuatrimestre:s+1,
+      Asignatura:subjectCase(name),
+      'Horas al cuatrimestre':'',
+      'Horas a la semana':'',
+      'Estado interno':a.status,
+      'Nivel competencia':['X','XX'].includes(a.status)?a.status:'',
+      'Área conocimiento':originCode(a),
+      'Materia ideal':a.ideal?'Sí':'',
+      'Coordinador de academia':((programMeta[pr.id]||{}).coordinators||[]).includes(`${s}|${c}`)?'Sí':''
+    });
+  })));
+
+  const wsBase=XLSX.utils.json_to_sheet(base);
+  wsBase['!cols']=[
+    {wch:30},{wch:34},{wch:20},{wch:42},{wch:13},{wch:42},{wch:12},{wch:36},
+    {wch:18},{wch:16},{wch:14},{wch:17},{wch:18},{wch:14},{wch:24}
+  ];
+
+  // --- Hoja 3: Catálogo ---
+  const catalog=ps.flatMap(pr=>pr.semesters.flatMap((sem,s)=>sem.map(name=>({
+    Programa:pr.name,
+    'Acrónimo PE':programAcronym(pr),
+    'Salida lateral':pr.exit,
+    Cuatrimestre:s+1,
+    Asignatura:subjectCase(name),
+    'Horas al cuatrimestre':'',
+    'Horas a la semana':''
+  }))));
+  const wsCat=XLSX.utils.json_to_sheet(catalog);
+  wsCat['!cols']=[{wch:42},{wch:13},{wch:42},{wch:12},{wch:36},{wch:18},{wch:16}];
+
   const wb=XLSX.utils.book_new();
-  XLSX.utils.book_append_sheet(wb,XLSX.utils.json_to_sheet(base),'Base maestra');
-  XLSX.utils.book_append_sheet(wb,XLSX.utils.json_to_sheet(programs().flatMap(pr=>pr.semesters.flatMap((sem,s)=>sem.map(name=>({Programa:pr.name,'Salida lateral':pr.exit,Cuatrimestre:s+1,Asignatura:name}))))),'Catálogo');
-  XLSX.writeFile(wb,`Base_Maestra_${fullName().replace(/[^a-záéíóúñ0-9]+/gi,'_')||'perfil'}.xlsx`);
+  XLSX.utils.book_append_sheet(wb,ws,'Concentrado perfiles');
+  XLSX.utils.book_append_sheet(wb,wsBase,'Base maestra');
+  XLSX.utils.book_append_sheet(wb,wsCat,'Catálogo');
+
+  XLSX.writeFile(wb,`Concentrado_Perfiles_DIN_${cfg.periodo.replace(/[^a-z0-9]+/gi,'_')}.xlsx`);
 }
 window.exportExcel=function(){if(!isAdmin()){toast('Solo el administrador puede exportar la base maestra.');return}exportWorkbook().catch(e=>alert('No fue posible generar Excel: '+e.message))}
 

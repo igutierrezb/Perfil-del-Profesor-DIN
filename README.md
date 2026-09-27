@@ -1,37 +1,24 @@
-# Perfil Académico Docente DIN · Versión 6
+# Perfil Académico Docente DIN · Versión 7
 
-Versión conservadora: mantiene la lógica funcional y concentra los cambios en autenticación segura de despliegue,
-acabado visual e impresión.
+Versión conservadora: mantiene autenticación, captura, troncos comunes y administración de V6.
+Los cambios se concentran en presentación, impresión y formato del Excel administrativo.
 
-## Mejoras V6
-- Acceso a la plataforma únicamente después de autenticación institucional.
-- Administración visible solo para `ivan.gutierrez@uteq.edu.mx`.
-- API key eliminada del código fuente del repositorio.
-- Despliegue de GitHub Pages mediante Actions + Secrets.
-- Tipografía del perfil por programa con menos negritas.
-- Periodo de vigencia bajo el título principal.
-- Ícono industrial renovado.
-- Logo UTEQ de impresión recoloreado en azul y alineado con el nombre institucional.
-- Nombre, categoría, competencia y área centrados en hojas de programas.
-- Contenido de tablas alineado hacia la parte inferior.
-- Bordes reforzados para impresión.
-- Encabezados de cada programa con tonalidades pastel.
-- Zona de firma y sello desplazada hacia abajo para dar mayor espacio de firma.
+## Cambios V7
+- Nuevo ícono industrial más formal y simple.
+- Favicon distintivo para favoritos/pestaña del navegador.
+- Navegación 1–2–3 más visual; Administración resaltada en rojo.
+- Fuente general aumentada aproximadamente un punto, excepto portada, encabezados y botones.
+- Materias mostradas con mayúscula inicial y resto en minúsculas, preservando CAD/CAM y números romanos.
+- Perfil por programa con menos negritas.
+- Área del perfil con desplazamiento horizontal visible si la pantalla no permite mostrar todas las columnas.
+- Impresión con wordmark UTEQ azul alineado.
+- Tablas de impresión con bordes reforzados y contenido centrado hacia la parte inferior.
+- Dos programas por hoja, usando el espacio disponible y colocando firmas/sello al fondo de la misma hoja.
+- Encabezados por programa con tonalidades pastel.
+- Excel administrativo con nueva hoja `Concentrado perfiles`, organizada horizontalmente por programa educativo y asignatura, similar al concentrado operativo de referencia.
+- Se conservan las hojas `Base maestra` y `Catálogo`.
 
-## Archivos a sustituir
-- `index.html`
-- `styles.css`
-- `app.js`
-- `catalog.js`
-- `firebase-config.js`
-- `logo-uteq.png`
-- `logo-uteq-blue.png`
-- `icono-industria.svg`
-- `README.md`
-- `ARQUITECTURA.md`
+## Importante sobre horas y profesores
+El catálogo actual no contiene `Horas al cuatrimestre` ni `Horas a la semana`; por eso esas filas/columnas se exportan vacías y listas para completar.
 
-## Archivos nuevos
-- `.github/workflows/deploy-pages.yml`
-- `SETUP_FIREBASE_GITHUB.md`
-
-Lea `SETUP_FIREBASE_GITHUB.md` antes de volver a probar el inicio de sesión.
+Asimismo, la versión actual conserva cada perfil en `localStorage`. El Excel puede estructurar el concentrado, pero la lista real de todos los profesores desde diferentes computadoras requerirá la siguiente etapa: guardar perfiles en una base central (Firestore).

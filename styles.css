@@ -330,3 +330,209 @@ input:focus,select:focus,textarea:focus{outline:3px solid rgba(59,130,185,.12);b
   .print-logo{width:82px!important;max-height:54px!important}
   .printBrandText{font-size:10.5px!important}
 }
+
+
+/* =========================================================
+   V7 · AJUSTES VISUALES PUNTUALES
+   Conserva lógica y autenticación de V6
+   ========================================================= */
+
+/* Navegación: pasos más visuales; Administración en rojo */
+.main-nav{
+  gap:10px;
+  padding:10px 12px;
+}
+.main-nav button{
+  border:1px solid #d8e3eb;
+  background:#fff;
+  box-shadow:0 2px 8px rgba(20,63,96,.045);
+  font-weight:600;
+}
+.main-nav button:not(.admin-tab):hover{
+  border-color:#aac7da;
+  background:#f5faff;
+}
+.main-nav button.active:not(.admin-tab){
+  border-color:#7fb0cf;
+  background:linear-gradient(180deg,#eef7fd,#e5f1f9);
+  color:#113f64;
+}
+.main-nav .admin-tab{
+  color:#a32f2f;
+  border-color:#e7b8b8;
+  background:#fff7f7;
+}
+.main-nav .admin-tab span{
+  background:#f5dede;
+  color:#9f2e2e;
+}
+.main-nav .admin-tab:hover,
+.main-nav .admin-tab.active{
+  color:#8f2020;
+  background:#fdeaea;
+  border-color:#d99191;
+  box-shadow:0 2px 10px rgba(154,38,38,.08);
+}
+
+/* +1 px en contenido general; no toca títulos, portada ni botones */
+.section-head p,
+.welcome p,
+.profile-toolbar p,
+.admin-hero p{font-size:13px!important}
+label{font-size:11px!important}
+.row-label{font-size:12px!important}
+.course .name,.name{font-size:12px!important}
+.toggle{font-size:11px!important}
+.program-title span{font-size:12px!important}
+.program-progress{font-size:11px!important}
+.semester-card h4 span{font-size:10px!important}
+.coord-chip,.coord-empty{font-size:10px!important}
+.program-save small{font-size:11px!important}
+.instruction-grid span{font-size:11px!important}
+.knowledge-key{font-size:12px!important}
+.site-footer{font-size:11px!important}
+
+/* Perfil por programa: nombres de materia sin negrita pesada */
+.course .name,.name{
+  font-weight:450!important;
+  letter-spacing:.005em;
+}
+.course-columns{font-weight:650!important}
+.program-title strong{font-weight:700!important}
+.semester-card h4{font-weight:650!important}
+.mini,.ideal-btn,.toggle{font-weight:500!important}
+
+/* La pareja de cuatrimestres usa todo el ancho, y si no cabe,
+   el desplazamiento horizontal es visible y evidente. */
+.program-scroll-wrap{
+  overflow-x:auto;
+  overflow-y:hidden;
+  scrollbar-gutter:stable;
+  border-top:1px solid #edf1f4;
+  background:#fff;
+}
+.program-scroll-wrap::-webkit-scrollbar{height:12px}
+.program-scroll-wrap::-webkit-scrollbar-track{background:#eef3f6;border-radius:999px}
+.program-scroll-wrap::-webkit-scrollbar-thumb{background:#86a9bf;border-radius:999px;border:2px solid #eef3f6}
+.scroll-hint{
+  display:flex;
+  justify-content:flex-end;
+  align-items:center;
+  gap:6px;
+  padding:7px 14px 0;
+  color:#61798a;
+  font-size:11px;
+  font-weight:550;
+}
+.semesters-grid{
+  min-width:1180px;
+}
+.course-columns,.course{
+  grid-template-columns:minmax(150px,1fr) 78px 82px 238px 104px!important;
+}
+.area-buttons{gap:3px!important}
+.mini.area{min-width:28px!important;padding:5px 4px!important}
+
+/* Impresión: wordmark único, todo azul y perfectamente alineado */
+.sheetHead{
+  grid-template-columns:300px 1fr 155px!important;
+  align-items:center!important;
+}
+.brandPrint{
+  align-items:center!important;
+  justify-content:flex-start!important;
+  min-height:58px;
+}
+.print-logo{
+  content:url("logo-uteq-wordmark.svg")!important;
+  width:285px!important;
+  max-height:58px!important;
+  object-fit:contain!important;
+}
+.printBrandText{display:none!important}
+.sheetTitle{align-self:center!important}
+.quality-plain{align-self:center!important}
+
+/* Celdas de impresión: todas con borde y contenido centrado abajo */
+.currTable{
+  border-collapse:collapse!important;
+  width:100%!important;
+  table-layout:fixed!important;
+}
+.currTable th,.currTable td{
+  border:1px solid #536a7c!important;
+}
+.currTable td{
+  text-align:center!important;
+  vertical-align:bottom!important;
+  line-height:1.08!important;
+  padding:2px 3px!important;
+}
+.currTable td.subject{
+  text-align:center!important;
+  vertical-align:bottom!important;
+}
+.currTable td.level,.currTable td.area{
+  text-align:center!important;
+  vertical-align:bottom!important;
+}
+.currTable th.vhead{
+  writing-mode:vertical-rl!important;
+  transform:rotate(180deg)!important;
+  vertical-align:middle!important;
+  text-align:center!important;
+  width:17px!important;
+}
+
+/* Dos programas + encabezado + firmas dentro de la misma hoja.
+   El espacio sobrante se usa antes de la firma, no creando otra página. */
+.sheet.program-pair{
+  display:flex!important;
+  flex-direction:column!important;
+  min-height:7.85in!important;
+  max-height:7.85in!important;
+  overflow:hidden!important;
+}
+.program-pair .print-program{
+  break-inside:avoid!important;
+  page-break-inside:avoid!important;
+  margin-top:5px!important;
+}
+.program-pair .currTable th,
+.program-pair .currTable td{
+  font-size:6.45px!important;
+  padding:1.25px 2px!important;
+  line-height:1.03!important;
+}
+.program-pair .print-program-title{
+  font-size:7.4px!important;
+  padding:3px 5px!important;
+}
+.program-pair .sign{
+  margin-top:auto!important;
+  padding-top:22px!important;
+  flex:0 0 auto!important;
+}
+.program-pair .stamp-box{height:50px!important}
+
+/* La primera hoja también deja suficiente aire para firma */
+.sheet:not(.program-pair) .sign{
+  margin-top:48px!important;
+}
+
+/* Fiel reproducción de tonos pastel y líneas */
+.sheet,.sheet *{
+  -webkit-print-color-adjust:exact!important;
+  print-color-adjust:exact!important;
+}
+
+@media print{
+  .sheet.program-pair{
+    min-height:7.75in!important;
+    max-height:7.75in!important;
+  }
+  .sheetHead{grid-template-columns:290px 1fr 145px!important}
+  .print-logo{width:276px!important;max-height:54px!important}
+  .program-pair .sign{padding-top:18px!important}
+  .currTable th,.currTable td{border:1px solid #4e6577!important}
+}

@@ -1,34 +1,26 @@
-# Arquitectura V6
+# Arquitectura V7
 
-## Autenticación
-Firebase Authentication con Google.
-- Usuarios permitidos: `@uteq.edu.mx`
-- Administrador: `ivan.gutierrez@uteq.edu.mx`
-- La aplicación permanece detrás de la compuerta de login.
+## Sin cambios funcionales
+Se conserva:
+- Firebase Authentication;
+- restricción `@uteq.edu.mx`;
+- administrador `ivan.gutierrez@uteq.edu.mx`;
+- perfil, materias, X/XX, áreas, materia ideal y coordinaciones;
+- troncos comunes;
+- configuración administrativa.
 
-## Configuración Firebase
-La configuración real ya no se almacena en el repositorio.
-GitHub Actions genera `firebase-config.js` durante el despliegue usando:
-- FIREBASE_API_KEY
-- FIREBASE_AUTH_DOMAIN
-- FIREBASE_PROJECT_ID
-- FIREBASE_APP_ID
+## Presentación
+- `favicon.svg`: ícono para pestaña/favoritos.
+- `icono-industria.svg`: identidad visual de la plataforma.
+- `logo-uteq-wordmark.svg`: wordmark azul utilizado en impresión.
 
-## Datos
-Se conserva el modelo existente de V5:
-- perfil,
-- respuestas por materia,
-- troncos comunes,
-- coordinaciones,
-- materias ideales,
-- catálogo y programas añadidos,
-- exportación administrativa.
+## Excel
+La exportación administrativa genera:
+1. `Concentrado perfiles`: matriz horizontal por programa y asignatura.
+2. `Base maestra`: registros normalizados.
+3. `Catálogo`: catálogo curricular.
 
-## Impresión
-- primera hoja: datos profesionales;
-- hojas posteriores: dos programas por hoja;
-- un bloque de firma y sello por hoja;
-- encabezados de tabla pastel;
-- nivel y área en columnas estrechas;
-- mayor espacio previo a firmas;
-- logo institucional azul.
+Las filas `Horas al cuatrimestre` y `Horas a la semana` se dejan vacías mientras esos datos no estén incorporados al catálogo.
+
+## Limitación actual
+Los perfiles continúan almacenados localmente. Para que Administración consolide automáticamente a todos los profesores que capturen desde cualquier equipo, será necesario persistir los perfiles en Firestore.
