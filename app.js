@@ -1167,6 +1167,139 @@ function isLikelyOcrNoise(line){
   if(/^(universidad|division|programa educativo)$/i.test(s))return true;
   return false;
 }
+
+function wordText(w){return String(w?.text||'').trim()}
+function wordCx(w){const b=w?.bbox||{};return ((Number(b.x0)||0)+(Number(b.x1)||0))/2}
+function wordCy(w){const b=w?.bbox||{};return ((Number(b.y0)||0)+(Number(b.y1)||0))/2}
+function cleanDetectedSubject(s){
+  return String(s||'')
+    .replace(/^[^A-Za-zÁÉÍÓÚÜÑáéíóúüñ]+/,'')
+    .replace(/\s+/g,' ')
+    .replace(/\b(?:h|hrs?|horas?)$/i,'')
+    .trim();
+}
+function detectQuarterFromText(s){
+  const t=String(s||'').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'');
+  const map={primer:1,primero:1,segundo:2,tercer:3,tercero:3,cuarto:4,quinto:5,sexto:6,septimo:7,octavo:8,noveno:9};
+  for(const [k,v] of Object.entries(map))if(t.includes(k))return v;
+  const m=t.match(/\b([1-9])\s*(?:[.°º]|er|do|ro|to)?\b/);
+  return m?Number(m[1]):null;
+}
+function parseCurriculumOcrSpatial(data){
+  const words=(data?.words||[]).filter(w=>wordText(w) && w?.bbox);
+  if(!words.length)return null;
+
+  const lineGroups=new Map();
+  words.forEach(w=>{
+    const key=`${w.block_num||0}|${w.par_num||0}|${w.line_num||0}`;
+    if(!lineGroups.has(key))lineGroups.set(key,[]);
+    lineGroups.get(key).push(w);
+  });
+
+  const lines=[...lineGroups.values()].map(ws=>{
+    ws.sort((a,b)=>wordCx(a)-wordCx(b));
+    return {words:ws,text:ws.map(wordText).join(' '),y:ws.reduce((n,w)=>n+wordCy(w),0)/ws.length};
+  }).sort((a,b)=>a.y-b.y);
+
+  let headingY=null;
+  const headings=[];
+
+  for(const line of lines){
+    if(/cuatrimestre|cuatri/i.test(line.text)){
+      for(let i=0;i<line.words.length;i++){
+        if(/cuatrimestre|cuatri/i.test(wordText(line.words[i]))){
+          const nearby=line.words.slice(Math.max(0,i-3),i+1).map(wordText).join(' ');
+          const q=detectQuarterFromText(nearby);
+          if(q){
+            headings.push({quarter:q-1,x:wordCx(line.words[Math.max(0,i-1)]||line.words[i]),y:line.y});
+            headingY=headingY===null?line.y:Math.min(headingY,line.y);
+          }
+        }
+      }
+    }
+  }
+
+  if(headings.length<2){
+    const ordinal={primero:1,primer:1,segundo:2,tercero:3,tercer:3,cuarto:4,quinto:5,sexto:6,septimo:7,octavo:8,noveno:9};
+    for(const w of words){
+      const t=wordText(w).toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/[^\w]/g,'');
+      if(ordinal[t]){
+        headings.push({quarter:ordinal[t]-1,x:wordCx(w),y:wordCy(w)});
+        headingY=headingY===null?wordCy(w):Math.min(headingY,wordCy(w));
+      }
+    }
+  }
+
+  const seen=new Map();
+  headings.sort((a,b)=>a.x-b.x).forEach(h=>{if(!seen.has(h.quarter))seen.set(h.quarter,h)});
+  let cols=[...seen.values()].sort((a,b)=>a.x-b.x);
+  if(cols.length<2)return null;
+
+  cols=cols.map((c,i)=>({...c,quarter:i}));
+  const boundaries=[-Infinity];
+  for(let i=1;i<cols.length;i++)boundaries.push((cols[i-1].x+cols[i].x)/2);
+  boundaries.push(Infinity);
+
+  const semesters=Array.from({length:cols.length},()=>[]);
+  const startY=(headingY||0)+6;
+
+  for(const line of lines){
+    if(line.y<=startY)continue;
+
+    for(let ci=0;ci<cols.length;ci++){
+      const slice=line.words.filter(w=>{
+        const x=wordCx(w);
+        return x>boundaries[ci] && x<=boundaries[ci+1];
+      }).sort((a,b)=>wordCx(a)-wordCx(b));
+
+      if(!slice.length)continue;
+
+      let raw=slice.map(wordText).join(' ').replace(/[|]/g,' ').replace(/\s+/g,' ').trim();
+      if(!raw || isLikelyOcrNoise(raw))continue;
+      if(/cuatrimestre|asignatura|materia|universidad|programa educativo|licenciatura|t[eé]cnico superior/i.test(raw))continue;
+
+      let hours=0;
+      const hm=raw.match(/(?:^|\s)(\d{2,3})(?:\s*(?:h|hrs?|horas?))?\s*$/i);
+      if(hm){
+        hours=Number(hm[1])||0;
+        raw=raw.slice(0,hm.index).trim();
+      }
+
+      const name=cleanDetectedSubject(raw);
+      if(name.length<3 || /^\d+$/.test(name))continue;
+
+      const last=semesters[ci][semesters[ci].length-1];
+      if(!hours && last && !last.hours && name.split(' ').length<=5){
+        last.name=`${last.name} ${name}`.replace(/\s+/g,' ').trim();
+      }else{
+        semesters[ci].push({name,hours});
+      }
+    }
+  }
+
+  const subjectCount=semesters.reduce((n,s)=>n+s.length,0);
+  return subjectCount?{name:'',exit:'',semesters,spatial:true}:null;
+}
+function renderOcrCurriculumPreview(parsed){
+  const root=$('ocrCurriculumPreview');
+  if(!root)return;
+  const rows=[];
+  (parsed?.semesters||[]).forEach((sem,s)=>{
+    sem.forEach(item=>rows.push({quarter:s+1,name:item.name||'',hours:item.hours||''}));
+  });
+
+  if(!rows.length){
+    root.innerHTML='<div class="ocr-empty">No se detectaron materias estructuradas.</div>';
+    return;
+  }
+
+  root.innerHTML=`<div class="ocr-preview-title">Tiras detectadas por cuatrimestre</div>
+    <div class="ocr-preview-table">
+      <div class="ocr-preview-head"><span>Cuatrimestre</span><span>Materia</span><span>Horas</span></div>
+      ${rows.map(r=>`<div class="ocr-preview-row"><span>${r.quarter}.°</span><span>${escapeHtml(subjectCase(r.name))}</span><span>${r.hours||'—'}</span></div>`).join('')}
+    </div>`;
+}
+
 function parseCurriculumOcr(text){
   const lines=normalizeOcrText(text).split('\n').map(x=>x.trim()).filter(Boolean);
   let name='',exit='',current=null;
@@ -1229,8 +1362,12 @@ window.importProgramFromImage=async function(){
     const text=normalizeOcrText(result?.data?.text||'');
     $('ocrRawText').value=text;
     $('ocrReview').classList.remove('hidden');
-    const stats=applyParsedCurriculum(parseCurriculumOcr(text));
-    status.textContent=`Importación lista: ${stats.subjects} materias detectadas${stats.missingHours?` · ${stats.missingHours} sin horas`:''}. Revise antes de guardar.`;
+
+    const spatial=parseCurriculumOcrSpatial(result?.data);
+    const parsed=spatial||parseCurriculumOcr(text);
+    renderOcrCurriculumPreview(parsed);
+    const stats=applyParsedCurriculum(parsed);
+    status.textContent=`Importación lista: ${stats.subjects} materias detectadas${stats.missingHours?` · ${stats.missingHours} sin horas`:''}. Revise cuatrimestre, materia y horas antes de guardar.`;
     status.className='program-image-status ok';
     toast('Información importada. Revise nombres, materias y horas.');
   }catch(e){
@@ -1243,7 +1380,9 @@ window.importProgramFromImage=async function(){
 window.applyOcrTextToProgram=function(){
   const text=$('ocrRawText')?.value||'';
   if(!text.trim()){toast('No hay texto para interpretar.');return}
-  const stats=applyParsedCurriculum(parseCurriculumOcr(text));
+  const parsed=parseCurriculumOcr(text);
+  renderOcrCurriculumPreview(parsed);
+  const stats=applyParsedCurriculum(parsed);
   const st=$('programImageStatus');
   if(st){
     st.textContent=`Texto aplicado: ${stats.subjects} materias${stats.missingHours?` · ${stats.missingHours} sin horas`:''}.`;

@@ -160,7 +160,7 @@
         </div>
         <div class="capture-help-card reference-help-card">
           <b><span class="help-alert">!</span> 5. Favorito</b>
-          <span>Marque <strong class="help-star">★</strong> únicamente en sus asignaturas preferentes. <strong>No aparece en la impresión</strong>; es una referencia para el coordinador.</span>
+          <span>Marque con <strong class="help-star">★</strong> aquellas materias que usted considera <strong>ideales para impartir dado su perfil profesional</strong>. <strong>No aparece en la impresión</strong>; es una referencia para el coordinador.</span>
         </div>
       </div>
     </div>
@@ -207,7 +207,16 @@
     <div class="admin-quickbar card">
       <button onclick="document.getElementById('captureControlCard').scrollIntoView({behavior:'smooth',block:'start'})">⚙ Control de captura</button>
       <button onclick="document.getElementById('institutionalConfig').scrollIntoView({behavior:'smooth',block:'start'})">▤ Configuración institucional</button>
-      <button class="primary" onclick="exportExcel()">⇩ Exportar Excel (.xlsx)</button>
+      <button class="primary excel-export-btn" onclick="exportExcel()" aria-label="Exportar Excel">
+        <span class="excel-logo" aria-hidden="true">
+          <svg viewBox="0 0 24 24" width="18" height="18">
+            <rect x="3" y="3" width="12" height="18" rx="2" fill="#217346"/>
+            <path d="M15 6h6v12h-6" fill="#185C37"/>
+            <path d="M7 8.5l2 3-2.2 4h2l1.2-2.5 1.3 2.5h2l-2.3-4 2-3h-2l-1 2-1-2z" fill="#fff"/>
+          </svg>
+        </span>
+        <span class="excel-export-copy"><strong>Exportar Excel</strong><small>.xlsx</small></span>
+      </button>
     </div>
 
     <div class="admin-adminline">
@@ -253,7 +262,7 @@
         </div>
       </div>
       <div class="period-preserve-note">Cambiar el periodo <b>no borra ni reinicia</b> lo capturado; solo actualiza la vigencia mostrada.</div>
-      <div class="save-row"><button class="save-btn" onclick="saveAdmin()">Guardar configuración institucional</button></div>
+      <div class="save-row"><button class="save-btn institutional-save-btn" onclick="saveAdmin()">✓ Guardar configuración institucional</button></div>
     </details>
     </div>
 
@@ -312,6 +321,7 @@
       <details id="ocrReview" class="ocr-review hidden">
         <summary>Revisar texto detectado</summary>
         <textarea id="ocrRawText" placeholder="Aquí aparecerá el texto leído de la imagen. Puede corregirlo manualmente."></textarea>
+        <div id="ocrCurriculumPreview" class="ocr-curriculum-preview"></div>
         <div class="admin-actions"><button type="button" onclick="applyOcrTextToProgram()">Aplicar texto corregido</button></div>
       </details>
 
