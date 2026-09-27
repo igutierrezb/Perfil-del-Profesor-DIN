@@ -113,7 +113,8 @@ function applyEditState(){
   ['perfil','captura'].forEach(id=>{
     const root=$(id); if(!root)return;
     root.querySelectorAll('input,select,textarea,button').forEach(el=>{
-      if(el.closest('.flow-buttons') && el.textContent.includes('Anterior')) return;
+      // En solo lectura se permite navegar por todos los programas y llegar a Revisión.
+      if(el.closest('.flow-buttons')) return;
       if(id==='captura' && el.textContent.includes('Continuar a revisión')) return;
       el.disabled=locked;
     });
@@ -380,7 +381,10 @@ function initAuth(){
 window.go=function(id,force=false){
   if(id==='admin'&&!isAdmin()){toast('Administración disponible únicamente para ivan.gutierrez@uteq.edu.mx');return}
   if(id==='captura'&&!force){const p=validateProfile();if(!p.ok){$('profileErrors').innerHTML=statusBox(p.errors,'Complete los datos obligatorios antes de continuar.');return}}
-  if(id==='revision'&&!force){const v=validateAll();if(!v.ok){showCaptureErrors(v.errors);return}}
+  if(id==='revision'&&!force){
+    const v=validateAll();
+    if(!reviewAvailable()){showCaptureErrors(v.errors);return}
+  }
   document.querySelectorAll('.view').forEach(x=>x.classList.remove('active'));$(id).classList.add('active');
   document.querySelectorAll('.main-nav button').forEach(b=>b.classList.toggle('active',b.dataset.view===id));
   if(id==='revision')buildPrint();if(id==='admin')renderAdmin();scrollTo(0,0);
@@ -398,7 +402,10 @@ function updateNavState(){
   const rBtn=document.querySelector('.main-nav button[data-view="revision"]');
   if(pBtn)pBtn.classList.toggle('complete',profileLooksComplete());
   if(cBtn)cBtn.classList.toggle('complete',validateCapture().ok);
-  if(rBtn)rBtn.classList.toggle('complete',validateAll().ok);
+  if(rBtn){
+    rBtn.classList.toggle('complete',validateAll().ok);
+    rBtn.classList.toggle('readable',reviewAvailable()&&!validateAll().ok);
+  }
 }
 
 function buildProfileRows(){
@@ -567,9 +574,25 @@ function validateCapture(){
   return{ok:!errs.length,errors:errs}
 }
 function validateAll(){const p=validateProfile(),c=validateCapture();return{ok:p.ok&&c.ok,errors:[...p.errors,...c.errors]}}
+function reviewAvailable(){
+  // Si Administración cerró la edición (o venció la fecha), el profesor puede
+  // seguir consultando y generar/imprimir el estado actual de su perfil.
+  return validateAll().ok || cfg.editingLocked || deadlinePassed();
+}
 function showCaptureErrors(errs){$('captureErrors').innerHTML=statusBox(errs,'No puede pasar a revisión todavía.');const p=overallStats().pendingUnique;if(p.length){currentProgramIndex=p[0].pi;renderCurrentProgram()}}
-window.validateAndReview=function(){collectProfile();persist();const v=validateAll();if(!v.ok){showCaptureErrors(v.errors);toast('Complete las materias pendientes.');return}$('captureErrors').innerHTML='';$('validation').innerHTML=`<div class="status-box ok"><b>Perfil completo.</b><br>La información puede formalizarse e imprimirse.</div>`;buildPrint();window.go('revision',true)}
-function lockRevisionNav(){$('navRevision').classList.toggle('locked',!validateAll().ok)}
+window.validateAndReview=function(){
+  if(editingAllowed()) collectProfile();
+  persist();
+  const v=validateAll();
+  if(!reviewAvailable()){showCaptureErrors(v.errors);toast('Complete las materias pendientes.');return}
+  $('captureErrors').innerHTML='';
+  $('validation').innerHTML=v.ok
+    ?`<div class="status-box ok"><b>Perfil completo.</b><br>La información puede formalizarse e imprimirse.</div>`
+    :`<div class="status-box info"><b>Consulta en modo solo lectura.</b><br>La edición está cerrada, pero puede revisar e imprimir el perfil capturado.</div>`;
+  buildPrint();
+  window.go('revision',true)
+}
+function lockRevisionNav(){$('navRevision').classList.toggle('locked',!reviewAvailable())}
 window.saveAll=function(show=false){if(!requireEditing())return;collectProfile();persist();updateProgress();lockRevisionNav();writeAudit('Perfil guardado manualmente');if(show)toast('Perfil guardado.')}
 
 function printHeader(){
@@ -623,22 +646,29 @@ function buildPrint(){
 }
 window.printProfile=function(){
   const v=validateAll();
-  if(!v.ok){window.go('captura',true);showCaptureErrors(v.errors);return}
+  if(!reviewAvailable()){
+    window.go('captura',true);
+    showCaptureErrors(v.errors);
+    return;
+  }
   buildPrint();
   window.print();
+
+  // En modo solo lectura la impresión siempre permanece disponible y no se pregunta
+  // por cierre individual, porque la edición ya está controlada por Administración.
+  if(!editingAllowed() || isAdmin()) return;
+
   setTimeout(()=>{
-    if(isAdmin())return;
     const lock=window.confirm(
-      '¿Deseas dar por finalizada tu captura?\n\nAceptar: se deshabilitará la edición de este perfil hasta que Administración cambie al próximo periodo.\n\nCancelar: podrás seguir editando.'
+      '¿Deseas dar por finalizada tu captura?\n\nAceptar: se registrará la formalización del perfil. Administración puede volver a habilitar su edición.\n\nCancelar: podrás seguir editando.'
     );
     if(lock){
       store.submittedPeriod=cfg.periodo;
       persist();
       scheduleCloudProfileSave();
       writeAudit('Perfil formalizado después de imprimir/guardar PDF');
-      applyEditState();
       updateNavState();
-      toast('Perfil formalizado. La edición quedó cerrada para este periodo.');
+      toast('Perfil formalizado. Administración puede volver a habilitar su edición.');
     }else{
       toast('La edición permanece habilitada.');
     }
@@ -844,7 +874,7 @@ async function exportWorkbook(){
   const headerRows=6;
   const aoa=Array.from({length:headerRows+teachers.length},()=>[]);
   aoa[0][0]='PROGRAMA EDUCATIVO';
-  aoa[0][1]='Leyenda: ★ = Favorito · rojo/negrita = Coordinó la asignatura';
+  aoa[0][1]='Leyenda: ★ = Favorito · rojo y negrita = Coordinó la asignatura';
   aoa[1][0]='ASIGNATURA';
   aoa[2][0]='HORAS AL CUATRIMESTRE';
   aoa[3][0]='HORAS A LA SEMANA';
@@ -962,7 +992,7 @@ async function exportWorkbook(){
             name:'Aptos',
             sz:10,
             bold:favorite || coordinated,
-            color:{rgb:coordinated?'C00000':'243746'}
+            color:{rgb:coordinated?'FF0000':'243746'}
           },
           fill:{patternType:'solid',fgColor:{rgb:'FFFFFF'},bgColor:{rgb:'FFFFFF'}},
           alignment:{horizontal:'center',vertical:'center'},
@@ -1015,7 +1045,7 @@ async function exportWorkbook(){
         const addr=XLSX.utils.encode_cell({r,c:coordCol});
         if(wsBase[addr] && String(wsBase[addr].v||'').toLowerCase()==='sí'){
           wsBase[addr].s={
-            font:{name:'Aptos',sz:10,bold:true,color:{rgb:'C00000'}},
+            font:{name:'Aptos',sz:10,bold:true,color:{rgb:'FF0000'}},
             fill:{patternType:'solid',fgColor:{rgb:'FFFFFF'}},
             alignment:{horizontal:'center',vertical:'center'}
           };

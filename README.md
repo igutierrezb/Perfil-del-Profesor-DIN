@@ -1,25 +1,23 @@
-# Perfil Académico Docente DIN · Versión 17
+# Perfil Académico Docente DIN · Versión 18
 
-V17 conserva la arquitectura estable y aplica compactación administrativa y ajustes de control solicitados.
+Actualización puntual sobre V17.
 
 ## Cambios
-- Workflow actualizado para publicar correctamente los nuevos archivos de logo de División Industrial.
-- Control de captura más compacto.
-- `Desactivar/Activar edición de perfiles` queda junto a Guardar fecha y Borrar límite.
+- Logo corregido usando `icono-industria.svg` autocontenido para evitar rutas rotas.
+- Administración más compacta:
+  - Jefe de Unidad en una línea;
+  - Periodo en la siguiente;
+  - Código / Revisión / Fecha en una tercera línea.
+- El botón Activar/Desactivar edición permanece junto a Guardar fecha y Borrar límite.
 - Con edición desactivada:
-  - los profesores pueden consultar todo;
-  - Revisión e impresión permanecen disponibles.
-- Al reactivar edición:
-  - pueden modificar nuevamente nombre, categoría y el resto del perfil, siempre que la fecha límite no haya vencido.
-- Configuración institucional compactada:
-  - Jefe de Unidad;
-  - Periodo;
-  - Código / Revisión / Fecha en una misma fila.
-- Captura de programas nuevos:
-  - dos cuatrimestres por fila;
-  - menor altura y espacio entre bloques;
-  - `Quitar` cambia a `Borrar`.
+  - el profesor puede consultar todos los programas;
+  - puede entrar a Revisión;
+  - puede imprimir/guardar PDF.
+- Al activar nuevamente la edición:
+  - puede modificar otra vez nombre, categoría y todos los campos del perfil, mientras la fecha límite siga vigente.
+- Crear programa educativo:
+  - dos cuatrimestres por fila en escritorio;
+  - bloques más compactos;
+  - botón `Borrar`.
 - Excel:
-  - ★ = Favorito;
-  - **rojo y negrita** = materia coordinada;
-  - el indicador de coordinación en Base maestra también queda rojo/negrita.
+  - materias coordinadas en rojo puro `#FF0000` y negrita.

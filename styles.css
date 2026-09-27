@@ -2667,3 +2667,121 @@ textarea:focus-visible,
   .admin-grid-stacked .admin-row-triple{grid-template-columns:1fr!important}
   .capture-main-actions{grid-template-columns:1fr!important}
 }
+
+
+/* =========================================================
+   V18 · compactación final solicitada
+   ========================================================= */
+
+/* Configuración institucional: tres líneas compactas */
+.admin-grid-stacked{
+  gap:4px!important;
+}
+.admin-grid-stacked .admin-row-full{
+  grid-template-columns:110px 1fr!important;
+  gap:6px!important;
+}
+.admin-grid-stacked .admin-row-triple{
+  grid-template-columns:1fr .72fr 1fr!important;
+  gap:5px!important;
+}
+.admin-grid-stacked label{
+  line-height:1.05!important;
+}
+.admin-grid-stacked input{
+  min-height:27px!important;
+  padding:5px 7px!important;
+}
+.period-preserve-note{
+  margin-top:4px!important;
+  padding:4px 7px!important;
+  line-height:1.15!important;
+}
+.admin-details .save-row{
+  margin-top:5px!important;
+}
+.admin-details .save-row button{
+  min-height:30px!important;
+}
+
+/* Control de captura: edición al lado de borrar límite */
+.capture-main-actions{
+  display:grid!important;
+  grid-template-columns:auto auto minmax(190px,1fr)!important;
+  gap:5px!important;
+}
+.capture-main-actions .edit-mode-btn{
+  width:100%!important;
+  margin:0!important;
+}
+.capture-deadline-panel{
+  padding:7px 8px!important;
+}
+.capture-deadline-panel .deadline-admin-preview{
+  margin:0!important;
+}
+.capture-control-card{
+  padding-bottom:10px!important;
+}
+
+/* Solo lectura: revisión visible aunque falten validaciones */
+.main-nav button.readable{
+  opacity:1!important;
+  border-color:#9eb7c7!important;
+}
+.profile-edit-locked .program-save .save-btn{
+  pointer-events:none;
+  opacity:.55;
+}
+
+/* Agregar programa: dos cuatrimestres por fila, menor interlineado */
+#newProgramSemesters{
+  display:grid!important;
+  grid-template-columns:repeat(2,minmax(0,1fr))!important;
+  gap:7px!important;
+  align-items:start!important;
+}
+#newProgramSemesters .semester-editor{
+  margin:0!important;
+  padding:7px 8px!important;
+  min-width:0!important;
+}
+#newProgramSemesters .semester-editor-head{
+  margin-bottom:4px!important;
+}
+#newProgramSemesters .semester-editor-head b{
+  line-height:1!important;
+}
+#newProgramSemesters textarea{
+  min-height:66px!important;
+  height:66px!important;
+  line-height:1.15!important;
+  padding:6px 7px!important;
+}
+#newProgramSemesters .semester-help{
+  margin-top:2px!important;
+  line-height:1.05!important;
+}
+
+/* Más densidad del bloque Agregar programa */
+#admin .card:has(#newProgramSemesters) .section-head{
+  margin-bottom:7px!important;
+}
+#admin .card:has(#newProgramSemesters) .admin-grid{
+  gap:7px!important;
+  margin-bottom:7px!important;
+}
+#admin .card:has(#newProgramSemesters) .admin-actions{
+  margin-top:7px!important;
+}
+
+/* Logo: V18 usa icono-industria.svg embebido para evitar rutas rotas */
+.division-logo-emblem,
+.division-logo-full{
+  object-fit:contain!important;
+}
+
+@media(max-width:820px){
+  #newProgramSemesters{grid-template-columns:1fr!important}
+  .capture-main-actions{grid-template-columns:1fr!important}
+}
