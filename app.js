@@ -5,13 +5,14 @@ import { getAuth, GoogleAuthProvider, signInWithPopup, signOut, onAuthStateChang
 const $=id=>document.getElementById(id);
 const store=JSON.parse(localStorage.getItem('PAD_UTEQ')||'{}');
 const cfg=Object.assign({jefe:'Iván Gutiérrez Bautista',codigo:'EA-F-86',revision:'Rev.01',fechaRevision:'21-sep-2018',periodo:'SEP 2026 - AGO 2027',editingLocked:false},store.cfg||{});
-let answers=store.answers||{},programMeta=store.programMeta||{},customPrograms=store.customPrograms||[];
+let answers=store.answers||{},programMeta=store.programMeta||{},customPrograms=store.customPrograms||[],disabledPrograms=store.disabledPrograms||[];
 let currentProgramIndex=Number.isInteger(store.currentProgramIndex)?store.currentProgramIndex:0;
 let newSemesterCount=5,auth=null,currentUser=null,authReady=false;
 const allowedDomain=(window.PAD_ALLOWED_DOMAIN||'uteq.edu.mx').toLowerCase();
 const adminEmail=(window.PAD_ADMIN_EMAIL||'ivan.gutierrez@uteq.edu.mx').toLowerCase();
 
-function programs(){return [...PROGRAMS,...customPrograms]}
+function allPrograms(){return [...PROGRAMS,...customPrograms]}
+function programs(){return allPrograms().filter(p=>!disabledPrograms.includes(p.id))}
 function key(pid,s,c){return `${pid}|${s}|${c}`}
 function fullName(){return [$('apPat').value.trim(),$('apMat').value.trim(),$('nombres').value.trim()].filter(Boolean).join(' ')}
 function isEnglish(name){return /^INGLÉS\b/i.test(name.trim())}
@@ -41,7 +42,10 @@ function programAcronym(pr){
 
 function subjectHours(pid,s,c){
   const rows=(typeof PROGRAM_HOURS!=='undefined'&&PROGRAM_HOURS[pid])||[];
-  return Number(rows?.[s]?.[c])||0;
+  const base=Number(rows?.[s]?.[c])||0;
+  if(base)return base;
+  const pr=allPrograms().find(x=>x.id===pid);
+  return Number(pr?.hours?.[s]?.[c])||0;
 }
 function weeklyHours(pid,s,c){
   const total=subjectHours(pid,s,c);
@@ -85,7 +89,7 @@ function getAns(pid,s,c,name){
   return answers[k]
 }
 function toast(msg){const t=$('toast');t.textContent=msg;t.classList.add('show');clearTimeout(toast.timer);toast.timer=setTimeout(()=>t.classList.remove('show'),2400)}
-function persist(){cfg.periodo=cfg.periodo||'SEP 2026 - AGO 2027';store.cfg=cfg;store.answers=answers;store.programMeta=programMeta;store.customPrograms=customPrograms;store.currentProgramIndex=currentProgramIndex;localStorage.setItem('PAD_UTEQ',JSON.stringify(store))}
+function persist(){cfg.periodo=cfg.periodo||'SEP 2026 - AGO 2027';store.cfg=cfg;store.answers=answers;store.programMeta=programMeta;store.customPrograms=customPrograms;store.disabledPrograms=disabledPrograms;store.currentProgramIndex=currentProgramIndex;localStorage.setItem('PAD_UTEQ',JSON.stringify(store))}
 function statusBox(errors,title){return `<div class="status-box bad"><b>${title}</b><ul>${errors.map(x=>`<li>${x}</li>`).join('')}</ul></div>`}
 function updatePeriodBadges(){ $('periodBadgeGate').textContent=`Periodo de vigencia · ${cfg.periodo}`; $('periodBadgeInline').textContent=`Periodo de vigencia · ${cfg.periodo}`; }
 function authConfigured(){return !!(window.FIREBASE_CONFIG&&window.FIREBASE_CONFIG.apiKey&&window.FIREBASE_CONFIG.authDomain&&window.FIREBASE_CONFIG.projectId&&window.FIREBASE_CONFIG.appId)}
@@ -222,11 +226,17 @@ function renderCurrentProgram(){
     });
     h+='</div>';
   });
-  h+=`</div></div><div class="program-save"><small>${st.missing?'Las filas rojizas indican materias pendientes.':'Programa completo.'}</small><button class="save-btn" onclick="saveAndNextProgram()">Guardar y seguir al siguiente programa →</button></div></article>`;
+  const lastProgram=currentProgramIndex===programs().length-1;
+  h+=`</div></div><div class="program-save"><small>${st.missing?'Las filas rojizas indican materias pendientes.':'Programa completo.'}</small><button class="save-btn" onclick="${lastProgram?'validateAndReview()':'saveAndNextProgram()'}">${lastProgram?'Continuar a revisión e impresión →':'Guardar y seguir al siguiente programa →'}</button></div></article>`;
   $('programs').innerHTML=h;updateProgress();lockRevisionNav();
 }
 window.prevProgram=function(){currentProgramIndex=(currentProgramIndex-1+programs().length)%programs().length;persist();renderCurrentProgram();scrollTo({top:$('captura').offsetTop-55,behavior:'smooth'})}
-window.saveAndNextProgram=function(){persist();toast('Programa guardado.');currentProgramIndex=(currentProgramIndex+1)%programs().length;persist();renderCurrentProgram();scrollTo({top:$('captura').offsetTop-55,behavior:'smooth'})}
+window.saveAndNextProgram=function(){
+  persist();toast('Programa guardado.');
+  if(currentProgramIndex>=programs().length-1){validateAndReview();return}
+  currentProgramIndex++;
+  persist();renderCurrentProgram();scrollTo({top:$('captura').offsetTop-55,behavior:'smooth'})
+}
 
 function validateCapture(){const x=overallStats(),errs=[];if(x.remainingUnique)errs.push(`Falta${x.remainingUnique===1?'':'n'} ${x.remainingUnique} asignatura${x.remainingUnique===1?'':'s'} por revisar.`);if(x.invalid)errs.push(`${x.invalid} asignatura(s) tienen X/XX pero no tienen área de conocimiento.`);if(idealCount()<3)errs.push(`Debe seleccionar al menos 3 materias ideales. Actualmente hay ${idealCount()}.`);return{ok:!errs.length,errors:errs}}
 function validateAll(){const p=validateProfile(),c=validateCapture();return{ok:p.ok&&c.ok,errors:[...p.errors,...c.errors]}}
@@ -249,7 +259,7 @@ function metaCentered(){return `<div class="meta center compactline"><span><b>No
 function signatures(){return `<div class="sign"><div class="signature-line">${fullName()}<br>Firma del Profesor</div><div class="stamp-box">SELLO</div><div class="signature-line">${cfg.jefe}<br>Jefe de Unidad de Coordinación Académica</div></div>`}
 function preambleSheet(){
   const p=store.profile||{},e=p.extra||{},f=['Licenciatura o TSU','Posgrado 1','Posgrado 2','Posgrado 3','Posgrado 4','Posgrado 5','Posgrado 6'];
-  return `<div class="sheet">${printHeader()}<div class="meta center compactline"><span><b>Nombre:</b> ${fullName()}</span><span><b>Categoría:</b> ${store.profile?.categoria||''}</span></div><table class="profileTable"><tr><th colspan="4">1. FORMACIÓN PROFESIONAL</th></tr>${f.map((lab,i)=>`<tr><td><b>${lab}</b></td><td>${e[`f${i+1}a`]||''}</td><td><b>Institución</b></td><td>${e[`f${i+1}b`]||''}</td></tr>`).join('')}<tr><th colspan="4">2. EXPERIENCIA DOCENTE</th></tr>${[1,2,3,4].map(i=>`<tr><td><b>Institución ${i}</b></td><td colspan="2">${e[`d${i}a`]||''}</td><td><b>Periodo:</b> ${e[`d${i}c`]||''}</td></tr>`).join('')}<tr><th colspan="4">3. EXPERIENCIA LABORAL</th></tr>${[1,2,3,4,5].map(i=>`<tr><td><b>Organización ${i}</b></td><td>${e[`l${i}a`]||''}</td><td><b>Cargo:</b> ${e[`l${i}b`]||''}</td><td><b>Periodo:</b> ${e[`l${i}c`]||''}</td></tr>`).join('')}</table>${signatures()}</div>`
+  return `<div class="sheet profile-first-sheet">${printHeader()}<div class="meta center compactline first-profile-meta"><span><b>Nombre:</b> ${fullName()}</span><span><b>Categoría:</b> ${store.profile?.categoria||''}</span></div><table class="profileTable"><tr><th colspan="4">1. FORMACIÓN PROFESIONAL</th></tr>${f.map((lab,i)=>`<tr><td><b>${lab}</b></td><td>${e[`f${i+1}a`]||''}</td><td><b>Institución</b></td><td>${e[`f${i+1}b`]||''}</td></tr>`).join('')}<tr><th colspan="4">2. EXPERIENCIA DOCENTE</th></tr>${[1,2,3,4].map(i=>`<tr><td><b>Institución ${i}</b></td><td colspan="2">${e[`d${i}a`]||''}</td><td><b>Periodo:</b> ${e[`d${i}c`]||''}</td></tr>`).join('')}<tr><th colspan="4">3. EXPERIENCIA LABORAL</th></tr>${[1,2,3,4,5].map(i=>`<tr><td><b>Organización ${i}</b></td><td>${e[`l${i}a`]||''}</td><td><b>Cargo:</b> ${e[`l${i}b`]||''}</td><td><b>Periodo:</b> ${e[`l${i}c`]||''}</td></tr>`).join('')}</table>${signatures()}</div>`
 }
 function pastelColor(index){
   return ['#dcecf8','#f5e3d2','#dfeee2','#e8e1f2','#f8e7d7','#dceff0','#f2dde3','#e1ecd7'][index % 8]
@@ -288,19 +298,62 @@ function renderAdmin(){
   const st=$('editModeStatus'),btn=$('editModeBtn');
   if(st){st.textContent=cfg.editingLocked?'Edición desactivada':'Edición activa';st.className='edit-mode-status '+(cfg.editingLocked?'locked':'open')}
   if(btn){btn.textContent=cfg.editingLocked?'Activar edición de perfiles':'Desactivar edición de perfiles';btn.className='edit-mode-btn '+(cfg.editingLocked?'activate':'deactivate')}
-  renderSemesterEditors();renderCustomPrograms();renderRules();applyEditState()
+  renderSemesterEditors();renderProgramAdminList();renderCustomPrograms();renderRules();applyEditState()
 }
-function renderSemesterEditors(){let h='';for(let i=0;i<newSemesterCount;i++)h+=`<div class="semester-editor"><div class="semester-editor-head"><b>${i+1}.° cuatrimestre</b>${newSemesterCount>1?`<button onclick="removeSemesterEditor(${i})">Quitar</button>`:''}</div><textarea id="newSem${i}" placeholder="Una asignatura por línea"></textarea></div>`;$('newProgramSemesters').innerHTML=h}
+function renderSemesterEditors(){
+  let h='';
+  for(let i=0;i<newSemesterCount;i++)h+=`<div class="semester-editor"><div class="semester-editor-head"><b>${i+1}.° cuatrimestre</b>${newSemesterCount>1?`<button onclick="removeSemesterEditor(${i})">Quitar</button>`:''}</div><textarea id="newSem${i}" placeholder="Ejemplo:\nCálculo diferencial - 90\nFísica - 75"></textarea><small class="semester-help">Formato: Asignatura - horas totales del cuatrimestre</small></div>`;
+  $('newProgramSemesters').innerHTML=h
+}
 window.addSemesterEditor=function(){newSemesterCount++;renderSemesterEditors()}
 window.removeSemesterEditor=function(i){const vals=Array.from({length:newSemesterCount},(_,x)=>$(`newSem${x}`)?.value||'');vals.splice(i,1);newSemesterCount=Math.max(1,newSemesterCount-1);renderSemesterEditors();vals.forEach((v,x)=>$(`newSem${x}`).value=v)}
 function slug(s){return 'custom_'+s.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/[^a-z0-9]+/g,'_')+'_'+Date.now()}
-window.saveNewProgram=function(){
-  const name=$('newProgramName').value.trim(),exit=$('newProgramExit').value.trim(),semesters=Array.from({length:newSemesterCount},(_,i)=>($(`newSem${i}`).value||'').split(/\n+/).map(x=>x.trim()).filter(Boolean));
-  if(!name||!exit||semesters.some(x=>!x.length)){toast('Complete nombre, salida lateral y materias.');return}
-  customPrograms.push({id:slug(name),name,exit,common:null,semesters});$('newProgramName').value='';$('newProgramExit').value='';newSemesterCount=5;persist();renderAdmin();renderCurrentProgram();toast('Programa educativo agregado.');
+function parseCustomSubjectLine(line){
+  const clean=String(line||'').trim();
+  const m=clean.match(/^(.*?)\s*-\s*(\d+(?:[.,]\d+)?)\s*$/);
+  if(!m)return {name:clean,hours:0};
+  return {name:m[1].trim(),hours:Number(m[2].replace(',','.'))||0};
 }
-window.deleteCustomProgram=function(id){if(!confirm('¿Eliminar este programa?'))return;customPrograms=customPrograms.filter(p=>p.id!==id);persist();renderAdmin();renderCurrentProgram()}
-function renderCustomPrograms(){$('customProgramsList').innerHTML=customPrograms.length?`<h3 style="margin-top:16px">Programas agregados</h3>`+customPrograms.map(p=>`<div class="custom-program-item"><div><b>${p.name}</b><br>${p.exit}</div><button onclick="deleteCustomProgram('${p.id}')">Eliminar</button></div>`).join(''):''}
+window.saveNewProgram=function(){
+  const name=$('newProgramName').value.trim(),exit=$('newProgramExit').value.trim();
+  const parsed=Array.from({length:newSemesterCount},(_,i)=>($(`newSem${i}`).value||'').split(/\n+/).map(parseCustomSubjectLine).filter(x=>x.name));
+  const semesters=parsed.map(rows=>rows.map(x=>x.name));
+  const hours=parsed.map(rows=>rows.map(x=>x.hours));
+  if(!name||!exit||semesters.some(x=>!x.length)){toast('Complete nombre, salida lateral y materias.');return}
+  if(parsed.some(rows=>rows.some(x=>!x.hours))){toast('Agregue las horas de cada materia con el formato: Asignatura - horas.');return}
+  customPrograms.push({id:slug(name),name,exit,common:null,semesters,hours});
+  $('newProgramName').value='';$('newProgramExit').value='';newSemesterCount=5;persist();renderAdmin();renderCurrentProgram();toast('Programa educativo agregado.');
+}
+
+window.toggleProgramEnabled=function(id){
+  if(!isAdmin()){toast('Solo el administrador puede cambiar programas.');return}
+  if(disabledPrograms.includes(id))disabledPrograms=disabledPrograms.filter(x=>x!==id);
+  else disabledPrograms=[...new Set([...disabledPrograms,id])];
+  if(!programs().length){
+    disabledPrograms=disabledPrograms.filter(x=>x!==id);
+    toast('Debe permanecer al menos un programa educativo activo.');
+    return;
+  }
+  currentProgramIndex=Math.min(currentProgramIndex,programs().length-1);
+  persist();renderAdmin();renderCurrentProgram();updateProgress();lockRevisionNav();
+  toast(disabledPrograms.includes(id)?'Programa deshabilitado.':'Programa habilitado.');
+}
+function renderProgramAdminList(){
+  const root=$('programAdminList'); if(!root)return;
+  root.innerHTML=allPrograms().map(p=>{
+    const enabled=!disabledPrograms.includes(p.id);
+    const custom=p.id.startsWith('custom_');
+    return `<div class="program-admin-item ${enabled?'':'disabled'}">
+      <div><b>${p.name}</b><small>${p.exit}${custom?' · Programa agregado':''}</small></div>
+      <button class="${enabled?'disable-program':'enable-program'}" onclick="toggleProgramEnabled('${p.id}')">${enabled?'Deshabilitar':'Habilitar'}</button>
+    </div>`
+  }).join('');
+}
+
+window.deleteCustomProgram=function(id){if(!confirm('¿Eliminar este programa?'))return;customPrograms=customPrograms.filter(p=>p.id!==id);disabledPrograms=disabledPrograms.filter(x=>x!==id);currentProgramIndex=Math.min(currentProgramIndex,Math.max(0,programs().length-1));persist();renderAdmin();renderCurrentProgram()}
+function renderCustomPrograms(){
+  $('customProgramsList').innerHTML=customPrograms.length?`<h3 style="margin-top:16px">Programas agregados</h3>`+customPrograms.map(p=>`<div class="custom-program-item"><div><b>${p.name}</b><br>${p.exit}<br><small>${p.semesters.reduce((n,s)=>n+s.length,0)} materias · horas configuradas</small></div><button onclick="deleteCustomProgram('${p.id}')">Eliminar</button></div>`).join(''):''
+}
 function renderRules(){$('commonRules').innerHTML=`<p><b>Ingeniería Industrial:</b> cuatrimestres 1–3 sincronizados entre Procesos Productivos y Moldeo de Plásticos.</p><p><b>Ingeniería Mecánica:</b> cuatrimestres 1–3 sincronizados entre Mecánica Industrial, Mecánica Automotriz y Mecánica Moldes y Troqueles.</p><p><b>Sin tronco común:</b> Mecánica Automotriz / Diseño y Manufactura Automotriz, Nanotecnología y Mantenimiento Industrial.</p>`}
 
 async function exportWorkbook(){
@@ -354,7 +407,7 @@ async function exportWorkbook(){
     const endCol=col-1;
     if(endCol>=startCol){
       merges.push({s:{r:0,c:startCol},e:{r:0,c:endCol}});
-      aoa[0][startCol]=programAcronym(pr);
+      aoa[0][startCol]=`${pr.name} (${programAcronym(pr)})`;
       programRanges.push({start:startCol,end:endCol,index:pi});
     }
   });
