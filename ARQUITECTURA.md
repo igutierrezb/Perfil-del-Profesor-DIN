@@ -1,17 +1,23 @@
-# Arquitectura V12
+# Arquitectura V13
 
-## Bloqueo por formalización
-`store.submittedPeriod` conserva el periodo en el que el profesor dio por finalizada su captura tras imprimir/guardar PDF.
+V13 es deliberadamente conservadora: las modificaciones son de presentación y experiencia de uso.
 
-La edición se bloquea si:
-- `submittedPeriod === cfg.periodo`;
-- la fecha límite venció; o
-- Administración desactivó la edición.
+## Sin cambios
+- Firebase Authentication.
+- Firestore y reglas.
+- Estructura `profiles/{uid}`.
+- Configuración global.
+- Bloqueo por periodo/formalización.
+- X/XX, áreas 1/2/3, Favorito.
+- Coordinaciones almacenadas en `programMeta`.
+- Troncos comunes y sincronización.
+- Catálogo y horas.
 
-Cuando cambia `cfg.periodo`, el valor anterior de `submittedPeriod` deja de coincidir y la edición vuelve a estar disponible. No se elimina `profile`, `answers` ni `programMeta`.
+## Excel
+En `Concentrado perfiles`:
+- `★` = Favorito.
+- Fuente roja = Coordinó esa asignatura.
+- No se colorea el fondo por Favorito o Coordinación.
 
-## Coordinación por asignatura
-`programMeta[programId].coordinatorEnabled` habilita el modo de coordinación.
-`programMeta[programId].coordinators` almacena claves `cuatrimestre|índice`.
-
-El PDF no imprime Favorito ni Coordinación. Ambos se conservan para la base administrativa/Excel.
+## Coordinación
+Ya no necesita un interruptor visual global en Perfil por programa. El profesor puede marcar directamente la palomita en cada asignatura elegible. Se conserva compatibilidad con los datos de coordinación existentes.

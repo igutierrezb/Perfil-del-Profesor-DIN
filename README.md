@@ -1,20 +1,29 @@
-# Perfil Académico Docente DIN · Versión 12
+# Perfil Académico Docente DIN · Versión 13
 
-Actualización incremental sobre V11, conservando autenticación, Firestore, perfil vigente, impresión, troncos comunes y administración.
+Versión de refinamiento visual sobre V12. No cambia autenticación, Firestore, modelo de datos, perfil vigente, horas, programas ni lógica de tronco común.
 
-## Cambios V12
-- Nuevo logotipo circular, juvenil y más elaborado, con engrane, brazo robótico, fábrica y detalles digitales.
-- Wordmark UTEQ reconstruido con separación interna mucho mayor entre `UTEQ` y `UNIVERSIDAD TECNOLÓGICA DE QUERÉTARO`.
-- Área de conocimiento más compacta y encabezado en dos líneas.
-- Nueva columna `Coordinación` antes de `Favorito`.
-- Coordinación deshabilitada por defecto; solo se habilita después de declarar que se ha sido coordinador(a) de academia.
-- Cada asignatura puede marcarse individualmente con una palomita de coordinación.
-- Mensaje permanente: `Solo habilitar si has sido coordinador(a) de academia previamente`.
-- Favorito corregido para mostrar exactamente una estrella: `☆ Favorito` / `★ Favorito`.
-- Se elimina el botón administrativo redundante `Cerrar ahora`; se conservan el control de edición y la fecha límite.
-- Se elimina el segundo botón redundante de `Continuar a revisión e impresión` al final de Perfil por programa.
-- `Guardar todo el perfil` cambia a `Guardar avance`.
-- Después de `Imprimir / Guardar PDF`, el profesor decide:
-  - Aceptar: formaliza el perfil y bloquea edición para el periodo actual.
-  - Cancelar: continúa editando.
-- El bloqueo posterior a impresión se libera automáticamente cuando Administración cambia el periodo, sin borrar ningún dato capturado.
+## Cambios V13
+- Perfil por programa más compacto horizontalmente.
+- Área de conocimiento reducida y mantenida en dos renglones.
+- Se elimina el cintillo superior de Coordinación; la decisión se realiza directamente por asignatura.
+- Encabezado de la columna: `¿Has coordinado la materia?`.
+- Favorito más angosto, sin reducir su fuente.
+- Guía `Cómo capturar` actualizada a seis pasos e incluye Coordinación.
+- Leyenda visual de estados: pendiente, revisada, no puede impartir y no aplica.
+- Botones con jerarquía visual más consistente y menor relieve.
+- Encabezado del programa discretamente sticky.
+- Mensajes de pendientes muestran nombres de las primeras asignaturas faltantes.
+- Mejoras de accesibilidad con `aria-label`, `title` y foco visible.
+- Tronco común se identifica como sincronizado y su editor administrativo recibe un refinamiento visual.
+- Administración incorpora una barra horizontal: Control de captura, Configuración institucional y Exportar Excel.
+- Se elimina la tarjeta separada `Base maestra para Office 365`.
+- Excel:
+  - `★` identifica materia favorita.
+  - **Fuente roja** identifica una materia que el profesor ha coordinado.
+  - No utiliza fondo amarillo para favoritas.
+  - Profesor/Categoría permanecen congelados.
+  - Se agregan autofiltros.
+- Impresión:
+  - `Área de competencia` se presenta en dos líneas horizontales.
+  - Nivel continúa compacto.
+  - Se optimiza el ancho para dar mayor espacio a Asignatura.

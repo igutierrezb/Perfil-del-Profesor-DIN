@@ -140,14 +140,21 @@
 
     <div class="instruction-band card danger-band">
       <div class="instruction-title">Cómo capturar cada asignatura</div>
-      <div class="instruction-grid">
+      <div class="instruction-grid instruction-grid-six">
         <div><b>1. Asignatura</b><span>Revise cada materia del programa.</span></div>
         <div><b>2. Habilitar</b><span>Apagado = no puede impartirla y se imprimirá en blanco.</span></div>
-        <div><b>3. Competencia</b><span>X Medio · XX Alto</span></div>
-        <div class="highlight-cell"><b>4. Área que da el conocimiento</b><span><strong>Seleccione una sola opción:</strong> 1 · 2 · 3 · 12 · 13 · 23 · 123</span></div>
-        <div><b>5. Favorito</b><span>Marque ★ Favorito únicamente en las asignaturas que considera preferentes.</span></div>
+        <div><b>3. Competencia</b><span>X Medio · XX Alto.</span></div>
+        <div class="highlight-cell"><b>4. Área de conocimiento</b><span><strong>Seleccione una sola opción:</strong> 1 · 2 · 3 · 12 · 13 · 23 · 123.</span></div>
+        <div><b>5. Coordinación</b><span>Marque ✓ solo si ha coordinado previamente esa asignatura.</span></div>
+        <div><b>6. Favorito</b><span>Marque ★ únicamente en sus asignaturas preferentes.</span></div>
       </div>
       <div class="knowledge-key"><b>1</b> Formación académica · <b>2</b> Experiencia docente · <b>3</b> Experiencia laboral</div>
+      <div class="state-legend" aria-label="Leyenda de estados">
+        <span class="state pending"><i></i>Pendiente</span>
+        <span class="state reviewed"><i></i>Revisada</span>
+        <span class="state off"><i></i>No puede impartir</span>
+        <span class="state na"><i></i>No aplica</span>
+      </div>
     </div>
 
     <div class="card program-header-flow">
@@ -192,7 +199,13 @@
       <span class="admin-lock">🔒 Administración</span>
     </div>
 
-    <div class="card capture-control-card">
+    <div class="admin-quickbar card">
+      <button onclick="document.getElementById('captureControlCard').scrollIntoView({behavior:'smooth',block:'start'})">⚙ Control de captura</button>
+      <button onclick="document.getElementById('institutionalConfig').scrollIntoView({behavior:'smooth',block:'start'})">▤ Configuración institucional</button>
+      <button class="primary" onclick="exportExcel()">⇩ Exportar Excel (.xlsx)</button>
+    </div>
+
+    <div id="captureControlCard" class="card capture-control-card">
       <div class="section-head compact-head">
         <div>
           <h2>Control de captura</h2>
@@ -221,7 +234,7 @@
       </div>
     </div>
 
-    <details class="card admin-details" open>
+    <details id="institutionalConfig" class="card admin-details" open>
       <summary>Configuración institucional</summary>
       <div class="admin-grid admin-grid-compact">
         <label>Jefe de Unidad<input id="jefe"></label>
@@ -233,17 +246,6 @@
       <div class="period-preserve-note">Cambiar el periodo <b>no borra ni reinicia</b> los datos capturados por los profesores; únicamente actualiza la vigencia mostrada.</div>
       <div class="save-row"><button class="save-btn" onclick="saveAdmin()">Guardar configuración institucional</button></div>
     </details>
-
-    <div class="card">
-      <div class="section-head">
-        <div><h2>Base maestra para Office 365</h2><p>Exporta el concentrado de profesores, favoritos, coordinaciones, horas y resumen por asignatura.</p></div>
-        <span class="admin-only">Solo administrador</span>
-      </div>
-      <div class="admin-actions">
-        <button class="primary" onclick="exportExcel()">Exportar base maestra Excel (.xlsx)</button>
-      </div>
-    </div>
-
     <div class="card">
       <div class="section-head">
         <div><h2>Programas educativos activos</h2><p>Puede habilitar o deshabilitar cualquier programa. Los deshabilitados no aparecen en captura, impresión ni Excel.</p></div>

@@ -1548,3 +1548,286 @@ button:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-vis
     max-height:27px!important;
   }
 }
+
+
+/* =========================================================
+   V13 · refinamiento visual estable
+   ========================================================= */
+
+/* Guía de captura con seis pasos sin crecer en exceso */
+.instruction-grid-six{
+  grid-template-columns:1fr 1fr .8fr 1.25fr 1.1fr .85fr!important;
+}
+.state-legend{
+  display:flex;
+  align-items:center;
+  gap:14px;
+  flex-wrap:wrap;
+  margin-top:9px;
+  padding:7px 9px;
+  border-top:1px solid #ead9d4;
+  font-size:9.5px;
+  color:#607482;
+}
+.state-legend .state{display:inline-flex;align-items:center;gap:5px}
+.state-legend i{
+  width:9px;height:9px;border-radius:50%;display:inline-block;border:1px solid rgba(0,0,0,.10)
+}
+.state-legend .pending i{background:#d76d64}
+.state-legend .reviewed i{background:#65ad8a}
+.state-legend .off i{background:#aab5bc}
+.state-legend .na i{background:#e2e7ea}
+
+/* Perfil por programa: aprovechar ancho real.
+   Área ocupa menos; Coordinación y Favorito quedan compactos. */
+.semesters-grid{min-width:1080px!important}
+.course-columns,.course{
+  grid-template-columns:
+    minmax(180px,1.42fr)
+    68px
+    76px
+    minmax(160px,.76fr)
+    78px
+    68px!important;
+  gap:4px!important;
+}
+.area-buttons{
+  grid-template-columns:repeat(4,minmax(22px,1fr))!important;
+  gap:2px!important;
+}
+.mini.area{
+  min-width:0!important;
+  padding:3px 1px!important;
+  font-size:7.8px!important;
+}
+.course-columns .area-head,
+.course-columns .coord-head{
+  white-space:normal!important;
+  line-height:1.02!important;
+  text-align:center!important;
+}
+.course-columns .coord-head{
+  font-size:7.4px!important;
+}
+
+/* Favorito más angosto sin reducir tipografía */
+.ideal-btn{
+  min-width:61px!important;
+  max-width:66px!important;
+  padding:4px 5px!important;
+  font-size:9.3px!important;
+  overflow:hidden;
+}
+.coord-row-check{
+  width:28px!important;
+  height:28px!important;
+}
+
+/* Nombres largos: máximo visual de dos líneas, sin reducir fuente */
+.course .name{
+  line-height:1.14!important;
+  max-height:2.45em;
+  overflow:hidden!important;
+  align-content:center;
+}
+.course-hours{
+  flex:0 0 auto;
+}
+
+/* El cintillo global de coordinación desaparece: decisión únicamente por materia */
+.compact-coordinator{display:none!important}
+
+/* Encabezado de flujo discretamente sticky */
+.program-header-flow{
+  position:sticky;
+  top:54px;
+  z-index:31;
+  box-shadow:0 6px 18px rgba(25,65,91,.07);
+  margin-bottom:12px!important;
+}
+
+/* Tronco común: etiqueta informativa más clara, no botón */
+.common-note{
+  display:flex!important;
+  align-items:center;
+  gap:9px;
+  padding:8px 11px!important;
+}
+.common-note b{
+  flex:0 0 auto;
+  color:#7a5510;
+  font-size:9.8px;
+}
+.common-note span{
+  color:#7c6a3f;
+  font-size:9.3px;
+}
+
+/* Jerarquía final de botones: menos efecto 3D */
+.primary{
+  box-shadow:0 3px 0 #08253c!important;
+}
+.save-btn,.actions button,.admin-actions button,.flow-buttons button{
+  transition:transform .12s ease,box-shadow .12s ease,background .12s ease;
+}
+.save-btn:hover,.actions button:hover,.admin-actions button:hover,.flow-buttons button:hover{
+  transform:translateY(-1px);
+}
+.disable-program,.danger-soft{
+  box-shadow:none!important;
+}
+
+/* Encabezado superior ligeramente más compacto */
+.hero-inner{
+  padding-top:14px!important;
+  padding-bottom:14px!important;
+}
+.hero-icon{
+  width:80px!important;
+  height:80px!important;
+}
+.hero h1{font-size:27px!important}
+.hero p{font-size:11px!important}
+
+/* Navegación: estado activo más claro que completado */
+.main-nav button.active:not(.admin-tab){
+  background:#dbeaf5!important;
+  border-color:#6f9fbd!important;
+  color:#103c5e!important;
+  box-shadow:inset 0 -2px 0 #417fa6,0 2px 8px rgba(20,63,96,.05)!important;
+}
+.main-nav button.complete:not(.active) .nav-num{
+  background:#dff2e8!important;
+  color:#27684d!important;
+}
+
+/* Cuenta regresiva secundaria en Perfil: menos competencia visual */
+.capture-deadline{
+  font-size:9.5px!important;
+  padding:6px 9px!important;
+  min-width:220px!important;
+  box-shadow:none!important;
+}
+
+/* Guardado/sincronización más legible */
+.save-cloud-line{
+  font-size:9.5px!important;
+  font-weight:650;
+}
+
+/* Administración: barra única de acciones */
+.admin-quickbar{
+  display:flex;
+  align-items:center;
+  justify-content:flex-end;
+  gap:8px;
+  padding:10px 12px!important;
+  position:sticky;
+  top:56px;
+  z-index:30;
+}
+.admin-quickbar button{
+  border:1px solid #d1dde5;
+  border-radius:9px;
+  padding:8px 12px;
+  background:#f4f8fa;
+  color:#214a65;
+  font-weight:750;
+  cursor:pointer;
+}
+.admin-quickbar .primary{border:0}
+
+/* Tronco común: presentación visual más limpia */
+.common-rule-editor{
+  padding:16px!important;
+  border:1px solid #b7d2df!important;
+  border-left:5px solid #2e809f!important;
+  border-radius:13px!important;
+  background:
+    linear-gradient(135deg,rgba(235,247,251,.95),rgba(250,253,254,.98))!important;
+  box-shadow:0 8px 22px rgba(27,86,116,.06);
+}
+.common-editor-head{
+  padding-bottom:10px;
+  border-bottom:1px solid #d9e8ef;
+}
+.common-editor-head b{
+  font-size:15px!important;
+}
+.common-rule-name input{
+  background:#fff!important;
+}
+.common-editor-block{
+  border-color:#cfe0e8!important;
+  box-shadow:0 2px 7px rgba(29,79,105,.035);
+}
+.common-program-checks label,
+.common-semester-checks label{
+  transition:background .12s,border-color .12s;
+}
+.common-program-checks label:has(input:checked),
+.common-semester-checks label:has(input:checked){
+  background:#e9f5f8!important;
+  border-color:#84b9cc!important;
+  color:#174a64!important;
+}
+.common-rule-summary{
+  border:1px solid #d7e5eb;
+  border-radius:9px;
+  margin:6px 0;
+  background:#fbfdfe;
+}
+
+/* Accesibilidad: targets y foco consistentes */
+.mini,.ideal-btn,.coord-row-check{
+  min-height:28px;
+}
+button:focus-visible,
+input:focus-visible,
+select:focus-visible,
+textarea:focus-visible,
+.coord-row-check:focus-within{
+  outline:3px solid rgba(45,126,170,.22)!important;
+  outline-offset:2px!important;
+}
+
+/* Impresión: área de competencia en dos líneas horizontales,
+   reduce la altura de encabezado y deja más ancho a Asignatura */
+.area-print-head{
+  writing-mode:horizontal-tb!important;
+  transform:none!important;
+  text-align:center!important;
+  vertical-align:middle!important;
+  line-height:1.0!important;
+  padding:2px 1px!important;
+  white-space:normal!important;
+}
+.area-print-head span{display:block!important}
+.program-trio .currTable th.area-print-head{
+  font-size:6.8px!important;
+  height:auto!important;
+}
+.program-trio .currTable td.subject{
+  hyphens:auto;
+}
+
+/* Blanco y negro: bordes y encabezados conservan jerarquía */
+@media print{
+  .program-header-flow,.admin-quickbar{position:static!important}
+  .program-trio .currTable th.area-print-head{font-size:6.6px!important}
+  .program-trio .currTable th{font-weight:850!important}
+  .program-trio .currTable td.subject{font-weight:520!important}
+}
+
+@media(max-width:1180px){
+  .course-columns,.course{
+    grid-template-columns:
+      minmax(175px,1.35fr)
+      65px
+      72px
+      minmax(150px,.7fr)
+      74px
+      64px!important;
+  }
+  .admin-quickbar{overflow:auto;justify-content:flex-start}
+}

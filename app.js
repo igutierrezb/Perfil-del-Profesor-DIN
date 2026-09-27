@@ -432,8 +432,9 @@ function replicateCommon(pid,s,c,r){
   const source=allPrograms().find(x=>x.id===pid);
   const sourceName=source?.semesters?.[s]?.[c];
   const rule=commonRuleFor(pid,s);
-  if(!source||!sourceName||!rule)return;
+  if(!source||!sourceName||!rule)return 0;
   const normalized=normalizeSubjectName(sourceName);
+  let synced=0;
   (rule.programIds||[]).forEach(other=>{
     if(other===pid)return;
     const target=allPrograms().find(x=>x.id===other);
@@ -441,7 +442,9 @@ function replicateCommon(pid,s,c,r){
     const tc=targetSem.findIndex(n=>normalizeSubjectName(n)===normalized);
     if(tc<0)return;
     answers[key(other,s,tc)]={status:r.status,origins:[...(r.origins||[])],ideal:!!r.ideal};
+    synced++;
   });
+  return synced;
 }
 
 function programStats(p){let total=0,done=0,missing=0;p.semesters.forEach((sem,s)=>sem.forEach((name,c)=>{if(isEnglish(name))return;total++;const a=getAns(p.id,s,c,name);if(a.status!=='pending')done++;else missing++}));return{total,done,missing}}
@@ -487,30 +490,15 @@ window.toggleCoordinator=function(pid,id,checked){
   arr=checked?[...new Set([...arr,id])]:arr.filter(x=>x!==id);
   programMeta[pid].coordinators=arr;persist();
 }
-function renderCoordinator(p){
-  const meta=programMeta[p.id]||{},enabled=!!meta.coordinatorEnabled;
-  return `<div class="coordinator-panel coordinator-alert compact-coordinator">
-    <div class="coordinator-inline">
-      <div>
-        <b>Coordinación de academia</b>
-        <span>Solo habilitar si has sido coordinador(a) de academia previamente.</span>
-      </div>
-      <label class="coord-main-toggle">
-        <input type="checkbox" ${enabled?'checked':''} onchange="toggleCoordinatorMode('${p.id}',this.checked)">
-        <span>${enabled?'Sí, he sido coordinador(a)':'No habilitado'}</span>
-      </label>
-    </div>
-  </div>`;
-}
+function renderCoordinator(p){ return ''; }
 
 
 function rowCoordinatorChecked(pid,s,c){
   return !!(((programMeta[pid]||{}).coordinators||[]).includes(`${s}|${c}`));
 }
 function rowCoordinatorEnabled(pid,s,c,name){
-  const meta=programMeta[pid]||{};
   const a=getAns(pid,s,c,name);
-  return !!meta.coordinatorEnabled && !isEnglish(name) && a.status!=='off' && ['X','XX'].includes(a.status);
+  return !isEnglish(name) && a.status!=='off' && ['X','XX'].includes(a.status);
 }
 
 const pastelTitles=['#eef4f9','#f7efe7','#edf6f0','#f2effa','#fff4ea','#ecf6f8','#f8eef1','#eef5e9'];
@@ -520,18 +508,18 @@ function renderCurrentProgram(){
   $('programFlowName').textContent=`${p.name} — ${p.exit}`;
   const st=programStats(p);
   let bg = pastelTitles[currentProgramIndex % pastelTitles.length];
-  let h=`<article class="program"><div class="program-head" style="background:${bg}"><div class="program-title"><strong>${p.name}</strong><span><b>Salida lateral:</b> ${p.exit}</span></div><div class="program-progress">${st.done}/${st.total} revisadas${st.missing?` · ${st.missing} pendientes`:''}</div></div>${commonRuleForProgram(p.id)?`<div class="common-note">${commonDescription(p.id)}</div>`:''}${renderCoordinator(p)}<div class="program-scroll-wrap"><div class="scroll-hint">↔ Si la pantalla es más angosta, desplácese horizontalmente para ver todas las columnas.</div><div class="semesters-grid">`;
+  let h=`<article class="program"><div class="program-head" style="background:${bg}"><div class="program-title"><strong>${p.name}</strong><span><b>Salida lateral:</b> ${p.exit}</span></div><div class="program-progress">${st.done}/${st.total} revisadas${st.missing?` · ${st.missing} pendientes`:''}</div></div>${commonRuleForProgram(p.id)?`<div class="common-note"><b>↔ Tronco común · sincronizado</b><span>${commonDescription(p.id)}</span></div>`:''}${renderCoordinator(p)}<div class="program-scroll-wrap"><div class="scroll-hint">↔ Si la pantalla es más angosta, desplácese horizontalmente para ver todas las columnas.</div><div class="semesters-grid">`;
   p.semesters.forEach((sem,s)=>{
-    h+=`<div class="semester-card"><h4>${s+1}.° cuatrimestre <span>${sem.length} asignaturas</span></h4><div class="course-columns"><span>Asignatura</span><span>Habilitar</span><span>Competencia</span><span class="area-head">Área de<br>conocimiento</span><span class="coord-head">Coordinación</span><span>Favorito</span></div>`;
+    h+=`<div class="semester-card"><h4>${s+1}.° cuatrimestre <span>${sem.length} asignaturas</span></h4><div class="course-columns"><span>Asignatura</span><span>Habilitar</span><span>Competencia</span><span class="area-head">Área de<br>conocimiento</span><span class="coord-head">¿Has coordinado<br>la materia?</span><span>Favorito</span></div>`;
     sem.forEach((name,c)=>{
       const a=getAns(p.id,s,c,name),na=isEnglish(name),enc=encodeURIComponent(name),enabled=!['off','na'].includes(a.status),pending=a.status==='pending',reviewed=!pending&&!na;
       h+=`<div class="course ${pending?'pending':''} ${a.status==='off'?'off':''} ${reviewed&&a.status!=='off'?'reviewed':''} ${na?'na':''}">
       <div class="name">${subjectCase(name)}${subjectHours(p.id,s,c)?` <small class="course-hours">(${subjectHours(p.id,s,c)} h)</small>`:'' }${na?' · NO APLICA':''}</div>
       <label class="toggle ${na?'locked':''}"><input type="checkbox" ${enabled?'checked':''} ${na?'disabled':''} onchange="setEnabled('${p.id}',${s},${c},decodeURIComponent('${enc}'),this.checked)"><span class="switch"></span><span>${na?'Bloqueado':enabled?'Sí':'No'}</span></label>
-      <div class="comp-buttons"><button class="mini ${a.status==='X'?'on':''}" ${!enabled?'disabled':''} onclick="setCompetence('${p.id}',${s},${c},decodeURIComponent('${enc}'),'X')">X</button><button class="mini ${a.status==='XX'?'on':''}" ${!enabled?'disabled':''} onclick="setCompetence('${p.id}',${s},${c},decodeURIComponent('${enc}'),'XX')">XX</button></div>
-      <div class="area-buttons">${['1','2','3','12','13','23','123'].map(code=>`<button class="mini area ${originCode(a)===code?'on':''}" ${!['X','XX'].includes(a.status)?'disabled':''} onclick="setOriginCode('${p.id}',${s},${c},decodeURIComponent('${enc}'),'${code}')">${code}</button>`).join('')}</div>
-      <label class="coord-row-check ${rowCoordinatorChecked(p.id,s,c)?'on':''}" title="Solo habilitar si has sido coordinador(a) de academia previamente.">
-        <input type="checkbox" ${rowCoordinatorChecked(p.id,s,c)?'checked':''} ${rowCoordinatorEnabled(p.id,s,c,name)?'':'disabled'} onchange="toggleCoordinator('${p.id}','${s}|${c}',this.checked)">
+      <div class="comp-buttons"><button class="mini ${a.status==='X'?'on':''}" aria-label="Competencia media X" title="X = competencia media" ${!enabled?'disabled':''} onclick="setCompetence('${p.id}',${s},${c},decodeURIComponent('${enc}'),'X')">X</button><button class="mini ${a.status==='XX'?'on':''}" aria-label="Competencia alta XX" title="XX = competencia alta" ${!enabled?'disabled':''} onclick="setCompetence('${p.id}',${s},${c},decodeURIComponent('${enc}'),'XX')">XX</button></div>
+      <div class="area-buttons">${['1','2','3','12','13','23','123'].map(code=>`<button class="mini area ${originCode(a)===code?'on':''}" aria-label="Área de conocimiento ${code}" title="${code.split('').join(' + ')}" ${!['X','XX'].includes(a.status)?'disabled':''} onclick="setOriginCode('${p.id}',${s},${c},decodeURIComponent('${enc}'),'${code}')">${code}</button>`).join('')}</div>
+      <label class="coord-row-check ${rowCoordinatorChecked(p.id,s,c)?'on':''}" title="¿Has coordinado esta materia? Solo marque si previamente ha sido coordinador(a) de academia.">
+        <input type="checkbox" aria-label="¿Has coordinado ${subjectCase(name)}?" ${rowCoordinatorChecked(p.id,s,c)?'checked':''} ${rowCoordinatorEnabled(p.id,s,c,name)?'':'disabled'} onchange="toggleCoordinator('${p.id}','${s}|${c}',this.checked)">
         <span>✓</span>
       </label>
       <button class="ideal-btn ${a.ideal?'on':''}" ${!enabled?'disabled':''} onclick="toggleIdeal('${p.id}',${s},${c},decodeURIComponent('${enc}'))">${a.ideal?'★ Favorito':'☆ Favorito'}</button></div>`
@@ -556,7 +544,28 @@ window.saveAndNextProgram=function(){
   persist();renderCurrentProgram();scrollTo({top:$('captura').offsetTop-55,behavior:'smooth'})
 }
 
-function validateCapture(){const x=overallStats(),errs=[];if(x.remainingUnique)errs.push(`Falta${x.remainingUnique===1?'':'n'} ${x.remainingUnique} asignatura${x.remainingUnique===1?'':'s'} por revisar.`);if(x.invalid)errs.push(`${x.invalid} asignatura(s) tienen X/XX pero no tienen área de conocimiento.`);if(favoriteCount()<3)errs.push(`Debe seleccionar al menos 3 materias favoritas. Actualmente hay ${favoriteCount()}.`);return{ok:!errs.length,errors:errs}}
+function pendingCourseNames(limit=4){
+  const seen=new Set(),names=[];
+  programs().forEach(p=>p.semesters.forEach((sem,s)=>sem.forEach((name,c)=>{
+    if(isEnglish(name))return;
+    const a=getAns(p.id,s,c,name);
+    if(a.status!=='pending')return;
+    const logical=logicalCourseKey(p.id,s,c,name);
+    if(seen.has(logical))return;
+    seen.add(logical);names.push(subjectCase(name));
+  })));
+  return names.slice(0,limit);
+}
+function validateCapture(){
+  const x=overallStats(),errs=[];
+  if(x.remainingUnique){
+    const names=pendingCourseNames(4);
+    errs.push(`Falta${x.remainingUnique===1?'':'n'} ${x.remainingUnique} asignatura${x.remainingUnique===1?'':'s'} por revisar${names.length?`: ${names.join(', ')}${x.remainingUnique>names.length?'…':''}`:'.'}`);
+  }
+  if(x.invalid)errs.push(`${x.invalid} asignatura(s) tienen X/XX pero no tienen área de conocimiento.`);
+  if(favoriteCount()<3)errs.push(`Debe seleccionar al menos 3 materias favoritas. Actualmente hay ${favoriteCount()}.`);
+  return{ok:!errs.length,errors:errs}
+}
 function validateAll(){const p=validateProfile(),c=validateCapture();return{ok:p.ok&&c.ok,errors:[...p.errors,...c.errors]}}
 function showCaptureErrors(errs){$('captureErrors').innerHTML=statusBox(errs,'No puede pasar a revisión todavía.');const p=overallStats().pendingUnique;if(p.length){currentProgramIndex=p[0].pi;renderCurrentProgram()}}
 window.validateAndReview=function(){collectProfile();persist();const v=validateAll();if(!v.ok){showCaptureErrors(v.errors);toast('Complete las materias pendientes.');return}$('captureErrors').innerHTML='';$('validation').innerHTML=`<div class="status-box ok"><b>Perfil completo.</b><br>La información puede formalizarse e imprimirse.</div>`;buildPrint();window.go('revision',true)}
@@ -585,10 +594,10 @@ function pastelColor(index){
 function printProgram(pr, idx){
   const max=Math.max(...pr.semesters.map(s=>s.length));
   const pastel=pastelColor(idx);
-  const nSem=Math.max(1,pr.semesters.length),levelW=1.7,areaW=2.35,subjectW=(100/nSem)-levelW-areaW;
+  const nSem=Math.max(1,pr.semesters.length),levelW=1.55,areaW=2.05,subjectW=(100/nSem)-levelW-areaW;
   const colgroup=`<colgroup>${Array.from({length:nSem},()=>`<col class="subject" style="width:${subjectW}%"><col class="level" style="width:${levelW}%"><col class="area" style="width:${areaW}%">`).join('')}</colgroup>`;
   const th=pr.semesters.map((s,i)=>`<th colspan="3" style="background:${pastel}">${i+1}.° CUATRIMESTRE</th>`).join('');
-  const sub=pr.semesters.map(()=>`<th style="background:${pastel}">Asignatura</th><th class="vhead" style="background:${pastel}">Nivel</th><th class="vhead" style="background:${pastel}">Área de competencia</th>`).join('');
+  const sub=pr.semesters.map(()=>`<th style="background:${pastel}">Asignatura</th><th class="vhead" style="background:${pastel}">Nivel</th><th class="area-print-head" style="background:${pastel}"><span>Área de</span><span>competencia</span></th>`).join('');
   let rows='';
   for(let r=0;r<max;r++){
     rows+='<tr>'+pr.semesters.map((sem,s)=>{
@@ -832,7 +841,7 @@ async function exportWorkbook(){
   const headerRows=6;
   const aoa=Array.from({length:headerRows+teachers.length},()=>[]);
   aoa[0][0]='PROGRAMA EDUCATIVO';
-  aoa[0][1]='Leyenda: ★ Favorito · C Coordinador de academia';
+  aoa[0][1]='Leyenda: ★ Favorito · fuente roja = coordinó la asignatura';
   aoa[1][0]='ASIGNATURA';
   aoa[2][0]='HORAS AL CUATRIMESTRE';
   aoa[3][0]='HORAS A LA SEMANA';
@@ -857,7 +866,7 @@ async function exportWorkbook(){
         const coord=teacherCoordinator(t,pr.id,s,c);
         aoa[headerRows+ti][0]=t.name;
         aoa[headerRows+ti][1]=t.category;
-        aoa[headerRows+ti][col]=level?`${level}${fav?' ★':''}${coord?' C':''}`:'';
+        aoa[headerRows+ti][col]=level?`${level}${fav?' ★':''}`:'';
       });
       col++;
     }));
@@ -872,6 +881,7 @@ async function exportWorkbook(){
   const ws=XLSX.utils.aoa_to_sheet(aoa);
   ws['!merges']=merges;
   ws['!freeze']={xSplit:2,ySplit:6,topLeftCell:'C7',activePane:'bottomRight',state:'frozen'};
+  ws['!autofilter']={ref:`A6:${XLSX.utils.encode_col(col-1)}${aoa.length}`};
   ws['!cols']=[{wch:30},{wch:32},...Array.from({length:col-2},()=>({wch:13}))];
   ws['!rows']=[
     {hpt:25},{hpt:86},{hpt:24},{hpt:24},{hpt:22},{hpt:28},
@@ -931,27 +941,24 @@ async function exportWorkbook(){
   });
 
 
-  // Marcas administrativas: Coordinación en rojo suave; Favorito en ámbar.
+  // Marcas administrativas: ★ = favorita; fuente roja = coordinó la asignatura.
+  // Sin fondos de color para conservar la lectura limpia del concentrado.
   for(let r=headerRows;r<aoa.length;r++){
-    for(let c=2;c<col;c++){
-      const addr=XLSX.utils.encode_cell({r,c}),v=String(aoa[r]?.[c]||'');
-      if(!v)continue;
-      if(v.includes(' C')){
+    const t=teachers[r-headerRows];
+    let matrixCol=2;
+    ps.forEach(pr=>pr.semesters.forEach((sem,s)=>sem.forEach((name,c)=>{
+      const addr=XLSX.utils.encode_cell({r,c:matrixCol}),v=String(aoa[r]?.[matrixCol]||'');
+      const coord=teacherCoordinator(t,pr.id,s,c);
+      if(v){
         styleCell(addr,{
-          font:{bold:true,color:{rgb:'9C2F2F'}},
-          fill:{fgColor:{rgb:'FCE8E6'}},
+          font:{bold:v.includes('★'),color:{rgb:coord?'B42318':'243746'}},
+          fill:{fgColor:{rgb:'FFFFFF'}},
           alignment:{horizontal:'center',vertical:'center'},
-          border:{top:{style:'thin',color:{rgb:'D9908B'}},bottom:{style:'thin',color:{rgb:'D9908B'}},left:{style:'thin',color:{rgb:'D9908B'}},right:{style:'thin',color:{rgb:'D9908B'}}}
-        });
-      }else if(v.includes('★')){
-        styleCell(addr,{
-          font:{bold:true,color:{rgb:'8B6411'}},
-          fill:{fgColor:{rgb:'FFF2CC'}},
-          alignment:{horizontal:'center',vertical:'center'},
-          border:{top:{style:'thin',color:{rgb:'D7BE72'}},bottom:{style:'thin',color:{rgb:'D7BE72'}},left:{style:'thin',color:{rgb:'D7BE72'}},right:{style:'thin',color:{rgb:'D7BE72'}}}
+          border:{top:{style:'thin',color:{rgb:'D4DCE3'}},bottom:{style:'thin',color:{rgb:'D4DCE3'}},left:{style:'thin',color:{rgb:'D4DCE3'}},right:{style:'thin',color:{rgb:'D4DCE3'}}}
         });
       }
-    }
+      matrixCol++;
+    })));
   }
 
   // --- Hoja 2: Base maestra cruda (se conserva por compatibilidad) ---
@@ -979,6 +986,8 @@ async function exportWorkbook(){
   }))));
 
   const wsBase=XLSX.utils.json_to_sheet(base);
+  wsBase['!autofilter']={ref:wsBase['!ref']};
+  wsBase['!freeze']={xSplit:2,ySplit:1,topLeftCell:'C2',activePane:'bottomRight',state:'frozen'};
   wsBase['!cols']=[
     {wch:30},{wch:34},{wch:28},{wch:20},{wch:42},{wch:13},{wch:42},{wch:12},{wch:36},
     {wch:18},{wch:16},{wch:14},{wch:17},{wch:18},{wch:16},{wch:24}
@@ -1023,6 +1032,8 @@ async function exportWorkbook(){
     });
   })));
   const wsSummary=XLSX.utils.json_to_sheet(summary);
+  wsSummary['!autofilter']={ref:wsSummary['!ref']};
+  wsSummary['!freeze']={ySplit:1,topLeftCell:'A2',activePane:'bottomLeft',state:'frozen'};
   wsSummary['!cols']=[{wch:42},{wch:16},{wch:12},{wch:38},{wch:18},{wch:16},{wch:14},{wch:14},{wch:16},{wch:23}];
 
   const wb=XLSX.utils.book_new();
