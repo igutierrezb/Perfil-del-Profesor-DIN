@@ -1,26 +1,23 @@
-# Perfil Académico Docente DIN · Versión 10
+# Perfil Académico Docente DIN · Versión 11
 
-Consolidación de la versión estable, preservando autenticación, captura, troncos comunes, impresión y administración.
+Actualización incremental sobre V10, conservando autenticación, Firestore, captura, favoritos, coordinación, cierre de captura y exportación administrativa.
 
-## Cambios principales
-- Favorito reemplaza el término “Materia ideal”.
-- Botón de Favorito más compacto: ☆ Favorito / ★ Favorito.
-- Coordinación de academia desactivada por defecto y resaltada en rojo; solo se habilita si el profesor declara haber sido coordinador.
-- Excel identifica favoritos con ★ y coordinación con C; coordinación aparece con fondo rojo suave.
-- Nueva hoja de Excel “Resumen por asignatura”.
-- Excel administrativo consolida todos los profesores cuando Firestore está habilitado.
-- Progreso muestra pendientes, favoritos y programas completos.
-- Estados pendiente, deshabilitado, revisado y no aplica se distinguen visualmente.
-- Instrucciones de captura más grandes y visibles.
-- Acrónimos editables desde Administración.
-- Autoguardado y hora del último guardado.
-- Persistencia central opcional/segura con Firestore.
-- Auditoría básica de acciones.
-- Fecha y hora límite global definible por Administración.
-- Cuenta regresiva para profesores; últimas 24 h en ámbar, últimas 3 h en rojo y vencido en rojo intenso.
-- Al vencer, el profesor conserva acceso de consulta e impresión pero no puede editar.
-- El administrador puede cerrar inmediatamente, reabrir cambiando la fecha o quitar la fecha límite.
-- Impresión conserva tres programas por hoja y aumenta la legibilidad de materias desde la hoja 2.
-
-## Firestore
-Consulte `FIRESTORE_SETUP.md` y `firestore.rules`. Si Firestore aún no está habilitado, la aplicación mantiene el funcionamiento local previo.
+## Cambios V11
+- Corrige el error de Excel `c is not defined`.
+- Nuevo logotipo industrial, completamente rediseñado y más elaborado.
+- Wordmark UTEQ de impresión reconstruido sin línea divisoria para evitar empalmes.
+- Cuenta regresiva más grande, centrada y visible en la banda superior.
+- El cambio de periodo no borra ni reinicia perfiles, respuestas ni coordinaciones.
+- Control de edición + fecha límite unificados en una tarjeta administrativa compacta.
+- Configuración institucional reducida y optimizada.
+- Administración de tronco común configurable:
+  - seleccionar programas que comparten tronco;
+  - seleccionar cuatrimestres sincronizados;
+  - crear, editar o quitar grupos de tronco común.
+- La sincronización de tronco común se realiza por nombre de asignatura en el mismo cuatrimestre.
+- La impresión solo muestra firmas y sello en la primera hoja.
+- Páginas de programas con tipografía aproximadamente un punto mayor.
+- Encabezados de tablas reforzados en negrita.
+- Primera hoja: valores de Nombre y Categoría aproximadamente cuatro puntos mayores, manteniendo pequeñas las etiquetas.
+- Columnas de impresión optimizadas para dar más ancho efectivo a las asignaturas.
+- Tres programas por hoja se distribuyen usando mejor la altura disponible.

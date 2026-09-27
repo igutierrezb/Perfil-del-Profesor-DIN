@@ -1099,3 +1099,267 @@ button:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-vis
   .program-admin-item{grid-template-columns:1fr!important}
   .capture-deadline{min-width:0;width:100%}
 }
+
+
+/* =========================================================
+   V11 · impresión + tronco común configurable + contador
+   ========================================================= */
+
+/* Cuenta regresiva grande y centrada en banda superior */
+.deadline-top-band{
+  display:flex;
+  justify-content:center;
+  align-items:center;
+  padding:7px 18px;
+  background:#f7fafc;
+  border-bottom:1px solid #dbe6ed;
+}
+.deadline-top-band .header-deadline{
+  width:min(820px,92vw);
+  text-align:center;
+  font-size:15.5px!important;
+  padding:9px 16px!important;
+  letter-spacing:.01em;
+  box-shadow:0 2px 8px rgba(18,63,91,.05);
+}
+.deadline-top-band .header-deadline.warning{font-size:16px!important}
+.deadline-top-band .header-deadline.urgent,
+.deadline-top-band .header-deadline.expired{
+  font-size:16.5px!important;
+}
+
+/* Control de captura unificado/compacto */
+.capture-control-card{
+  padding:14px 16px!important;
+  border-color:#d9e2e8;
+}
+.compact-head{margin-bottom:10px!important}
+.capture-control-statuses{
+  display:flex;gap:7px;align-items:center;flex-wrap:wrap;justify-content:flex-end
+}
+.capture-control-grid{
+  display:grid;
+  grid-template-columns:minmax(260px,.75fr) minmax(420px,1.25fr);
+  gap:12px;
+}
+.control-panel-mini{
+  border:1px solid #dce6ec;
+  border-radius:10px;
+  padding:10px 12px;
+  background:#fbfdfe;
+  display:flex;
+  flex-direction:column;
+  gap:7px;
+}
+.control-panel-mini>b{font-size:12px;color:#183f5d}
+.control-panel-mini>span{font-size:9.5px;color:#6e818f}
+.control-panel-mini label{margin:0}
+.control-panel-mini input{padding:7px 8px!important}
+.control-panel-mini .deadline-admin-preview{
+  min-height:auto!important;
+  padding:7px 9px!important;
+}
+.mini-actions{display:flex;gap:6px;flex-wrap:wrap}
+.mini-actions button{padding:7px 10px!important}
+
+/* Configuración institucional más compacta */
+.admin-details{padding:11px 14px!important}
+.admin-details summary{font-size:13px!important}
+.admin-grid-compact{
+  grid-template-columns:1.35fr 1.1fr .55fr .45fr .7fr!important;
+  gap:8px!important;
+}
+.admin-grid-compact label{font-size:9.5px!important}
+.admin-grid-compact input{padding:7px 8px!important}
+.period-preserve-note{
+  margin-top:7px;
+  padding:7px 9px;
+  border-radius:8px;
+  background:#eef7fb;
+  border:1px solid #cfe3ee;
+  color:#45697f;
+  font-size:9.5px;
+}
+
+/* Listado programas + tronco común */
+.program-admin-item{
+  grid-template-columns:minmax(0,1fr) 125px 132px 105px!important;
+}
+.common-program-btn{
+  background:#f2f7fa!important;
+  color:#305b74!important;
+  border:1px solid #bfd2de!important;
+}
+.common-program-btn.active{
+  background:#e8f4ef!important;
+  color:#27684d!important;
+  border-color:#9fcfba!important;
+  font-weight:750!important;
+}
+.common-rule-editor{
+  margin-top:12px;
+  padding:13px;
+  border:1px solid #9fc7d9;
+  border-radius:12px;
+  background:linear-gradient(135deg,#f7fbfd,#eef7fa);
+}
+.common-editor-head{
+  display:flex;justify-content:space-between;gap:12px;align-items:flex-start;margin-bottom:10px
+}
+.common-editor-head div{display:flex;flex-direction:column;gap:2px}
+.common-editor-head b{font-size:14px;color:#174866}
+.common-editor-head span{font-size:10px;color:#627d8e}
+.common-rule-name{display:block;max-width:520px;margin-bottom:10px}
+.common-editor-block{
+  margin-top:9px;padding:9px 10px;border:1px solid #d6e3ea;border-radius:9px;background:#fff
+}
+.common-editor-block>b{display:block;margin-bottom:7px;font-size:11px;color:#264f68}
+.common-program-checks{
+  display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:6px 10px
+}
+.common-program-checks label{
+  display:flex;align-items:flex-start;gap:6px;padding:6px 7px;border-radius:7px;background:#f8fafb;
+  font-size:9.5px!important;line-height:1.25
+}
+.common-semester-checks{display:flex;gap:8px;flex-wrap:wrap}
+.common-semester-checks label{
+  display:flex;align-items:center;gap:5px;padding:6px 9px;border:1px solid #d4e0e7;border-radius:8px;background:#fafcfd
+}
+.common-editor-warning{
+  margin-top:9px;padding:8px 10px;border-radius:8px;background:#fff7e7;border:1px solid #e7d094;
+  color:#71571a;font-size:9.5px
+}
+.compact-actions{margin-top:10px!important}
+.common-rule-summary{
+  display:grid;grid-template-columns:1.2fr 1fr .7fr;gap:8px;padding:8px 10px;
+  border-bottom:1px solid #e2e9ed;font-size:10px
+}
+.common-rule-summary:last-child{border-bottom:0}
+
+/* Wordmark UTEQ: sin separador y con más aire */
+.sheetHead{
+  grid-template-columns:178px 1fr 110px!important;
+  gap:10px!important;
+}
+.brandPrint{
+  overflow:visible!important;
+  min-width:0!important;
+}
+.print-logo{
+  width:164px!important;
+  max-width:164px!important;
+  max-height:28px!important;
+  object-fit:contain!important;
+  object-position:left center!important;
+}
+
+/* Primera hoja: solo crecen los valores, no las etiquetas */
+.profile-first-sheet .first-profile-meta{
+  gap:24px!important;
+  margin:6px auto 9px!important;
+}
+.first-meta-item{
+  display:inline-flex!important;
+  align-items:baseline!important;
+  gap:5px!important;
+}
+.first-meta-label{
+  font-size:9px!important;
+  font-weight:700!important;
+}
+.first-meta-value{
+  font-size:16.5px!important;
+  line-height:1.05!important;
+  font-weight:800!important;
+  color:#102f45!important;
+}
+
+/* Impresión: +1 punto aproximado y encabezados reforzados */
+.program-trio .print-program-title{
+  font-size:8.8px!important;
+  font-weight:850!important;
+  padding:3px 4px!important;
+}
+.program-trio .currTable th{
+  font-size:8.2px!important;
+  font-weight:850!important;
+  line-height:1.02!important;
+}
+.program-trio .currTable td.subject{
+  font-size:10px!important;
+  line-height:1.08!important;
+  padding:1.3px 3px!important;
+}
+.program-trio .currTable td.level,
+.program-trio .currTable td.area{
+  font-size:8.4px!important;
+  font-weight:600!important;
+}
+.program-trio .currTable th.vhead{
+  font-weight:850!important;
+}
+
+/* Más ancho útil a asignatura; widths vienen inline desde JS */
+.currTable col.subject,
+.currTable col.level,
+.currTable col.area{width:auto}
+.program-trio .currTable td.subject{
+  overflow-wrap:anywhere;
+  word-break:normal;
+}
+
+/* Sin firmas/sello en páginas de programas */
+.program-trio .sign{display:none!important}
+
+/* Programas distribuidos en toda la hoja */
+.sheet.program-trio{
+  justify-content:flex-start!important;
+}
+.program-trio .print-program{
+  flex:1 1 0!important;
+  display:flex!important;
+  flex-direction:column!important;
+  min-height:0!important;
+}
+.program-trio .currTable{
+  flex:1 1 auto!important;
+}
+
+/* Color y B/N con contraste */
+.program-trio .currTable th{
+  border-color:#304d61!important;
+}
+.program-trio .currTable td{
+  border-color:#4a6475!important;
+}
+
+/* Responsive admin */
+@media(max-width:1100px){
+  .capture-control-grid{grid-template-columns:1fr}
+  .admin-grid-compact{grid-template-columns:repeat(2,minmax(0,1fr))!important}
+  .program-admin-item{grid-template-columns:1fr 120px 125px!important}
+  .program-admin-item>button:last-child{grid-column:3}
+  .common-program-checks{grid-template-columns:1fr}
+}
+@media(max-width:720px){
+  .admin-grid-compact{grid-template-columns:1fr!important}
+  .program-admin-item{grid-template-columns:1fr!important}
+}
+
+/* Ajuste final de impresión */
+@media print{
+  .sheetHead{
+    grid-template-columns:170px 1fr 106px!important;
+  }
+  .print-logo{
+    width:156px!important;
+    max-width:156px!important;
+    max-height:27px!important;
+  }
+  .first-meta-value{font-size:16px!important}
+  .program-trio .print-program-title{font-size:8.6px!important}
+  .program-trio .currTable th{font-size:8px!important}
+  .program-trio .currTable td.subject{font-size:9.7px!important}
+  .program-trio .currTable td.level,
+  .program-trio .currTable td.area{font-size:8.1px!important}
+}

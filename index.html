@@ -43,7 +43,6 @@
     <div class="hero-side">
       <div class="hero-chip">Formato institucional · EA-F-86</div>
       <div id="authStatus" class="auth-status">Sin sesión</div>
-      <div id="deadlineHeader" class="deadline-card header-deadline">Fecha límite no configurada.</div>
       <div class="save-cloud-line"><span id="lastSaved">Guardado local</span><span id="cloudStatus">Sincronización pendiente</span></div>
       <div class="auth-buttons">
         <button id="btnLogin" class="ghost" onclick="signIn()">Ingresar con cuenta institucional</button>
@@ -52,6 +51,9 @@
     </div>
   </div>
 </header>
+<div class="deadline-top-band">
+  <div id="deadlineHeader" class="deadline-card header-deadline">Fecha límite no configurada.</div>
+</div>
 
 <nav class="main-nav">
   <button data-view="perfil" class="active"><span class="nav-num">1</span><span class="nav-ico" aria-hidden="true">▣</span> Datos del profesor</button>
@@ -191,50 +193,46 @@
       <span class="admin-lock">🔒 Administración</span>
     </div>
 
-    <div class="card edit-control-card">
-      <div class="section-head">
+    <div class="card capture-control-card">
+      <div class="section-head compact-head">
         <div>
-          <h2>Edición de perfiles</h2>
-          <p>Permite mantener el acceso al sitio y bloquear temporalmente los controles de captura.</p>
+          <h2>Control de captura</h2>
+          <p>Administre en un solo lugar la edición general y la fecha/hora límite.</p>
         </div>
-        <span id="editModeStatus" class="edit-mode-status"></span>
-      </div>
-      <div class="admin-actions">
-        <button id="editModeBtn" class="edit-mode-btn" onclick="toggleEditingLock()"></button>
-      </div>
-    </div>
-
-
-    <div class="card deadline-admin-card">
-      <div class="section-head">
-        <div>
-          <h2>Fecha límite de captura</h2>
-          <p>Defina el momento exacto de cierre. Al vencer, los profesores podrán consultar e imprimir, pero no editar.</p>
+        <div class="capture-control-statuses">
+          <span id="editModeStatus" class="edit-mode-status"></span>
+          <span id="deadlineAdminStatus" class="deadline-admin-status"></span>
         </div>
-        <span id="deadlineAdminStatus" class="deadline-admin-status"></span>
       </div>
-      <div class="deadline-admin-grid">
-        <label>Fecha y hora de cierre
-          <input id="captureDeadlineAdmin" type="datetime-local">
-        </label>
-        <div id="deadlineAdminPreview" class="deadline-admin-preview"></div>
-      </div>
-      <div class="admin-actions">
-        <button class="primary" onclick="saveDeadline()">Guardar fecha límite</button>
-        <button class="danger-soft" onclick="closeCaptureNow()">Cerrar captura ahora</button>
-        <button onclick="clearDeadline()">Quitar fecha límite</button>
+      <div class="capture-control-grid">
+        <div class="control-panel-mini">
+          <b>Edición de perfiles</b>
+          <span>Puede cerrar o reabrir la edición sin impedir la consulta e impresión.</span>
+          <button id="editModeBtn" class="edit-mode-btn" onclick="toggleEditingLock()"></button>
+        </div>
+        <div class="control-panel-mini">
+          <b>Fecha límite</b>
+          <label>Fecha y hora de cierre<input id="captureDeadlineAdmin" type="datetime-local"></label>
+          <div id="deadlineAdminPreview" class="deadline-admin-preview"></div>
+          <div class="mini-actions">
+            <button class="primary" onclick="saveDeadline()">Guardar</button>
+            <button class="danger-soft" onclick="closeCaptureNow()">Cerrar ahora</button>
+            <button onclick="clearDeadline()">Quitar</button>
+          </div>
+        </div>
       </div>
     </div>
 
     <details class="card admin-details" open>
       <summary>Configuración institucional</summary>
-      <div class="admin-grid">
+      <div class="admin-grid admin-grid-compact">
         <label>Jefe de Unidad<input id="jefe"></label>
-        <label>Periodo de vigencia predeterminado<input id="periodoAdmin"></label>
-        <label>Código de calidad<input id="codigo"></label>
+        <label>Periodo de vigencia<input id="periodoAdmin"></label>
+        <label>Código<input id="codigo"></label>
         <label>Revisión<input id="revisionCal"></label>
         <label>Fecha de revisión<input id="fechaRevision"></label>
       </div>
+      <div class="period-preserve-note">Cambiar el periodo <b>no borra ni reinicia</b> los datos capturados por los profesores; únicamente actualiza la vigencia mostrada.</div>
       <div class="save-row"><button class="save-btn" onclick="saveAdmin()">Guardar configuración institucional</button></div>
     </details>
 
@@ -253,6 +251,7 @@
         <div><h2>Programas educativos activos</h2><p>Puede habilitar o deshabilitar cualquier programa. Los deshabilitados no aparecen en captura, impresión ni Excel.</p></div>
       </div>
       <div id="programAdminList" class="program-admin-list"></div>
+      <div id="commonRuleEditor" class="common-rule-editor hidden"></div>
     </div>
 
     <div class="card">
@@ -272,7 +271,7 @@
     </div>
 
     <div class="card">
-      <h3>Reglas de tronco común activas</h3>
+      <h3>Troncos comunes configurados</h3>
       <div id="commonRules"></div>
     </div>
   </section>

@@ -6,9 +6,13 @@ import { getFirestore, doc, getDoc, setDoc, collection, getDocs, onSnapshot, ser
 const $=id=>document.getElementById(id);
 const store=JSON.parse(localStorage.getItem('PAD_UTEQ')||'{}');
 const cfg=Object.assign({jefe:'Iván Gutiérrez Bautista',codigo:'EA-F-86',revision:'Rev.01',fechaRevision:'21-sep-2018',periodo:'SEP 2026 - AGO 2027',editingLocked:false,captureDeadline:null},store.cfg||{});
-let answers=store.answers||{},programMeta=store.programMeta||{},customPrograms=store.customPrograms||[],disabledPrograms=store.disabledPrograms||[],programAcronyms=store.programAcronyms||{};
+const DEFAULT_COMMON_RULES=[
+  {id:'TC_IND',name:'Tronco común Industrial',programIds:['ind_plasticos','ind_procesos'],semesters:[0,1,2]},
+  {id:'TC_MEC',name:'Tronco común Mecánica',programIds:['mec_ind','mec_moldes','mec_auto'],semesters:[0,1,2]}
+];
+let answers=store.answers||{},programMeta=store.programMeta||{},customPrograms=store.customPrograms||[],disabledPrograms=store.disabledPrograms||[],programAcronyms=store.programAcronyms||{},commonRules=Array.isArray(store.commonRules)?store.commonRules:JSON.parse(JSON.stringify(DEFAULT_COMMON_RULES));
 let currentProgramIndex=Number.isInteger(store.currentProgramIndex)?store.currentProgramIndex:0;
-let newSemesterCount=5,auth=null,currentUser=null,authReady=false,db=null,cloudSettingsUnsub=null,remoteProfileLoaded=false,cloudAvailable=false,cloudSaveTimer=null,countdownTimer=null,lastSavedAt=store.lastSavedAt||null;
+let newSemesterCount=5,auth=null,currentUser=null,authReady=false,db=null,cloudSettingsUnsub=null,remoteProfileLoaded=false,cloudAvailable=false,cloudSaveTimer=null,countdownTimer=null,lastSavedAt=store.lastSavedAt||null,editingCommonRuleId=null;
 const allowedDomain=(window.PAD_ALLOWED_DOMAIN||'uteq.edu.mx').toLowerCase();
 const adminEmail=(window.PAD_ADMIN_EMAIL||'ivan.gutierrez@uteq.edu.mx').toLowerCase();
 
@@ -125,6 +129,34 @@ window.toggleEditingLock=function(){
   toast(cfg.editingLocked?'Edición de perfiles desactivada.':'Edición de perfiles activada.');
 }
 
+
+function normalizeSubjectName(name){
+  return subjectCase(name||'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase().trim();
+}
+function commonRuleFor(pid,s){
+  return commonRules.find(r=>
+    Array.isArray(r.programIds)&&r.programIds.includes(pid)&&
+    Array.isArray(r.semesters)&&r.semesters.includes(s)
+  )||null;
+}
+function commonRuleForProgram(pid){
+  return commonRules.find(r=>Array.isArray(r.programIds)&&r.programIds.includes(pid))||null;
+}
+function logicalCourseKey(pid,s,c,name){
+  const rule=commonRuleFor(pid,s);
+  return rule?`${rule.id}|${s}|${normalizeSubjectName(name)}`:`${pid}|${s}|${c}`;
+}
+function commonDescription(pid){
+  const rule=commonRuleForProgram(pid);
+  if(!rule)return '';
+  const sems=(rule.semesters||[]).map(x=>x+1).sort((a,b)=>a-b).join(', ');
+  const names=(rule.programIds||[]).map(id=>{
+    const p=allPrograms().find(x=>x.id===id);
+    return p?programAcronym(p):id;
+  }).join(' · ');
+  return `${rule.name}: cuatrimestre${rule.semesters?.length===1?'':'s'} ${sems} · ${names}`;
+}
+
 function getAns(pid,s,c,name){
   const k=key(pid,s,c);
   if(isEnglish(name)){answers[k]={status:'na',origins:[],ideal:false};return answers[k]}
@@ -134,7 +166,7 @@ function getAns(pid,s,c,name){
 function toast(msg){const t=$('toast');t.textContent=msg;t.classList.add('show');clearTimeout(toast.timer);toast.timer=setTimeout(()=>t.classList.remove('show'),2400)}
 function persist(){
   cfg.periodo=cfg.periodo||'SEP 2026 - AGO 2027';
-  store.cfg=cfg;store.answers=answers;store.programMeta=programMeta;store.customPrograms=customPrograms;store.disabledPrograms=disabledPrograms;store.programAcronyms=programAcronyms;store.currentProgramIndex=currentProgramIndex;store.lastSavedAt=Date.now();
+  store.cfg=cfg;store.answers=answers;store.programMeta=programMeta;store.customPrograms=customPrograms;store.disabledPrograms=disabledPrograms;store.programAcronyms=programAcronyms;store.commonRules=commonRules;store.currentProgramIndex=currentProgramIndex;store.lastSavedAt=Date.now();
   lastSavedAt=store.lastSavedAt;
   localStorage.setItem('PAD_UTEQ',JSON.stringify(store));
   updateLastSavedUI();
@@ -157,7 +189,8 @@ function globalSettingsPayload(){
     cfg:{...cfg},
     disabledPrograms:[...disabledPrograms],
     customPrograms:JSON.parse(JSON.stringify(customPrograms)),
-    programAcronyms:{...programAcronyms}
+    programAcronyms:{...programAcronyms},
+    commonRules:JSON.parse(JSON.stringify(commonRules))
   };
 }
 function applyGlobalSettings(data){
@@ -166,8 +199,9 @@ function applyGlobalSettings(data){
   if(Array.isArray(data.disabledPrograms))disabledPrograms=data.disabledPrograms;
   if(Array.isArray(data.customPrograms))customPrograms=data.customPrograms;
   if(data.programAcronyms&&typeof data.programAcronyms==='object')programAcronyms=data.programAcronyms;
+  if(Array.isArray(data.commonRules))commonRules=data.commonRules;
   currentProgramIndex=Math.min(currentProgramIndex,Math.max(0,programs().length-1));
-  localStorage.setItem('PAD_UTEQ',JSON.stringify({...store,cfg,answers,programMeta,customPrograms,disabledPrograms,programAcronyms,currentProgramIndex,lastSavedAt}));
+  localStorage.setItem('PAD_UTEQ',JSON.stringify({...store,cfg,answers,programMeta,customPrograms,disabledPrograms,programAcronyms,commonRules,currentProgramIndex,lastSavedAt}));
   updatePeriodBadges();renderCurrentProgram();renderAdmin();updateCountdownUI();updateNavState();
 }
 async function saveGlobalSettings(action='Configuración global actualizada'){
@@ -222,7 +256,7 @@ async function loadRemoteProfile(){
       if(d.answers)answers=d.answers;
       if(d.programMeta)programMeta=d.programMeta;
       store.answers=answers;store.programMeta=programMeta;
-      localStorage.setItem('PAD_UTEQ',JSON.stringify({...store,cfg,customPrograms,disabledPrograms,programAcronyms,currentProgramIndex,lastSavedAt}));
+      localStorage.setItem('PAD_UTEQ',JSON.stringify({...store,cfg,customPrograms,disabledPrograms,programAcronyms,commonRules,currentProgramIndex,lastSavedAt}));
       loadProfileValuesOnly();
       renderCurrentProgram();
       updateProgress();
@@ -383,7 +417,21 @@ window.setEnabled=function(pid,s,c,name,on){if(!requireEditing())return;if(isEng
 window.setCompetence=function(pid,s,c,name,level){if(!requireEditing())return;const r=getAns(pid,s,c,name);if(['off','na'].includes(r.status))return;r.status=level;r.origins=[];answers[key(pid,s,c)]=r;replicateCommon(pid,s,c,r);persist();renderCurrentProgram()}
 window.setOriginCode=function(pid,s,c,name,code){if(!requireEditing())return;const r=getAns(pid,s,c,name);if(!['X','XX'].includes(r.status))return;r.origins=normalizeOrigins(code);answers[key(pid,s,c)]=r;replicateCommon(pid,s,c,r);persist();renderCurrentProgram()}
 window.toggleIdeal=function(pid,s,c,name){if(!requireEditing())return;const r=getAns(pid,s,c,name);if(!['X','XX'].includes(r.status)||(r.origins||[]).length===0){toast('Primero seleccione competencia y área de conocimiento.');return}r.ideal=!r.ideal;answers[key(pid,s,c)]=r;replicateCommon(pid,s,c,r);persist();renderCurrentProgram()}
-function replicateCommon(pid,s,c,r){const p=programs().find(x=>x.id===pid);if(!(s<3&&p&&p.common&&COMMON_GROUPS[p.common]))return;COMMON_GROUPS[p.common].forEach(other=>answers[key(other,s,c)]={status:r.status,origins:[...(r.origins||[])],ideal:!!r.ideal})}
+function replicateCommon(pid,s,c,r){
+  const source=allPrograms().find(x=>x.id===pid);
+  const sourceName=source?.semesters?.[s]?.[c];
+  const rule=commonRuleFor(pid,s);
+  if(!source||!sourceName||!rule)return;
+  const normalized=normalizeSubjectName(sourceName);
+  (rule.programIds||[]).forEach(other=>{
+    if(other===pid)return;
+    const target=allPrograms().find(x=>x.id===other);
+    const targetSem=target?.semesters?.[s]||[];
+    const tc=targetSem.findIndex(n=>normalizeSubjectName(n)===normalized);
+    if(tc<0)return;
+    answers[key(other,s,tc)]={status:r.status,origins:[...(r.origins||[])],ideal:!!r.ideal};
+  });
+}
 
 function programStats(p){let total=0,done=0,missing=0;p.semesters.forEach((sem,s)=>sem.forEach((name,c)=>{if(isEnglish(name))return;total++;const a=getAns(p.id,s,c,name);if(a.status!=='pending')done++;else missing++}));return{total,done,missing}}
 function overallStats(){
@@ -396,7 +444,7 @@ function overallStats(){
     if(a.status!=='pending')done++;
     else{
       pending.push({pi,name});
-      const logical=(s<3&&p.common)?`${p.common}|${s}|${c}`:`${p.id}|${s}|${c}`;
+      const logical=logicalCourseKey(p.id,s,c,name);
       if(!pendingLogical.has(logical))pendingLogical.set(logical,{pi,name});
     }
     if(['X','XX'].includes(a.status)&&!(a.origins||[]).length)invalid++;
@@ -446,7 +494,7 @@ function renderCurrentProgram(){
   $('programFlowName').textContent=`${p.name} — ${p.exit}`;
   const st=programStats(p);
   let bg = pastelTitles[currentProgramIndex % pastelTitles.length];
-  let h=`<article class="program"><div class="program-head" style="background:${bg}"><div class="program-title"><strong>${p.name}</strong><span><b>Salida lateral:</b> ${p.exit}</span></div><div class="program-progress">${st.done}/${st.total} revisadas${st.missing?` · ${st.missing} pendientes`:''}</div></div>${p.common?`<div class="common-note">Tronco común: los cuatrimestres 1–3 se sincronizan automáticamente con los demás programas de esta familia.</div>`:''}${renderCoordinator(p)}<div class="program-scroll-wrap"><div class="scroll-hint">↔ Si la pantalla es más angosta, desplácese horizontalmente para ver todas las columnas.</div><div class="semesters-grid">`;
+  let h=`<article class="program"><div class="program-head" style="background:${bg}"><div class="program-title"><strong>${p.name}</strong><span><b>Salida lateral:</b> ${p.exit}</span></div><div class="program-progress">${st.done}/${st.total} revisadas${st.missing?` · ${st.missing} pendientes`:''}</div></div>${commonRuleForProgram(p.id)?`<div class="common-note">${commonDescription(p.id)}</div>`:''}${renderCoordinator(p)}<div class="program-scroll-wrap"><div class="scroll-hint">↔ Si la pantalla es más angosta, desplácese horizontalmente para ver todas las columnas.</div><div class="semesters-grid">`;
   p.semesters.forEach((sem,s)=>{
     h+=`<div class="semester-card"><h4>${s+1}.° cuatrimestre <span>${sem.length} asignaturas</span></h4><div class="course-columns"><span>Asignatura</span><span>Habilitar</span><span>Competencia</span><span>Área conocimiento</span><span>Favorito</span></div>`;
     sem.forEach((name,c)=>{
@@ -499,7 +547,7 @@ function metaCentered(){return `<div class="meta center compactline"><span><b>No
 function signatures(){return `<div class="sign"><div class="signature-line">${fullName()}<br>Firma del Profesor</div><div class="stamp-box">SELLO</div><div class="signature-line">${cfg.jefe}<br>Jefe de Unidad de Coordinación Académica</div></div>`}
 function preambleSheet(){
   const p=store.profile||{},e=p.extra||{},f=['Licenciatura o TSU','Posgrado 1','Posgrado 2','Posgrado 3','Posgrado 4','Posgrado 5','Posgrado 6'];
-  return `<div class="sheet profile-first-sheet">${printHeader()}<div class="meta center compactline first-profile-meta"><span><b>Nombre:</b> ${fullName()}</span><span><b>Categoría:</b> ${store.profile?.categoria||''}</span></div><table class="profileTable"><tr><th colspan="4">1. FORMACIÓN PROFESIONAL</th></tr>${f.map((lab,i)=>`<tr><td><b>${lab}</b></td><td>${e[`f${i+1}a`]||''}</td><td><b>Institución</b></td><td>${e[`f${i+1}b`]||''}</td></tr>`).join('')}<tr><th colspan="4">2. EXPERIENCIA DOCENTE</th></tr>${[1,2,3,4].map(i=>`<tr><td><b>Institución ${i}</b></td><td colspan="2">${e[`d${i}a`]||''}</td><td><b>Periodo:</b> ${e[`d${i}c`]||''}</td></tr>`).join('')}<tr><th colspan="4">3. EXPERIENCIA LABORAL</th></tr>${[1,2,3,4,5].map(i=>`<tr><td><b>Organización ${i}</b></td><td>${e[`l${i}a`]||''}</td><td><b>Cargo:</b> ${e[`l${i}b`]||''}</td><td><b>Periodo:</b> ${e[`l${i}c`]||''}</td></tr>`).join('')}</table>${signatures()}</div>`
+  return `<div class="sheet profile-first-sheet">${printHeader()}<div class="meta center compactline first-profile-meta"><span class="first-meta-item"><b class="first-meta-label">Nombre:</b><strong class="first-meta-value">${fullName()}</strong></span><span class="first-meta-item"><b class="first-meta-label">Categoría:</b><strong class="first-meta-value">${store.profile?.categoria||''}</strong></span></div><table class="profileTable"><tr><th colspan="4">1. FORMACIÓN PROFESIONAL</th></tr>${f.map((lab,i)=>`<tr><td><b>${lab}</b></td><td>${e[`f${i+1}a`]||''}</td><td><b>Institución</b></td><td>${e[`f${i+1}b`]||''}</td></tr>`).join('')}<tr><th colspan="4">2. EXPERIENCIA DOCENTE</th></tr>${[1,2,3,4].map(i=>`<tr><td><b>Institución ${i}</b></td><td colspan="2">${e[`d${i}a`]||''}</td><td><b>Periodo:</b> ${e[`d${i}c`]||''}</td></tr>`).join('')}<tr><th colspan="4">3. EXPERIENCIA LABORAL</th></tr>${[1,2,3,4,5].map(i=>`<tr><td><b>Organización ${i}</b></td><td>${e[`l${i}a`]||''}</td><td><b>Cargo:</b> ${e[`l${i}b`]||''}</td><td><b>Periodo:</b> ${e[`l${i}c`]||''}</td></tr>`).join('')}</table>${signatures()}</div>`
 }
 function pastelColor(index){
   return ['#dcecf8','#f5e3d2','#dfeee2','#e8e1f2','#f8e7d7','#dceff0','#f2dde3','#e1ecd7'][index % 8]
@@ -507,7 +555,8 @@ function pastelColor(index){
 function printProgram(pr, idx){
   const max=Math.max(...pr.semesters.map(s=>s.length));
   const pastel=pastelColor(idx);
-  const colgroup=`<colgroup>${Array.from({length:pr.semesters.length},()=>`<col class="subject"><col class="level"><col class="area">`).join('')}</colgroup>`;
+  const nSem=Math.max(1,pr.semesters.length),levelW=1.7,areaW=2.35,subjectW=(100/nSem)-levelW-areaW;
+  const colgroup=`<colgroup>${Array.from({length:nSem},()=>`<col class="subject" style="width:${subjectW}%"><col class="level" style="width:${levelW}%"><col class="area" style="width:${areaW}%">`).join('')}</colgroup>`;
   const th=pr.semesters.map((s,i)=>`<th colspan="3" style="background:${pastel}">${i+1}.° CUATRIMESTRE</th>`).join('');
   const sub=pr.semesters.map(()=>`<th style="background:${pastel}">Asignatura</th><th class="vhead" style="background:${pastel}">Nivel</th><th class="vhead" style="background:${pastel}">Área de competencia</th>`).join('');
   let rows='';
@@ -526,7 +575,7 @@ function buildPrint(){
   const ps=programs();
   let html=preambleSheet();
   for(let i=0;i<ps.length;i+=3){
-    html+=`<div class="sheet program-trio">${printHeader()}${metaCentered()}${printProgram(ps[i],i)}${ps[i+1]?printProgram(ps[i+1],i+1):''}${ps[i+2]?printProgram(ps[i+2],i+2):''}${signatures()}</div>`
+    html+=`<div class="sheet program-trio">${printHeader()}${metaCentered()}${printProgram(ps[i],i)}${ps[i+1]?printProgram(ps[i+1],i+1):''}${ps[i+2]?printProgram(ps[i+2],i+2):''}</div>`
   }
   $('printArea').innerHTML=html
 }
@@ -556,7 +605,18 @@ window.clearDeadline=function(){
   cfg.captureDeadline=null;persist();updateCountdownUI();saveGlobalSettings('Fecha límite eliminada');toast('Fecha límite eliminada.');
 }
 
-window.saveAdmin=function(){cfg.jefe=$('jefe').value.trim()||cfg.jefe;cfg.codigo=$('codigo').value.trim()||cfg.codigo;cfg.revision=$('revisionCal').value.trim()||cfg.revision;cfg.fechaRevision=$('fechaRevision').value.trim()||cfg.fechaRevision;cfg.periodo=$('periodoAdmin').value.trim()||cfg.periodo;updatePeriodBadges();persist();saveGlobalSettings('Configuración institucional actualizada');toast('Configuración guardada.')}
+window.saveAdmin=function(){
+  const previousPeriod=cfg.periodo;
+  cfg.jefe=$('jefe').value.trim()||cfg.jefe;
+  cfg.codigo=$('codigo').value.trim()||cfg.codigo;
+  cfg.revision=$('revisionCal').value.trim()||cfg.revision;
+  cfg.fechaRevision=$('fechaRevision').value.trim()||cfg.fechaRevision;
+  cfg.periodo=$('periodoAdmin').value.trim()||cfg.periodo;
+  // El periodo es solo metadato de vigencia: nunca limpia profile, answers ni programMeta.
+  updatePeriodBadges();persist();
+  saveGlobalSettings(previousPeriod===cfg.periodo?'Configuración institucional actualizada':`Periodo actualizado de ${previousPeriod} a ${cfg.periodo} sin borrar perfiles`);
+  toast(previousPeriod===cfg.periodo?'Configuración guardada.':'Periodo actualizado. Los datos capturados se conservaron.');
+}
 function renderAdmin(){
   $('jefe').value=cfg.jefe;$('codigo').value=cfg.codigo;$('revisionCal').value=cfg.revision;$('fechaRevision').value=cfg.fechaRevision;$('periodoAdmin').value=cfg.periodo;
   if($('captureDeadlineAdmin'))$('captureDeadlineAdmin').value=toLocalDateTimeValue(cfg.captureDeadline);updateCountdownUI();
@@ -598,6 +658,68 @@ window.setProgramAcronym=function(id,value){
   programAcronyms[id]=clean;persist();saveGlobalSettings('Acrónimo de programa actualizado');renderProgramAdminList();toast('Acrónimo actualizado.');
 }
 
+
+window.openCommonRuleEditor=function(pid){
+  if(!isAdmin())return;
+  const existing=commonRuleForProgram(pid);
+  editingCommonRuleId=existing?.id||null;
+  const base=existing?JSON.parse(JSON.stringify(existing)):{
+    id:'TC_'+Date.now(),
+    name:'Nuevo tronco común',
+    programIds:[pid],
+    semesters:[0,1,2]
+  };
+  const maxSem=Math.max(...allPrograms().map(p=>p.semesters.length),5);
+  const root=$('commonRuleEditor');
+  root.classList.remove('hidden');
+  root.innerHTML=`<div class="common-editor-head">
+      <div><b>Configurar tronco común</b><span>Seleccione qué programas comparten materias y en qué cuatrimestres.</span></div>
+      <button onclick="closeCommonRuleEditor()">Cerrar</button>
+    </div>
+    <label class="common-rule-name">Nombre del tronco<input id="commonRuleName" value="${base.name.replace(/"/g,'&quot;')}"></label>
+    <div class="common-editor-block"><b>Programas que lo comparten</b>
+      <div class="common-program-checks">${allPrograms().map(p=>`<label><input type="checkbox" data-common-program="${p.id}" ${base.programIds.includes(p.id)?'checked':''}>${programAcronym(p)} · ${p.exit}</label>`).join('')}</div>
+    </div>
+    <div class="common-editor-block"><b>Cuatrimestres sincronizados</b>
+      <div class="common-semester-checks">${Array.from({length:maxSem},(_,i)=>`<label><input type="checkbox" data-common-sem="${i}" ${base.semesters.includes(i)?'checked':''}>${i+1}.°</label>`).join('')}</div>
+    </div>
+    <div class="common-editor-warning">La sincronización se realiza por <b>nombre de asignatura</b>. Solo se copiará la respuesta entre materias con el mismo nombre en el mismo cuatrimestre.</div>
+    <div class="admin-actions compact-actions">
+      <button class="primary" onclick="saveCommonRule('${base.id}')">Guardar tronco común</button>
+      ${existing?`<button class="danger-soft" onclick="deleteCommonRule('${existing.id}')">Quitar este tronco común</button>`:''}
+    </div>`;
+  root.scrollIntoView({behavior:'smooth',block:'center'});
+}
+window.closeCommonRuleEditor=function(){
+  editingCommonRuleId=null;
+  const root=$('commonRuleEditor');if(root){root.classList.add('hidden');root.innerHTML=''}
+}
+window.saveCommonRule=function(id){
+  if(!isAdmin())return;
+  const name=($('commonRuleName')?.value||'Tronco común').trim()||'Tronco común';
+  const programIds=[...document.querySelectorAll('[data-common-program]:checked')].map(x=>x.dataset.commonProgram);
+  const semesters=[...document.querySelectorAll('[data-common-sem]:checked')].map(x=>Number(x.dataset.commonSem)).sort((a,b)=>a-b);
+  if(programIds.length<2){toast('Seleccione al menos dos programas educativos.');return}
+  if(!semesters.length){toast('Seleccione al menos un cuatrimestre.');return}
+  // Un programa solo puede pertenecer a un tronco común a la vez.
+  commonRules=commonRules
+    .filter(r=>r.id!==editingCommonRuleId&&r.id!==id)
+    .map(r=>({...r,programIds:(r.programIds||[]).filter(pid=>!programIds.includes(pid))}))
+    .filter(r=>(r.programIds||[]).length>=2);
+  commonRules.push({id,name,programIds,semesters});
+  persist();saveGlobalSettings('Tronco común actualizado');
+  renderAdmin();renderCurrentProgram();updateProgress();lockRevisionNav();
+  closeCommonRuleEditor();toast('Tronco común guardado.');
+}
+window.deleteCommonRule=function(id){
+  if(!isAdmin())return;
+  if(!confirm('¿Quitar esta configuración de tronco común? Los datos ya capturados no se eliminarán.'))return;
+  commonRules=commonRules.filter(r=>r.id!==id);
+  persist();saveGlobalSettings('Tronco común eliminado');
+  renderAdmin();renderCurrentProgram();updateProgress();lockRevisionNav();
+  closeCommonRuleEditor();toast('Tronco común eliminado.');
+}
+
 window.toggleProgramEnabled=function(id){
   if(!isAdmin()){toast('Solo el administrador puede cambiar programas.');return}
   if(disabledPrograms.includes(id))disabledPrograms=disabledPrograms.filter(x=>x!==id);
@@ -616,9 +738,11 @@ function renderProgramAdminList(){
   root.innerHTML=allPrograms().map(p=>{
     const enabled=!disabledPrograms.includes(p.id);
     const custom=p.id.startsWith('custom_');
+    const rule=commonRuleForProgram(p.id);
     return `<div class="program-admin-item ${enabled?'':'disabled'}">
-      <div><b>${p.name}</b><small>${p.exit}${custom?' · Programa agregado':''}</small></div>
+      <div><b>${p.name}</b><small>${p.exit}${custom?' · Programa agregado':''}${rule?` · <strong>Tronco común</strong>`:''}</small></div>
       <label class="acronym-edit">Acrónimo<input value="${programAcronym(p)}" maxlength="18" onchange="setProgramAcronym('${p.id}',this.value)"></label>
+      <button class="common-program-btn ${rule?'active':''}" onclick="openCommonRuleEditor('${p.id}')">${rule?'Tronco común ✓':'Configurar tronco'}</button>
       <button class="${enabled?'disable-program':'enable-program'}" onclick="toggleProgramEnabled('${p.id}')">${enabled?'Deshabilitar':'Habilitar'}</button>
     </div>`
   }).join('');
@@ -628,7 +752,17 @@ window.deleteCustomProgram=function(id){if(!confirm('¿Eliminar este programa?')
 function renderCustomPrograms(){
   $('customProgramsList').innerHTML=customPrograms.length?`<h3 style="margin-top:16px">Programas agregados</h3>`+customPrograms.map(p=>`<div class="custom-program-item"><div><b>${p.name}</b><br>${p.exit}<br><small>${p.semesters.reduce((n,s)=>n+s.length,0)} materias · horas configuradas</small></div><button onclick="deleteCustomProgram('${p.id}')">Eliminar</button></div>`).join(''):''
 }
-function renderRules(){$('commonRules').innerHTML=`<p><b>Ingeniería Industrial:</b> cuatrimestres 1–3 sincronizados entre Procesos Productivos y Moldeo de Plásticos.</p><p><b>Ingeniería Mecánica:</b> cuatrimestres 1–3 sincronizados entre Mecánica Industrial, Mecánica Automotriz y Mecánica Moldes y Troqueles.</p><p><b>Sin tronco común:</b> Mecánica Automotriz / Diseño y Manufactura Automotriz, Nanotecnología y Mantenimiento Industrial.</p>`}
+function renderRules(){
+  const root=$('commonRules');if(!root)return;
+  root.innerHTML=commonRules.length?commonRules.map(r=>{
+    const programsText=(r.programIds||[]).map(id=>{
+      const p=allPrograms().find(x=>x.id===id);
+      return p?programAcronym(p):id;
+    }).join(' · ');
+    const sems=(r.semesters||[]).map(x=>`${x+1}.°`).join(', ');
+    return `<div class="common-rule-summary"><b>${r.name}</b><span>${programsText}</span><span>Cuatrimestres: ${sems}</span></div>`;
+  }).join(''):'<div class="coord-empty">No hay troncos comunes configurados.</div>';
+}
 
 async function exportWorkbook(){
   const XLSX=window.XLSX;
@@ -799,7 +933,7 @@ async function exportWorkbook(){
   ];
 
   // --- Hoja 3: Catálogo ---
-  const catalog=ps.flatMap(pr=>pr.semesters.flatMap((sem,s)=>sem.map(name=>({
+  const catalog=ps.flatMap(pr=>pr.semesters.flatMap((sem,s)=>sem.map((name,c)=>({
     Programa:pr.name,
     'Acrónimo PE':programAcronym(pr),
     'Salida lateral':pr.exit,

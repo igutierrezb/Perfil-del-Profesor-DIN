@@ -1,24 +1,24 @@
-# Arquitectura V10
+# Arquitectura V11
 
-## Capa local
-`localStorage` se conserva como respaldo inmediato y permite que la aplicación siga operando si Firestore no está disponible.
+## Periodo
+`cfg.periodo` es únicamente metadato visual y administrativo. Cambiarlo no crea un perfil nuevo ni elimina:
+- `profile`;
+- `answers`;
+- `programMeta`.
 
-## Capa central Firestore
-- `settings/app`: configuración global, fecha límite, estado de edición, programas activos, programas personalizados y acrónimos.
-- `profiles/{uid}`: perfil vigente del profesor; se sobrescribe con la versión actual.
-- `audit/{id}`: registro básico de acciones relevantes.
+El documento Firestore del profesor continúa siendo `profiles/{uid}`, por lo que el perfil vigente se sobrescribe y conserva entre cambios de periodo.
 
-No se crea histórico anual: el perfil vigente se actualiza/sobrescribe, conforme a la decisión funcional del proyecto.
+## Troncos comunes
+`commonRules` se almacena en configuración global. Cada regla contiene:
+- `id`;
+- `name`;
+- `programIds`;
+- `semesters` (índices base 0).
 
-## Cierre de captura
-`cfg.captureDeadline` guarda un timestamp. Cuando vence:
-- profesores: solo consulta/impresión;
-- administrador: conserva edición;
-- el contador cambia a “CAPTURA FUERA DE TIEMPO”.
+La réplica busca la misma asignatura por nombre normalizado en el mismo cuatrimestre. Esto evita depender de que la asignatura tenga exactamente la misma posición dentro de las listas.
 
-## Excel
-- Concentrado perfiles.
-- Base maestra.
-- Catálogo.
-- Resumen por asignatura.
-Marcas: `★` favorito y `C` coordinador de academia.
+## Impresión
+- firmas y sello: solo primera hoja;
+- tres programas por hoja posterior;
+- columnas de asignatura calculadas según cantidad de cuatrimestres;
+- Nivel y Área mantienen columnas estrechas.
