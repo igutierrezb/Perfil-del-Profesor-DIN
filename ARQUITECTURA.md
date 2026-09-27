@@ -1,45 +1,37 @@
-# Arquitectura · Perfil Académico Docente DIN
+# Arquitectura V3
 
-## Separación lógica
-1. **Catálogo curricular** (`catalog.js`): programas, salidas laterales, cuatrimestres y asignaturas base.
-2. **Datos del profesor**: información personal, formación, experiencia docente y laboral.
-3. **Perfil por asignatura**:
-   - `pending`: aún no revisada.
-   - `off`: revisada y conscientemente desactivada; se imprime vacía.
-   - `X`: competencia media.
-   - `XX`: competencia alta.
-   - `na`: NO APLICA; utilizado automáticamente para Inglés; se imprime vacío.
-4. **Origen del conocimiento**: 1 formación, 2 experiencia docente, 3 experiencia laboral; combinables.
-5. **Preferencias**: materia ideal y coordinación de academia.
-6. **Administración**: configuración institucional, catálogo adicional y exportación Office 365.
-7. **Formalización**: impresión/PDF derivada de la misma captura; no es la fuente primaria.
+## Estado por asignatura
+- `pending`: habilitada pero todavía no revisada; se resalta en rojo.
+- `off`: revisada y deshabilitada; se imprime en blanco.
+- `X`: competencia media.
+- `XX`: competencia alta.
+- `na`: Inglés / NO APLICA; bloqueada y se imprime en blanco.
 
-## Reglas de tronco común
-Solo se sincronizan:
-- Ingeniería Industrial: Procesos Productivos ↔ Moldeo de Plásticos, cuatrimestres 1–3.
-- Ingeniería Mecánica: Mecánica Industrial ↔ Mecánica Automotriz ↔ Mecánica Moldes y Troqueles, cuatrimestres 1–3.
+Las materias parten de `pending`, salvo Inglés (`na`).
 
-No se sincronizan:
-- Ingeniería en Mecánica Automotriz / Diseño y Manufactura Automotriz.
-- Nanotecnología.
-- Mantenimiento Industrial.
-- Programas agregados desde Administración, salvo que una versión futura permita configurar explícitamente un tronco común.
+## Área del conocimiento
+Se almacena como arreglo de dígitos, pero la interfaz obliga a una sola combinación explícita:
+`1`, `2`, `3`, `12`, `13`, `23`, `123`.
 
-## Exportación Excel
-La exportación se encuentra únicamente en Administración y genera:
-- Base maestra
-- Resumen profesor
-- Materias ideales
-- Coordinaciones
-- Catálogo
+## Tronco común
+Sincroniza estado, competencia, área e ideal:
+- IND: Procesos Productivos ↔ Moldeo de Plásticos, cuatrimestres 1–3.
+- MEC: Mecánica Industrial ↔ Mecánica Automotriz ↔ Mecánica Moldes y Troqueles, cuatrimestres 1–3.
 
-Usa SheetJS desde CDN y genera `.xlsx`, utilizable en Microsoft Office 365.
+## Coordinación de academia
+Es opcional, permite múltiples materias y se conserva por programa educativo.
 
-## Etapa siguiente: autenticación
-La siguiente versión deberá:
-- autenticar exclusivamente usuarios `@uteq.edu.mx`;
-- diferenciar rol profesor / administrador;
-- ocultar y proteger Administración y exportación Excel;
-- conservar perfil por usuario en una base central;
-- mantener historial por periodo de vigencia;
-- permitir que un profesor abra el nuevo periodo con su captura anterior precargada.
+## Impresión
+- Hoja 1: datos generales, formación y experiencia.
+- Hojas siguientes: dos programas educativos por hoja.
+- Una zona de firmas y sello por hoja.
+- Calidad mostrada en línea, sin tabla.
+
+## Administración
+La V3 usa un bloqueo visual temporal mediante PIN. No debe considerarse control de acceso seguro.
+La siguiente etapa debe implementar:
+1. autenticación de usuarios `@uteq.edu.mx`;
+2. rol profesor / administrador;
+3. almacenamiento central por usuario y periodo;
+4. historial de versiones;
+5. Administración y exportación Excel protegidas en backend.

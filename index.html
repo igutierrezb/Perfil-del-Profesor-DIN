@@ -10,7 +10,7 @@
 <header class="hero">
   <div class="hero-inner">
     <div class="brand-block">
-      <img src="logo-uteq.png" class="hero-logo" alt="UTEQ">
+      <img src="icono-industria.svg" class="hero-icon" alt="División Industrial">
       <div>
         <div class="eyebrow">Universidad Tecnológica de Querétaro · División Industrial</div>
         <h1>Perfil Académico Docente</h1>
@@ -29,7 +29,7 @@
   <button data-view="perfil" class="active"><span>1</span> Datos del profesor</button>
   <button data-view="captura"><span>2</span> Perfil por programa</button>
   <button data-view="revision" id="navRevision"><span>3</span> Revisión e impresión</button>
-  <button data-view="admin" class="admin-tab"><span>⚙</span> Administración</button>
+  <button data-view="admin" id="adminTab" class="admin-tab hidden"><span>⚙</span> Administración</button>
 </nav>
 
 <main>
@@ -38,20 +38,20 @@
       <div>
         <span class="section-kicker">Actualización de perfil</span>
         <h2>Información general del profesor</h2>
-        <p>Los datos marcados como obligatorios deben capturarse antes de continuar al perfil por programa. La información se conserva para futuras actualizaciones.</p>
+        <p>Los datos obligatorios deben capturarse antes de continuar. La información se conserva en este navegador para futuras actualizaciones.</p>
       </div>
       <div class="welcome-badge">Paso 1 de 3</div>
     </div>
 
     <div class="card section-card">
       <div class="section-head">
-        <div><h2>Datos del profesor</h2><p>Capture apellidos, nombres y categoría tal como deberán aparecer en el formato.</p></div>
+        <div><h2>Datos del profesor</h2><p>Capture apellidos, nombres y categoría como deberán aparecer en el formato.</p></div>
         <span class="required-note">Obligatorio</span>
       </div>
       <div class="teacher-line">
-        <label>Apellido paterno *<input id="apPat" autocomplete="family-name"></label>
+        <label>Apellido paterno *<input id="apPat"></label>
         <label>Apellido materno *<input id="apMat"></label>
-        <label>Nombres *<input id="nombres" autocomplete="given-name"></label>
+        <label>Nombres *<input id="nombres"></label>
         <label class="category-field">Categoría *<select id="categoria"></select></label>
       </div>
       <div class="save-row"><button class="save-btn" onclick="saveSection('datos')">Guardar datos del profesor</button></div>
@@ -59,7 +59,7 @@
 
     <div class="card section-card">
       <div class="section-head">
-        <div><h2>1. Formación profesional</h2><p>La primera línea es obligatoria. No se solicita periodo.</p></div>
+        <div><h2>1. Formación profesional</h2><p>La primera línea es obligatoria.</p></div>
         <span class="required-note">1ª línea obligatoria</span>
       </div>
       <div id="formacion"></div>
@@ -91,11 +91,11 @@
   </section>
 
   <section id="captura" class="view">
-    <div class="card sticky profile-toolbar">
+    <div class="card profile-toolbar">
       <div class="toolbar-left">
         <span class="section-kicker">Paso 2 de 3</span>
         <h2>Perfil por programa educativo</h2>
-        <p>Cada asignatura debe revisarse. <b>X = Medio</b>, <b>XX = Alto</b>. Con X o XX es obligatorio indicar el origen del conocimiento.</p>
+        <p>Las asignaturas aparecen <b>habilitadas</b> al iniciar. Para revisarlas, marque X/XX y su área de conocimiento, o deshabilítelas si no puede impartirlas.</p>
       </div>
       <div class="progress">
         <strong id="progressText"></strong>
@@ -104,10 +104,27 @@
       </div>
     </div>
 
-    <div class="legend-card card">
-      <div class="legend-group"><b>Nivel de competencia</b><span class="pill">X · Medio</span><span class="pill">XX · Alto</span></div>
-      <div class="legend-group"><b>Área que da el conocimiento de la asignatura</b><span class="pill">1 · Formación</span><span class="pill">2 · Docencia</span><span class="pill">3 · Laboral</span><small>Puede seleccionar 1, 2, 3, 12, 13, 23 o 123.</small></div>
-      <div class="legend-group"><b>Preferencias</b><span class="pill star">★ Materia ideal</span><span class="pill coord">Coordinación de academia</span></div>
+    <div class="instruction-band card">
+      <div class="instruction-title">Cómo capturar cada asignatura</div>
+      <div class="instruction-grid">
+        <div><b>1. Asignatura</b><span>Revise cada materia del programa.</span></div>
+        <div><b>2. Habilitar</b><span>Encendido = puede valorarla. Apagado = se imprimirá en blanco.</span></div>
+        <div><b>3. Competencia</b><span><strong>X</strong> Medio · <strong>XX</strong> Alto</span></div>
+        <div><b>4. Área que da el conocimiento</b><span>Seleccione una opción: <strong>1 · 2 · 3 · 12 · 13 · 23 · 123</strong></span></div>
+        <div><b>5. Materia ideal</b><span>Marque ★ Ideal cuando sea una de sus materias preferentes.</span></div>
+      </div>
+      <div class="knowledge-key"><b>1</b> Formación académica · <b>2</b> Experiencia docente · <b>3</b> Experiencia laboral</div>
+    </div>
+
+    <div class="card program-navigator">
+      <button class="nav-arrow" onclick="prevProgram()">←</button>
+      <div class="program-picker">
+        <label>Programa educativo
+          <select id="programSelect" onchange="selectProgram(+this.value)"></select>
+        </label>
+        <div id="programStep"></div>
+      </div>
+      <button class="nav-arrow" onclick="nextProgram()">→</button>
     </div>
 
     <div id="programs"></div>
@@ -123,7 +140,7 @@
       <div>
         <span class="section-kicker">Paso 3 de 3</span>
         <h2>Revisión e impresión</h2>
-        <p>La revisión solo se habilita cuando la captura obligatoria está completa.</p>
+        <p>La revisión solo se habilita cuando la captura está completa.</p>
       </div>
       <div id="validation"></div>
     </div>
@@ -139,12 +156,12 @@
       <div>
         <span class="section-kicker">Administración</span>
         <h2>Configuración y base maestra</h2>
-        <p>Este módulo se dejará restringido a administradores cuando se implemente el acceso institucional <b>@uteq.edu.mx</b>.</p>
+        <p>Acceso administrativo temporal. La protección definitiva se implementará con cuentas institucionales <b>@uteq.edu.mx</b>.</p>
       </div>
-      <span class="admin-lock">🔒 Módulo administrativo</span>
+      <span class="admin-lock">🔒 Administración</span>
     </div>
 
-    <details class="card admin-details" open>
+    <details class="card admin-details">
       <summary>Configuración institucional de baja frecuencia</summary>
       <div class="admin-grid">
         <label>Jefe de Unidad<input id="jefe"></label>
@@ -158,22 +175,21 @@
 
     <div class="card">
       <div class="section-head">
-        <div><h2>Base maestra para Office 365</h2><p>Genera un archivo <b>.xlsx</b> con la captura completa, resumen del profesor, preferencias, coordinación de academia y catálogo.</p></div>
+        <div><h2>Base maestra para Office 365</h2><p>Exporta la captura completa a Excel (.xlsx).</p></div>
         <span class="admin-only">Solo administrador</span>
       </div>
       <div class="admin-actions">
         <button class="primary" onclick="exportExcel()">Exportar base maestra Excel (.xlsx)</button>
-        <button onclick="downloadCatalog()">Descargar catálogo JSON</button>
       </div>
     </div>
 
     <div class="card">
       <div class="section-head">
-        <div><h2>Agregar programa educativo</h2><p>Capture el nombre del programa, su salida lateral y las materias de cada cuatrimestre. Una materia por línea.</p></div>
+        <div><h2>Agregar programa educativo</h2><p>Capture nombre, salida lateral y materias. Una materia por línea.</p></div>
       </div>
       <div class="admin-grid">
-        <label>Nombre del programa educativo<input id="newProgramName" placeholder="Licenciatura en..."></label>
-        <label>Salida lateral<input id="newProgramExit" placeholder="Técnico Superior Universitario en..."></label>
+        <label>Nombre del programa educativo<input id="newProgramName"></label>
+        <label>Salida lateral<input id="newProgramExit"></label>
       </div>
       <div id="newProgramSemesters"></div>
       <div class="admin-actions">
@@ -195,9 +211,10 @@
   <div>La información vertida en esta plataforma se administra bajo los mismos criterios señalados en el
     <a href="https://www.uteq.edu.mx/ConoceLaUTEQ/Default.aspx?gXr=217" target="_blank" rel="noopener">Aviso de Privacidad de la UTEQ</a>.
   </div>
+  <button class="admin-access" onclick="unlockAdmin()">Acceso administración</button>
 </footer>
 
-<div id="toast" class="toast" role="status"></div>
+<div id="toast" class="toast"></div>
 
 <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
 <script src="catalog.js"></script>

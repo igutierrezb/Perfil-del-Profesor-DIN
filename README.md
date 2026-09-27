@@ -1,38 +1,42 @@
-# Perfil Académico Docente · División Industrial UTEQ
+# Perfil Académico Docente DIN · Versión 3
 
-Versión 2 del prototipo funcional.
+## Actualización manual en GitHub
+Sustituya en la raíz del repositorio:
+- `index.html`
+- `styles.css`
+- `app.js`
+- `catalog.js`
+- `logo-uteq.png`
 
-## Archivos
-- `index.html`: estructura principal.
-- `styles.css`: diseño visual, escritorio e impresión.
-- `catalog.js`: ocho programas educativos base y reglas de tronco común.
-- `app.js`: captura, persistencia, validaciones, impresión, administración y exportación.
-- `logo-uteq.png`: logo extraído del formato institucional de referencia aportado para este prototipo.
+Agregue:
+- `icono-industria.svg`
 
-## Uso en GitHub Pages
-Sustituir en la raíz del repositorio los archivos anteriores y conservar sus nombres.
+También puede sustituir `README.md` y `ARQUITECTURA.md`.
 
-## Cambios principales de esta versión
-- Datos personales obligatorios en una sola línea horizontal.
-- Formación profesional sin periodo; Licenciatura/TSU y Posgrados.
-- Experiencia docente sin columna de asignaturas/área.
-- Primera línea obligatoria en formación, docencia y experiencia laboral.
-- Dos cuatrimestres por fila en escritorio.
-- Inglés marcado automáticamente como NO APLICA y vacío en impresión.
-- Botón compacto desactivar/reactivar.
-- X/XX obliga a seleccionar origen 1, 2 y/o 3.
-- Selección de materias ideales (mínimo 3).
-- Registro de coordinación de academia por programa.
-- Guardado por sección y por programa.
-- Revisión bloqueada hasta completar toda la captura.
-- Impresión horizontal ampliada con logo, control de calidad, sello y firmas.
-- Administración con alta de nuevos programas y materias.
-- Exportación administrativa a Excel `.xlsx` compatible con Office 365.
-- Configuración editable de código, revisión, fecha de revisión, periodo y Jefe de Unidad.
-- Pie de autoría y enlace al Aviso de Privacidad UTEQ.
+## Cambios V3
+- Captura mostrada programa educativo por programa educativo.
+- Navegador anterior/siguiente y selector directo de programa.
+- Todas las materias no-Inglés empiezan habilitadas pero pendientes de revisión.
+- Las materias pendientes resaltan en rojo.
+- Inglés queda bloqueado como NO APLICA y se imprime vacío.
+- Encabezados visibles: Asignatura, Habilitar, Competencia, Área de conocimiento, Materia ideal.
+- Área del conocimiento como opción única: 1, 2, 3, 12, 13, 23 o 123.
+- Habilitar/deshabilitar mediante interruptor visual.
+- Materia ideal con texto visible.
+- Coordinación de academia opcional y de selección múltiple.
+- Tronco común sincronizado en los tres primeros cuatrimestres únicamente en las familias definidas.
+- Revisión bloqueada mientras haya pendientes.
+- Impresión: dos programas educativos por hoja, con una sola zona de firmas y sello.
+- Datos de Calidad compactos y sin tabla.
+- Logo UTEQ corregido en impresión.
+- Ícono de interfaz sustituido por símbolo industrial.
+- Administración oculta en uso normal y con acceso temporal por PIN.
+- Base maestra `.xlsx` para Office 365 desde Administración.
+
+## PIN administrativo temporal
+`DIN2026`
+
+Este PIN **no es seguridad real** porque GitHub Pages es un sitio estático y el código es público. Solo oculta la interfaz administrativa frente al uso normal. La seguridad definitiva debe implementarse en la siguiente etapa con autenticación institucional `@uteq.edu.mx` y rol de administrador.
 
 ## Persistencia
-Esta versión usa `localStorage` del navegador. Conserva la información en el equipo/navegador utilizado. La siguiente etapa debe sustituir esta persistencia por una base central cuando se implemente autenticación institucional `@uteq.edu.mx`.
-
-## Seguridad pendiente
-El módulo Administración está visualmente separado, pero todavía no constituye una barrera de seguridad. La restricción real por rol se implementará junto con el acceso institucional.
+Continúa usando `localStorage`, por lo que una captura ya realizada se conserva en ese navegador y se vuelve a mostrar en futuras sesiones.
