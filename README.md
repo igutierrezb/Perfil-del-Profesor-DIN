@@ -1,15 +1,12 @@
-# Perfil Académico Docente DIN · Versión 28
+# Perfil Académico Docente DIN · Versión 29
 
-Ajuste exclusivamente visual en “Datos del profesor”.
-
-## Cambios
-- Título un poco más grande.
-- Texto de ayuda ligeramente mayor.
-- Etiquetas de Apellido paterno, Apellido materno, Nombres y Categoría más visibles.
-- Contenido de inputs y selector más grande y legible.
-- Campos ligeramente más altos.
-- Botón Guardar datos del profesor un poco más grande.
-- Se conserva exactamente la distribución y la lógica existente.
+Cambio puntual:
+- Ya no es obligatorio marcar 3 materias favoritas.
+- Favorito pasa a ser completamente opcional.
+- El profesor puede seleccionar 0, 1 o cualquier cantidad de materias favoritas.
+- La selección de favoritas ya no bloquea la revisión, finalización ni impresión.
+- El contador muestra `opcionales`.
+- Favorito continúa siendo información administrativa y no aparece en el PDF.
 
 ## Deploy
 `deploy-pages.yml`: NO necesita actualización.

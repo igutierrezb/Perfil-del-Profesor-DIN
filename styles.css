@@ -4102,3 +4102,12 @@ label.required-wrap-error{
 #perfil .teacher-line{
   align-items:end!important;
 }
+
+
+/* =========================================================
+   V29 · Materias favoritas opcionales
+   ========================================================= */
+#idealCounter{
+  color:#7a6221!important;
+  font-weight:700!important;
+}

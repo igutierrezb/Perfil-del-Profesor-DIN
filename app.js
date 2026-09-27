@@ -572,7 +572,7 @@ function updateProgress(){
   const x=overallStats(),pct=x.total?Math.round(x.done/x.total*100):0;
   $('progressText').textContent=`${x.done} de ${x.total} revisadas (${pct}%)${x.remainingUnique?` · ${x.remainingUnique} pendiente${x.remainingUnique===1?'':'s'}`:''}`;
   $('progressBar').style.width=pct+'%';
-  $('idealCounter').textContent=`Materias favoritas: ${favoriteCount()} / mínimo 3`;
+  $('idealCounter').textContent=`Materias favoritas: ${favoriteCount()} · opcionales`;
   const complete=programs().filter(p=>programStats(p).missing===0).length;
   if($('programCounter'))$('programCounter').textContent=`Programas completos: ${complete} de ${programs().length}`;
 }
@@ -665,7 +665,7 @@ function validateCapture(){
     errs.push(`Falta${x.remainingUnique===1?'':'n'} ${x.remainingUnique} asignatura${x.remainingUnique===1?'':'s'} por revisar${names.length?`: ${names.join(', ')}${x.remainingUnique>names.length?'…':''}`:'.'}`);
   }
   if(x.invalid)errs.push(`${x.invalid} asignatura(s) tienen X/XX pero no tienen área de conocimiento.`);
-  if(favoriteCount()<3)errs.push(`Debe seleccionar al menos 3 materias favoritas. Actualmente hay ${favoriteCount()}.`);
+  
   return{ok:!errs.length,errors:errs}
 }
 function validateAll(){const p=validateProfile(),c=validateCapture();return{ok:p.ok&&c.ok,errors:[...p.errors,...c.errors]}}
