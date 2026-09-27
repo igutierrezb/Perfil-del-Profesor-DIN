@@ -4111,3 +4111,763 @@ label.required-wrap-error{
   color:#7a6221!important;
   font-weight:700!important;
 }
+
+
+/* =========================================================
+   V30 · Compatibilidad móvil
+   IMPORTANTE: esta capa sólo actúa en pantallas <= 780px.
+   El diseño de escritorio permanece intacto.
+   ========================================================= */
+
+.login-brand-picture{
+  display:block;
+  line-height:0;
+}
+
+/* Pantallas pequeñas y teléfonos */
+@media (max-width:780px){
+
+  html{
+    -webkit-text-size-adjust:100%;
+    text-size-adjust:100%;
+    scroll-padding-top:68px;
+  }
+
+  body{
+    width:100%;
+    max-width:100%;
+    overflow-x:hidden!important;
+    padding-bottom:env(safe-area-inset-bottom);
+  }
+
+  button,
+  input,
+  select,
+  textarea{
+    font-size:16px; /* evita zoom automático de iOS */
+  }
+
+  button,
+  input[type="button"],
+  input[type="submit"],
+  select{
+    touch-action:manipulation;
+  }
+
+  /* ---------- Acceso ---------- */
+  .login-gate{
+    min-height:100dvh!important;
+    padding:
+      max(14px,env(safe-area-inset-top))
+      max(12px,env(safe-area-inset-right))
+      max(14px,env(safe-area-inset-bottom))
+      max(12px,env(safe-area-inset-left))!important;
+    overflow:auto!important;
+  }
+
+  .login-card{
+    width:min(100%,520px)!important;
+    max-width:100%!important;
+    min-height:0!important;
+    margin:0 auto!important;
+    padding:18px 16px!important;
+    display:flex!important;
+    flex-direction:column!important;
+    align-items:stretch!important;
+    gap:12px!important;
+    border-radius:20px!important;
+  }
+
+  .login-brand-picture{
+    width:112px!important;
+    height:112px!important;
+    margin:0 auto 2px!important;
+  }
+
+  .login-logo{
+    width:112px!important;
+    height:112px!important;
+    max-width:112px!important;
+    object-fit:contain!important;
+    border-radius:22px!important;
+  }
+
+  .login-copy{
+    min-width:0!important;
+    text-align:center!important;
+  }
+
+  .login-copy .eyebrow{
+    font-size:9px!important;
+    line-height:1.3!important;
+  }
+
+  .login-copy h1{
+    margin:5px 0 6px!important;
+    font-size:25px!important;
+    line-height:1.07!important;
+  }
+
+  .login-copy p{
+    font-size:12px!important;
+    line-height:1.45!important;
+  }
+
+  .login-copy small,
+  .gate-credit{
+    font-size:9px!important;
+    line-height:1.4!important;
+  }
+
+  .gate-actions{
+    display:block!important;
+  }
+
+  .gate-actions button{
+    width:100%!important;
+    min-height:48px!important;
+    height:auto!important;
+    padding:10px 12px!important;
+    font-size:12px!important;
+  }
+
+  .period-badge,
+  .deadline-card,
+  .auth-status{
+    max-width:100%!important;
+    overflow-wrap:anywhere;
+  }
+
+  /* ---------- Encabezado ---------- */
+  .hero{
+    padding-top:env(safe-area-inset-top);
+  }
+
+  .hero-inner{
+    width:100%!important;
+    max-width:none!important;
+    padding:12px 12px 11px!important;
+    display:grid!important;
+    grid-template-columns:1fr!important;
+    gap:10px!important;
+  }
+
+  .brand-block{
+    display:grid!important;
+    grid-template-columns:58px minmax(0,1fr)!important;
+    align-items:center!important;
+    gap:10px!important;
+  }
+
+  .hero-icon{
+    width:58px!important;
+    height:58px!important;
+    min-width:58px!important;
+    border-radius:13px!important;
+    object-fit:contain!important;
+  }
+
+  .brand-block .eyebrow{
+    font-size:8.5px!important;
+    line-height:1.25!important;
+  }
+
+  .brand-block h1{
+    margin:2px 0!important;
+    font-size:22px!important;
+    line-height:1.05!important;
+  }
+
+  .brand-block p{
+    font-size:9.5px!important;
+    line-height:1.3!important;
+    margin:3px 0 5px!important;
+  }
+
+  .period-badge.inline{
+    display:inline-flex!important;
+    width:auto!important;
+    max-width:100%!important;
+    margin-top:5px!important;
+    padding:5px 8px!important;
+    font-size:8.5px!important;
+  }
+
+  .hero-side{
+    margin:0!important;
+    width:100%!important;
+    display:grid!important;
+    grid-template-columns:1fr!important;
+    gap:4px!important;
+    text-align:left!important;
+  }
+
+  .hero-chip,
+  .hero-side .auth-status,
+  .save-cloud-line{
+    text-align:left!important;
+    font-size:8.5px!important;
+  }
+
+  .save-cloud-line{
+    display:flex!important;
+    flex-wrap:wrap!important;
+    gap:3px 9px!important;
+  }
+
+  .auth-buttons{
+    display:flex!important;
+    gap:6px!important;
+    justify-content:flex-start!important;
+    flex-wrap:wrap!important;
+    margin-top:4px!important;
+  }
+
+  .auth-buttons button{
+    min-height:40px!important;
+    height:40px!important;
+    padding:6px 10px!important;
+    font-size:10px!important;
+  }
+
+  .deadline-top-band{
+    padding:5px 8px!important;
+  }
+
+  .header-deadline{
+    width:100%!important;
+    max-width:100%!important;
+    font-size:9px!important;
+    text-align:center!important;
+  }
+
+  /* ---------- Navegación principal ---------- */
+  .main-nav{
+    position:sticky!important;
+    top:0!important;
+    z-index:50!important;
+    width:100%!important;
+    max-width:100%!important;
+    padding:6px max(8px,env(safe-area-inset-left))!important;
+    display:flex!important;
+    justify-content:flex-start!important;
+    gap:5px!important;
+    overflow-x:auto!important;
+    overflow-y:hidden!important;
+    -webkit-overflow-scrolling:touch;
+    scrollbar-width:none;
+    scroll-snap-type:x proximity;
+    background:rgba(247,250,252,.97)!important;
+    backdrop-filter:blur(8px);
+  }
+
+  .main-nav::-webkit-scrollbar{
+    display:none;
+  }
+
+  .main-nav button{
+    flex:0 0 auto!important;
+    min-width:148px!important;
+    min-height:42px!important;
+    height:42px!important;
+    padding:6px 10px!important;
+    font-size:9.5px!important;
+    scroll-snap-align:start;
+    white-space:nowrap!important;
+  }
+
+  /* ---------- Estructura general ---------- */
+  main{
+    width:100%!important;
+    max-width:100%!important;
+    margin:0!important;
+    padding:8px!important;
+  }
+
+  .view{
+    width:100%!important;
+    min-width:0!important;
+  }
+
+  .card{
+    width:100%!important;
+    max-width:100%!important;
+    min-width:0!important;
+    margin-left:0!important;
+    margin-right:0!important;
+    padding:12px!important;
+    border-radius:13px!important;
+  }
+
+  .section-head,
+  .review-head,
+  .profile-toolbar{
+    display:grid!important;
+    grid-template-columns:1fr!important;
+    gap:8px!important;
+    align-items:start!important;
+  }
+
+  .section-head h2,
+  .profile-toolbar h2,
+  .review-head h2{
+    font-size:18px!important;
+    line-height:1.12!important;
+  }
+
+  /* ---------- Datos del profesor ---------- */
+  .teacher-line{
+    display:grid!important;
+    grid-template-columns:1fr!important;
+    gap:9px!important;
+  }
+
+  .teacher-line label,
+  .admin-grid label{
+    width:100%!important;
+    min-width:0!important;
+  }
+
+  .teacher-line input,
+  .teacher-line select,
+  .form-row input,
+  .form-row select,
+  .admin-grid input,
+  .admin-grid select{
+    width:100%!important;
+    max-width:100%!important;
+    min-height:44px!important;
+    height:44px!important;
+    font-size:16px!important;
+    box-sizing:border-box!important;
+  }
+
+  .form-row,
+  .form-row.two{
+    display:grid!important;
+    grid-template-columns:1fr!important;
+    gap:6px!important;
+  }
+
+  .row-label{
+    width:100%!important;
+    min-height:0!important;
+    padding:5px 7px!important;
+    font-size:9.5px!important;
+  }
+
+  #perfil .save-row{
+    display:flex!important;
+    justify-content:stretch!important;
+  }
+
+  #perfil .save-row button{
+    width:100%!important;
+    min-height:44px!important;
+    height:44px!important;
+    font-size:11px!important;
+  }
+
+  /* ---------- Cabecera de captura ---------- */
+  .profile-toolbar{
+    padding:12px!important;
+  }
+
+  .progress{
+    width:100%!important;
+    min-width:0!important;
+  }
+
+  .capture-deadline{
+    width:100%!important;
+    text-align:center!important;
+  }
+
+  .instruction-grid-five,
+  .instruction-grid{
+    display:grid!important;
+    grid-template-columns:1fr!important;
+    gap:7px!important;
+  }
+
+  .capture-help-card{
+    min-height:0!important;
+    padding:10px!important;
+  }
+
+  .single-line-key{
+    white-space:normal!important;
+    overflow:visible!important;
+    text-overflow:clip!important;
+  }
+
+  /* ---------- Navegación de programas ---------- */
+  .program-header-flow{
+    display:grid!important;
+    grid-template-columns:1fr!important;
+    gap:8px!important;
+    padding:10px!important;
+  }
+
+  .program-step-badge,
+  .program-name-flow{
+    width:100%!important;
+    min-width:0!important;
+  }
+
+  .program-name-flow{
+    font-size:11px!important;
+    line-height:1.3!important;
+  }
+
+  .flow-buttons{
+    width:100%!important;
+    display:grid!important;
+    grid-template-columns:1fr 1fr!important;
+    gap:6px!important;
+    margin:0!important;
+  }
+
+  .flow-buttons button{
+    width:100%!important;
+    min-width:0!important;
+    min-height:44px!important;
+    height:auto!important;
+    padding:8px 7px!important;
+    font-size:9.5px!important;
+    white-space:normal!important;
+  }
+
+  .nav-state-legend{
+    width:100%!important;
+    display:flex!important;
+    justify-content:center!important;
+    flex-wrap:wrap!important;
+    gap:7px 12px!important;
+    padding:6px 0 0!important;
+  }
+
+  /* ---------- Materias: tarjetas móviles sin scroll horizontal ---------- */
+  .program-scroll-wrap{
+    width:100%!important;
+    overflow:visible!important;
+  }
+
+  .scroll-hint{
+    display:none!important;
+  }
+
+  .semesters-grid{
+    display:grid!important;
+    grid-template-columns:1fr!important;
+    gap:10px!important;
+    width:100%!important;
+    min-width:0!important;
+  }
+
+  .semester-card{
+    width:100%!important;
+    min-width:0!important;
+    border-right:0!important;
+    border-radius:11px!important;
+    overflow:hidden!important;
+  }
+
+  .semester-card h4{
+    padding:9px 10px!important;
+    font-size:12px!important;
+  }
+
+  .course-columns{
+    display:none!important;
+  }
+
+  .course{
+    width:100%!important;
+    min-width:0!important;
+    display:grid!important;
+    grid-template-columns:minmax(0,1fr) minmax(0,1fr)!important;
+    grid-template-areas:
+      "name name"
+      "toggle comp"
+      "area area"
+      "coord ideal"!important;
+    gap:9px!important;
+    align-items:center!important;
+    padding:10px!important;
+    border-left-width:4px!important;
+    box-sizing:border-box!important;
+  }
+
+  .course .name{
+    grid-area:name!important;
+    min-width:0!important;
+    padding:0 0 7px!important;
+    font-size:12px!important;
+    line-height:1.28!important;
+    border-bottom:1px solid rgba(98,121,137,.16);
+  }
+
+  .course .course-hours{
+    font-size:9px!important;
+  }
+
+  .course .toggle{
+    grid-area:toggle!important;
+    min-width:0!important;
+    justify-self:start!important;
+  }
+
+  .course .comp-buttons{
+    grid-area:comp!important;
+    width:100%!important;
+    display:grid!important;
+    grid-template-columns:1fr 1fr!important;
+    gap:5px!important;
+  }
+
+  .course .comp-buttons .mini{
+    width:100%!important;
+    min-width:0!important;
+    min-height:42px!important;
+    height:42px!important;
+    font-size:11px!important;
+  }
+
+  .course .area-buttons{
+    grid-area:area!important;
+    width:100%!important;
+    display:grid!important;
+    grid-template-columns:repeat(4,minmax(0,1fr))!important;
+    gap:5px!important;
+  }
+
+  .course .area-buttons .mini{
+    width:100%!important;
+    min-width:0!important;
+    min-height:40px!important;
+    height:40px!important;
+    font-size:10px!important;
+  }
+
+  .course .coord-row-check{
+    grid-area:coord!important;
+    width:100%!important;
+    min-height:42px!important;
+    justify-content:center!important;
+  }
+
+  .course .ideal-btn{
+    grid-area:ideal!important;
+    width:100%!important;
+    min-width:0!important;
+    min-height:42px!important;
+    height:auto!important;
+    padding:7px 5px!important;
+    font-size:9.5px!important;
+  }
+
+  .toggle .switch{
+    transform:none!important;
+  }
+
+  .program-save{
+    width:100%!important;
+    display:grid!important;
+    grid-template-columns:1fr!important;
+    gap:7px!important;
+    padding:10px!important;
+  }
+
+  .program-save button{
+    width:100%!important;
+    min-height:44px!important;
+  }
+
+  /* ---------- Revisión e impresión ---------- */
+  #revision .actions{
+    display:grid!important;
+    grid-template-columns:1fr!important;
+    gap:7px!important;
+  }
+
+  #revision .actions button{
+    width:100%!important;
+    min-height:44px!important;
+  }
+
+  /* Vista previa: permitir consulta sin romper el formato legal */
+  #printArea{
+    width:100%!important;
+    max-width:100%!important;
+    overflow-x:auto!important;
+    -webkit-overflow-scrolling:touch;
+    padding-bottom:6px;
+  }
+
+  #printArea .sheet{
+    min-width:1050px;
+    margin:8px 0!important;
+  }
+
+  /* ---------- Administración ---------- */
+  .admin-quickbar{
+    display:grid!important;
+    grid-template-columns:1fr!important;
+    gap:7px!important;
+    padding:9px!important;
+  }
+
+  .admin-quickbar button,
+  #admin .admin-quickbar button.excel-export-btn{
+    width:100%!important;
+    min-width:0!important;
+    min-height:46px!important;
+    height:auto!important;
+  }
+
+  #admin .admin-quickbar button.excel-export-btn{
+    justify-content:center!important;
+    padding:7px 12px!important;
+  }
+
+  .admin-adminline,
+  .capture-control-grid,
+  .admin-grid,
+  .admin-grid-stacked,
+  .admin-row-full,
+  .admin-row-triple{
+    display:grid!important;
+    grid-template-columns:1fr!important;
+    gap:8px!important;
+  }
+
+  .capture-main-actions{
+    display:grid!important;
+    grid-template-columns:1fr!important;
+    gap:6px!important;
+  }
+
+  .capture-main-actions button,
+  .capture-main-actions .edit-mode-btn{
+    width:100%!important;
+    min-width:0!important;
+    min-height:44px!important;
+    height:auto!important;
+  }
+
+  .teacher-admin-row{
+    display:grid!important;
+    grid-template-columns:1fr!important;
+    gap:8px!important;
+    padding:10px!important;
+  }
+
+  .teacher-admin-actions{
+    display:grid!important;
+    grid-template-columns:1fr 1fr!important;
+    gap:6px!important;
+    justify-content:stretch!important;
+  }
+
+  .teacher-admin-actions button{
+    width:100%!important;
+    min-height:42px!important;
+    height:auto!important;
+    white-space:normal!important;
+  }
+
+  .program-admin-item{
+    display:grid!important;
+    grid-template-columns:1fr 1fr!important;
+    gap:7px!important;
+    padding:10px!important;
+  }
+
+  .program-admin-name{
+    grid-column:1/-1!important;
+  }
+
+  .acronym-edit{
+    grid-column:1/-1!important;
+  }
+
+  .program-action-btn{
+    width:100%!important;
+    min-height:42px!important;
+    height:auto!important;
+  }
+
+  .common-editor-head,
+  .custom-program-item{
+    display:grid!important;
+    grid-template-columns:1fr!important;
+    gap:7px!important;
+  }
+
+  #newProgramSemesters{
+    grid-template-columns:1fr!important;
+  }
+
+  .subject-editor-labels{
+    display:none!important;
+  }
+
+  .subject-editor-row{
+    grid-template-columns:minmax(0,1fr) 82px!important;
+    gap:6px!important;
+  }
+
+  .subject-row-actions{
+    grid-column:1/-1!important;
+    display:grid!important;
+    grid-template-columns:1fr 1fr!important;
+  }
+
+  .subject-row-actions button,
+  .add-subject-btn{
+    min-height:42px!important;
+    height:auto!important;
+  }
+
+  /* ---------- Pie ---------- */
+  .site-footer{
+    margin:12px 8px 20px!important;
+    padding:12px!important;
+    font-size:8.5px!important;
+  }
+}
+
+/* Teléfonos muy angostos */
+@media (max-width:390px){
+  .brand-block{
+    grid-template-columns:50px minmax(0,1fr)!important;
+  }
+  .hero-icon{
+    width:50px!important;
+    height:50px!important;
+    min-width:50px!important;
+  }
+  .brand-block h1{
+    font-size:19px!important;
+  }
+  .flow-buttons{
+    grid-template-columns:1fr!important;
+  }
+  .course{
+    grid-template-columns:1fr!important;
+    grid-template-areas:
+      "name"
+      "toggle"
+      "comp"
+      "area"
+      "coord"
+      "ideal"!important;
+  }
+  .course .area-buttons{
+    grid-template-columns:repeat(4,minmax(0,1fr))!important;
+  }
+  .teacher-admin-actions{
+    grid-template-columns:1fr!important;
+  }
+}

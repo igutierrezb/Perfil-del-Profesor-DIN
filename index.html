@@ -5,12 +5,23 @@
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Perfil Académico Docente · División Industrial UTEQ</title>
 <link rel="stylesheet" href="styles.css">
-<link rel="icon" type="image/png" href="favicon-division.png">
+<meta name="theme-color" content="#0b2b46">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="favicon.ico" sizes="any">
+<link rel="icon" type="image/png" sizes="32x32" href="favicon-32x32.png">
+<link rel="icon" type="image/png" sizes="16x16" href="favicon-16x16.png">
+<link rel="apple-touch-icon" href="apple-touch-icon.png">
 </head>
 <body>
 <div id="loginGate" class="login-gate">
   <div class="login-card">
-    <img src="icono-industria.svg" class="login-logo division-logo-full" alt="División Industrial">
+    <picture class="login-brand-picture">
+      <source media="(max-width: 760px)" srcset="icon-din.png">
+      <img src="logo-din-horizontal.png" class="login-logo division-logo-full" alt="DIN · División Industrial · Turno Matutino">
+    </picture>
     <div class="login-copy">
       <div class="eyebrow">Universidad Tecnológica de Querétaro · División Industrial</div>
       <h1>Perfil Académico Docente</h1>
@@ -32,7 +43,7 @@
 <header class="hero">
   <div class="hero-inner">
     <div class="brand-block">
-      <img src="icono-industria.svg" class="hero-icon division-logo-emblem" alt="División Industrial">
+      <img src="icon-din.png" class="hero-icon division-logo-emblem" alt="DIN · División Industrial">
       <div>
         <div class="eyebrow">Universidad Tecnológica de Querétaro · División Industrial</div>
         <h1>Perfil Académico Docente</h1>
