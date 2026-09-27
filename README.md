@@ -1,27 +1,27 @@
-# Perfil Académico Docente DIN · Versión 21
+# Perfil Académico Docente DIN · Versión 22
 
-Actualización visual y corrección de control de edición.
+Ajuste visual final sobre V21, sin cambios a la lógica funcional.
 
 ## Cambios
-- Ejemplos de captura en gris en Datos del profesor.
-- Periodos muestran ejemplos como `sep 2023 - ago 2025`.
-- La explicación general de competencia se integró al punto 3 de “Cómo capturar”.
-- Programas educativos: controles estandarizados y con código de color para Acrónimo, Editar, Tronco común y Estado.
-- Administración ya no inicia con la tarjeta “Configuración y base maestra”.
-- Troncos comunes quedan integrados al mismo módulo de Programas educativos.
-- Corrección de edición individual:
-  - `individualEditEnabled` permite habilitar solamente a un profesor;
-  - funciona incluso cuando la edición general está desactivada;
-  - Finalizar e imprimir vuelve a quitar esa habilitación;
-  - Administración puede volver a deshabilitar el permiso individual.
-- El control global de edición espera el guardado en Firestore antes de confirmar visualmente el cambio.
-- Mensajes de error de edición individual incluyen el código de Firestore para facilitar diagnóstico.
-
-## IMPORTANTE: Firestore
-SÍ debe publicarse `firestore.rules` V21.
-
-La regla crítica es:
-`allow create, update: if admin() || (institutional() && request.auth.uid == uid);`
+- Guía “Cómo capturar cada asignatura” reorganizada en 5 recuadros homogéneos.
+- Asignatura + Habilitación unificadas.
+- Se enfatiza que interruptor apagado = no puede impartir y la materia se imprime en blanco.
+- Competencia:
+  - X = competencia media
+  - XX = competencia alta
+- Área de conocimiento conserva sus códigos y la banda azul queda en una línea cuando hay espacio.
+- Coordinación y Favorito se destacan con aviso, ✓ y ★.
+- Coordinación y Favorito indican expresamente que no aparecen en impresión y son referencia para el coordinador.
+- Impresión/PDF:
+  - filas con altura natural;
+  - materias alineadas a la izquierda y centradas verticalmente;
+  - X/XX y números centrados horizontal y verticalmente.
+- Administración:
+  - Control de captura se mantiene antes de Profesores y cierre;
+  - botones más pequeños, homogéneos y alineados horizontalmente.
 
 ## Deploy
-`deploy-pages.yml`: NO necesita actualización.
+deploy-pages.yml: NO necesita actualización.
+
+## Firestore
+firestore.rules: NO necesita actualización respecto a V21.

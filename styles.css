@@ -3131,3 +3131,246 @@ label.required-wrap-error{
     grid-column:1/-1;
   }
 }
+
+
+/* =========================================================
+   V22 · guía homogénea, impresión compacta y botones admin
+   ========================================================= */
+
+/* Guía sin resaltar un recuadro sobre otro */
+.capture-guide-band{
+  background:#fffaf7!important;
+  border-color:#ead8cf!important;
+}
+.instruction-grid-five{
+  display:grid;
+  grid-template-columns:1.1fr 1fr 1.34fr 1.08fr 1.08fr;
+  gap:8px;
+  align-items:stretch;
+}
+.capture-help-card{
+  min-width:0;
+  min-height:112px;
+  padding:11px 12px;
+  border:1px solid #e6d8d0;
+  border-radius:10px;
+  background:#fff;
+  display:flex;
+  flex-direction:column;
+  gap:7px;
+  box-shadow:none!important;
+}
+.capture-help-card>b{
+  color:#82402d;
+  font-size:10.8px;
+  line-height:1.16;
+}
+.capture-help-card>span{
+  color:#5e6871;
+  font-size:9.5px;
+  line-height:1.42;
+}
+.capture-help-card strong{font-weight:800}
+.help-x,.help-xx{color:#17648e!important}
+.reference-help-card{
+  background:#fffaf0!important;
+  border-color:#e6c887!important;
+}
+.reference-help-card>b{color:#76530c!important}
+.help-alert{
+  display:inline-flex;
+  align-items:center;
+  justify-content:center;
+  width:17px;
+  height:17px;
+  border-radius:50%;
+  background:#e1a414;
+  color:#fff;
+  font-size:11px;
+  font-weight:900;
+  margin-right:3px;
+}
+.help-check{
+  color:#20825a!important;
+  font-size:15px;
+  line-height:1;
+}
+.help-star{
+  color:#c28a00!important;
+  font-size:15px;
+  line-height:1;
+}
+.single-line-key{
+  margin-top:auto!important;
+  padding:6px 8px!important;
+  white-space:nowrap;
+  overflow:hidden;
+  text-overflow:ellipsis;
+  font-size:8.2px!important;
+  line-height:1!important;
+  border-radius:7px!important;
+}
+.single-line-key b{
+  display:inline!important;
+  margin:0!important;
+}
+
+/* Impresión/PDF: altura natural según texto */
+#printArea .currTable,
+@media print {
+}
+#printArea .currTable{
+  height:auto!important;
+  table-layout:fixed!important;
+}
+#printArea .currTable tr{
+  height:auto!important;
+}
+#printArea .currTable th,
+#printArea .currTable td{
+  height:auto!important;
+  min-height:0!important;
+  padding-top:2px!important;
+  padding-bottom:2px!important;
+  vertical-align:middle!important;
+  line-height:1.1!important;
+}
+#printArea .currTable td:first-child,
+#printArea .currTable .subject-cell{
+  text-align:left!important;
+  vertical-align:middle!important;
+  padding-left:4px!important;
+  padding-right:3px!important;
+}
+#printArea .currTable td:not(:first-child),
+#printArea .currTable .level-cell,
+#printArea .currTable .area-cell{
+  text-align:center!important;
+  vertical-align:middle!important;
+  padding-left:1px!important;
+  padding-right:1px!important;
+}
+#printArea .print-hours{
+  display:block!important;
+  margin-top:1px!important;
+  line-height:1!important;
+}
+
+@media print{
+  .currTable{
+    height:auto!important;
+    table-layout:fixed!important;
+  }
+  .currTable tr{
+    height:auto!important;
+    break-inside:avoid;
+  }
+  .currTable th,
+  .currTable td{
+    height:auto!important;
+    min-height:0!important;
+    padding-top:2px!important;
+    padding-bottom:2px!important;
+    vertical-align:middle!important;
+    line-height:1.1!important;
+  }
+  .currTable td:first-child,
+  .currTable .subject-cell{
+    text-align:left!important;
+    vertical-align:middle!important;
+    padding-left:4px!important;
+    padding-right:3px!important;
+  }
+  .currTable td:not(:first-child),
+  .currTable .level-cell,
+  .currTable .area-cell{
+    text-align:center!important;
+    vertical-align:middle!important;
+    padding-left:1px!important;
+    padding-right:1px!important;
+  }
+  .program-trio .print-program{
+    flex:none!important;
+    height:auto!important;
+    min-height:0!important;
+  }
+}
+
+/* Administración: botones más pequeños, homogéneos y horizontales */
+#admin button,
+.admin-quickbar button,
+.capture-main-actions button,
+.teacher-admin-actions button,
+.program-action-btn,
+.admin-actions button{
+  min-height:30px!important;
+  height:30px!important;
+  padding:4px 8px!important;
+  border-radius:7px!important;
+  font-size:9px!important;
+  line-height:1!important;
+  display:inline-flex!important;
+  align-items:center!important;
+  justify-content:center!important;
+  gap:4px!important;
+}
+.capture-main-actions{
+  display:flex!important;
+  flex-wrap:nowrap!important;
+  align-items:center!important;
+  gap:6px!important;
+}
+.capture-main-actions .edit-mode-btn{
+  width:auto!important;
+  min-width:175px!important;
+}
+.teacher-admin-actions{
+  display:flex!important;
+  align-items:center!important;
+  justify-content:flex-end!important;
+  gap:6px!important;
+  flex-wrap:nowrap!important;
+}
+.program-action-btn{
+  width:100%!important;
+  min-width:0!important;
+  white-space:normal!important;
+  text-align:center!important;
+}
+.admin-icon{
+  width:17px!important;
+  height:17px!important;
+  flex:0 0 17px!important;
+  font-size:8px!important;
+}
+
+/* Control de captura debe leerse como primer bloque operativo */
+#captureControlCard{
+  order:0;
+}
+.teacher-admin-card,
+#teacherAdminList{
+  order:1;
+}
+
+@media(max-width:1150px){
+  .instruction-grid-five{
+    grid-template-columns:1fr 1fr 1.18fr 1fr 1fr;
+  }
+  .single-line-key{
+    white-space:normal;
+    line-height:1.15!important;
+  }
+}
+@media(max-width:900px){
+  .instruction-grid-five{
+    grid-template-columns:1fr 1fr;
+  }
+  .capture-help-card:nth-child(3){
+    grid-column:1/-1;
+  }
+  .capture-main-actions,
+  .teacher-admin-actions{
+    flex-wrap:wrap!important;
+  }
+}
