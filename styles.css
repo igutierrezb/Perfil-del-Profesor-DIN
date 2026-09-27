@@ -2006,3 +2006,214 @@ textarea:focus-visible,
   border-color:#d9e2e8!important;
   background:#f5f8fa!important;
 }
+
+
+/* =========================================================
+   V15 · consolidación visual + impresión compacta
+   ========================================================= */
+
+/* Encabezado general un poco más compacto */
+.hero-inner{
+  padding-top:12px!important;
+  padding-bottom:12px!important;
+  gap:14px!important;
+}
+.hero-icon{
+  width:76px!important;
+  height:76px!important;
+  border-radius:18px!important;
+}
+.login-logo{
+  width:148px!important;
+  height:148px!important;
+  border-radius:28px!important;
+}
+.hero h1{margin-bottom:2px!important}
+
+/* Navegación como secuencia visual uniforme */
+.main-nav{
+  gap:5px!important;
+}
+.main-nav button{
+  min-height:38px;
+  padding:7px 12px!important;
+  border-radius:9px!important;
+}
+
+/* Perfil por programa: más ancho a Asignatura y menos a controles */
+.semesters-grid{min-width:1030px!important}
+.course-columns,.course{
+  grid-template-columns:
+    minmax(190px,1.7fr)
+    62px
+    70px
+    minmax(126px,.56fr)
+    56px
+    54px!important;
+  gap:3px!important;
+}
+.course{
+  min-height:45px!important;
+  padding-top:4px!important;
+  padding-bottom:4px!important;
+}
+.course .name{
+  max-height:2.35em!important;
+  line-height:1.12!important;
+}
+.course.reviewed{
+  background:#fbfefd!important;
+  box-shadow:inset 4px 0 0 #55a681!important;
+}
+.course.pending{
+  box-shadow:inset 5px 0 0 #c94f47!important;
+}
+.area-buttons{
+  grid-template-columns:repeat(4,minmax(18px,1fr))!important;
+  gap:2px!important;
+}
+.mini.area{
+  padding:3px 1px!important;
+  min-height:25px!important;
+}
+.coord-row-check{
+  width:23px!important;
+  height:23px!important;
+}
+.ideal-btn{
+  min-width:50px!important;
+  max-width:54px!important;
+  padding:3px 3px!important;
+}
+
+/* Guía: distribución proporcional, no seis cajas iguales */
+.instruction-grid-six{
+  grid-template-columns:1fr 1fr .78fr 1.25fr .95fr .72fr!important;
+  gap:7px!important;
+}
+.instruction-grid-six>div{
+  min-height:75px!important;
+}
+
+/* Programa actual + navegación compactos */
+.program-header-flow{
+  padding-top:9px!important;
+  padding-bottom:9px!important;
+}
+.program-title-block{
+  gap:6px!important;
+}
+.flow-buttons-inline{
+  margin-top:1px!important;
+}
+.common-note{
+  min-height:0!important;
+  padding:6px 10px!important;
+}
+
+/* Botones más uniformes y menos sombra */
+.primary{
+  box-shadow:0 2px 0 #08253c!important;
+}
+.save-btn,.actions button,.admin-actions button,.flow-buttons button,
+.admin-quickbar button{
+  min-height:34px!important;
+  border-radius:9px!important;
+}
+
+/* Administración: mayor armonía de alturas */
+.admin-adminline{
+  align-items:start!important;
+}
+.capture-control-card,.admin-details{
+  min-height:100%;
+}
+.admin-grid-compact{
+  grid-template-columns:1.55fr 1.25fr .55fr .45fr .68fr!important;
+}
+.admin-quickbar{
+  min-height:52px;
+}
+.admin-quickbar .primary{
+  font-size:11.5px!important;
+  letter-spacing:.01em;
+}
+
+/* Programas activos: filas administrativas más regulares */
+.program-admin-item{
+  min-height:58px;
+  align-items:center!important;
+}
+
+/* Tronco común: editor centrado y más limpio */
+.common-rule-editor{
+  max-width:1180px;
+  margin:14px auto 0!important;
+}
+.common-program-checks label{
+  justify-items:start!important;
+  text-align:left!important;
+}
+.common-program-checks label input{
+  justify-self:center;
+}
+.common-rule-summary{
+  grid-template-columns:1.15fr 1fr .65fr!important;
+  align-items:center;
+}
+
+/* Impresión: última hoja conserva altura natural de las tablas */
+.sheet.program-trio.compact-last{
+  display:block!important;
+  min-height:7.72in!important;
+  max-height:7.72in!important;
+  overflow:hidden!important;
+}
+.program-trio.compact-last .print-program{
+  flex:none!important;
+  display:block!important;
+  height:auto!important;
+  min-height:0!important;
+  margin-top:4px!important;
+}
+.program-trio.compact-last .currTable{
+  flex:none!important;
+  height:auto!important;
+  table-layout:fixed!important;
+}
+.program-trio.compact-last .currTable th,
+.program-trio.compact-last .currTable td{
+  height:auto!important;
+}
+
+/* Cuando la última página contiene solo 1 o 2 programas,
+   no se distribuyen para rellenar el alto de la hoja. */
+.sheet.program-trio.compact-last[data-program-count="1"] .print-program,
+.sheet.program-trio.compact-last[data-program-count="2"] .print-program{
+  margin-bottom:6px!important;
+}
+
+/* Impresión: columnas técnicas mínimas, Asignatura prioritaria */
+.program-trio .currTable th.area-print-head{
+  line-height:1!important;
+  padding:1.5px 1px!important;
+}
+.program-trio .currTable td.level,
+.program-trio .currTable td.area{
+  padding-left:1px!important;
+  padding-right:1px!important;
+}
+
+@media print{
+  .sheet.program-trio.compact-last{
+    display:block!important;
+    height:7.72in!important;
+    min-height:7.72in!important;
+    max-height:7.72in!important;
+  }
+  .program-trio.compact-last .print-program,
+  .program-trio.compact-last .currTable{
+    flex:none!important;
+    height:auto!important;
+  }
+}

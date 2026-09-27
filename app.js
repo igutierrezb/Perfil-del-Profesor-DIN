@@ -614,7 +614,10 @@ function buildPrint(){
   const ps=programs();
   let html=preambleSheet();
   for(let i=0;i<ps.length;i+=3){
-    html+=`<div class="sheet program-trio">${printHeader()}${metaCentered()}${printProgram(ps[i],i)}${ps[i+1]?printProgram(ps[i+1],i+1):''}${ps[i+2]?printProgram(ps[i+2],i+2):''}</div>`
+    const remaining=Math.min(3,ps.length-i);
+    const isLast=(i+3)>=ps.length;
+    const sheetClass=`sheet program-trio${isLast&&remaining<3?' compact-last':''}`;
+    html+=`<div class="${sheetClass}" data-program-count="${remaining}">${printHeader()}${metaCentered()}${printProgram(ps[i],i)}${ps[i+1]?printProgram(ps[i+1],i+1):''}${ps[i+2]?printProgram(ps[i+2],i+2):''}</div>`
   }
   $('printArea').innerHTML=html
 }
@@ -841,7 +844,7 @@ async function exportWorkbook(){
   const headerRows=6;
   const aoa=Array.from({length:headerRows+teachers.length},()=>[]);
   aoa[0][0]='PROGRAMA EDUCATIVO';
-  aoa[0][1]='Leyenda: ★ Favorito · fuente roja = coordinó la asignatura';
+  aoa[0][1]='Leyenda: ★ = Favorito · texto rojo = Coordinó la asignatura';
   aoa[1][0]='ASIGNATURA';
   aoa[2][0]='HORAS AL CUATRIMESTRE';
   aoa[3][0]='HORAS A LA SEMANA';
@@ -941,23 +944,35 @@ async function exportWorkbook(){
   });
 
 
-  // Marcas administrativas: ★ = favorita; fuente roja = coordinó la asignatura.
-  // Sin fondos de color para conservar la lectura limpia del concentrado.
+  // Marcas administrativas del concentrado:
+  // ★ = Favorito; FUENTE ROJA = Coordinó la asignatura.
+  // No se utilizan fondos especiales.
   for(let r=headerRows;r<aoa.length;r++){
     const t=teachers[r-headerRows];
     let matrixCol=2;
     ps.forEach(pr=>pr.semesters.forEach((sem,s)=>sem.forEach((name,c)=>{
-      const addr=XLSX.utils.encode_cell({r,c:matrixCol}),v=String(aoa[r]?.[matrixCol]||'');
-      const coord=teacherCoordinator(t,pr.id,s,c);
-      if(v){
-        const st={
-          font:{name:'Aptos',sz:10,bold:v.includes('★'),color:{rgb:coord?'C62828':'243746'}},
-          fill:{fgColor:{rgb:'FFFFFF'}},
+      const addr=XLSX.utils.encode_cell({r,c:matrixCol});
+      const cell=ws[addr];
+      const value=String(cell?.v ?? aoa[r]?.[matrixCol] ?? '');
+      const coordinated=teacherCoordinator(t,pr.id,s,c);
+      const favorite=value.includes('★');
+      if(cell && value){
+        cell.s={
+          font:{
+            name:'Aptos',
+            sz:10,
+            bold:favorite || coordinated,
+            color:{rgb:coordinated?'FF0000':'243746'}
+          },
+          fill:{patternType:'solid',fgColor:{rgb:'FFFFFF'},bgColor:{rgb:'FFFFFF'}},
           alignment:{horizontal:'center',vertical:'center'},
-          border:{top:{style:'thin',color:{rgb:'D4DCE3'}},bottom:{style:'thin',color:{rgb:'D4DCE3'}},left:{style:'thin',color:{rgb:'D4DCE3'}},right:{style:'thin',color:{rgb:'D4DCE3'}}}
+          border:{
+            top:{style:'thin',color:{rgb:'D4DCE3'}},
+            bottom:{style:'thin',color:{rgb:'D4DCE3'}},
+            left:{style:'thin',color:{rgb:'D4DCE3'}},
+            right:{style:'thin',color:{rgb:'D4DCE3'}}
+          }
         };
-        styleCell(addr,st);
-        if(ws[addr]) ws[addr].s=st;
       }
       matrixCol++;
     })));
@@ -990,6 +1005,25 @@ async function exportWorkbook(){
   const wsBase=XLSX.utils.json_to_sheet(base);
   wsBase['!autofilter']={ref:wsBase['!ref']};
   wsBase['!freeze']={xSplit:2,ySplit:1,topLeftCell:'C2',activePane:'bottomRight',state:'frozen'};
+  // Resalta en rojo el dato de coordinación también en Base maestra.
+  if(base.length){
+    const coordHeader='Coordinador de academia';
+    const headers=Object.keys(base[0]);
+    const coordCol=headers.indexOf(coordHeader);
+    if(coordCol>=0){
+      for(let r=1;r<=base.length;r++){
+        const addr=XLSX.utils.encode_cell({r,c:coordCol});
+        if(wsBase[addr] && String(wsBase[addr].v||'').toLowerCase()==='sí'){
+          wsBase[addr].s={
+            font:{name:'Aptos',sz:10,bold:true,color:{rgb:'FF0000'}},
+            fill:{patternType:'solid',fgColor:{rgb:'FFFFFF'}},
+            alignment:{horizontal:'center',vertical:'center'}
+          };
+        }
+      }
+    }
+  }
+
   wsBase['!cols']=[
     {wch:30},{wch:34},{wch:28},{wch:20},{wch:42},{wch:13},{wch:42},{wch:12},{wch:36},
     {wch:18},{wch:16},{wch:14},{wch:17},{wch:18},{wch:16},{wch:24}
@@ -1044,7 +1078,7 @@ async function exportWorkbook(){
   XLSX.utils.book_append_sheet(wb,wsCat,'Catálogo');
   XLSX.utils.book_append_sheet(wb,wsSummary,'Resumen por asignatura');
 
-  XLSX.writeFile(wb,`Concentrado_Perfiles_DIN_${cfg.periodo.replace(/[^a-z0-9]+/gi,'_')}.xlsx`);
+  XLSX.writeFile(wb,`Concentrado_Perfiles_DIN_${cfg.periodo.replace(/[^a-z0-9]+/gi,'_')}.xlsx`,{cellStyles:true,bookSST:true});
 }
 window.exportExcel=function(){if(!isAdmin()){toast('Solo el administrador puede exportar la base maestra.');return}exportWorkbook().catch(e=>alert('No fue posible generar Excel: '+e.message))}
 
