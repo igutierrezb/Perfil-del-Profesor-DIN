@@ -66,7 +66,9 @@ function submissionLockedForCurrentPeriod(){
   return !!store.submittedPeriod && store.submittedPeriod===cfg.periodo;
 }
 function editingAllowed(){
-  return isAdmin() || (!cfg.editingLocked && !deadlinePassed() && !submissionLockedForCurrentPeriod());
+  // La Administración controla la edición global.
+  // Un perfil formalizado puede volver a editarse cuando Administración habilita la edición.
+  return isAdmin() || (!cfg.editingLocked && !deadlinePassed());
 }
 function formatDateTime(ts){
   if(!ts)return 'Sin fecha límite';
@@ -120,11 +122,9 @@ function applyEditState(){
   if(banner){
     banner.classList.toggle('hidden',!locked);
     if(locked){
-      banner.textContent=submissionLockedForCurrentPeriod()
-        ?'✓ Perfil formalizado. La edición quedó cerrada para este periodo; podrá consultar e imprimir.'
-        :deadlinePassed()
-          ?'⏱ Captura fuera de tiempo. Puede consultar e imprimir, pero la edición está cerrada.'
-          :'🔒 La edición de perfiles está temporalmente desactivada por Administración.';
+      banner.textContent=deadlinePassed()
+        ?'⏱ Captura fuera de tiempo. Puede consultar e imprimir, pero la edición está cerrada.'
+        :'🔒 Edición desactivada por Administración. Puede consultar todo su perfil e imprimirlo normalmente.';
     }
   }
 }
@@ -135,7 +135,7 @@ window.toggleEditingLock=function(){
   renderAdmin();
   applyEditState();
   saveGlobalSettings(cfg.editingLocked?'Edición global desactivada':'Edición global activada');
-  toast(cfg.editingLocked?'Edición de perfiles desactivada.':'Edición de perfiles activada.');
+  toast(cfg.editingLocked?'Edición desactivada. Consulta e impresión permanecen disponibles.':'Edición activada. Los profesores pueden modificar nuevamente todos sus datos.');
 }
 
 
@@ -691,7 +691,7 @@ function renderAdmin(){
 }
 function renderSemesterEditors(){
   let h='';
-  for(let i=0;i<newSemesterCount;i++)h+=`<div class="semester-editor"><div class="semester-editor-head"><b>${i+1}.° cuatrimestre</b>${newSemesterCount>1?`<button onclick="removeSemesterEditor(${i})">Quitar</button>`:''}</div><textarea id="newSem${i}" placeholder="Ejemplo:\nCálculo diferencial - 90\nFísica - 75"></textarea><small class="semester-help">Formato: Asignatura - horas totales del cuatrimestre</small></div>`;
+  for(let i=0;i<newSemesterCount;i++)h+=`<div class="semester-editor"><div class="semester-editor-head"><b>${i+1}.° cuatrimestre</b>${newSemesterCount>1?`<button onclick="removeSemesterEditor(${i})">Borrar</button>`:''}</div><textarea id="newSem${i}" placeholder="Ejemplo:\nCálculo diferencial - 90\nFísica - 75"></textarea><small class="semester-help">Formato: Asignatura - horas totales del cuatrimestre</small></div>`;
   $('newProgramSemesters').innerHTML=h
 }
 window.addSemesterEditor=function(){newSemesterCount++;renderSemesterEditors()}
@@ -844,7 +844,7 @@ async function exportWorkbook(){
   const headerRows=6;
   const aoa=Array.from({length:headerRows+teachers.length},()=>[]);
   aoa[0][0]='PROGRAMA EDUCATIVO';
-  aoa[0][1]='Leyenda: ★ = Favorito · azul/negrita = Coordinó la asignatura';
+  aoa[0][1]='Leyenda: ★ = Favorito · rojo/negrita = Coordinó la asignatura';
   aoa[1][0]='ASIGNATURA';
   aoa[2][0]='HORAS AL CUATRIMESTRE';
   aoa[3][0]='HORAS A LA SEMANA';
@@ -945,7 +945,7 @@ async function exportWorkbook(){
 
 
   // Marcas administrativas del concentrado:
-  // ★ = Favorito; FUENTE AZUL EN NEGRITA = Coordinó la asignatura.
+  // ★ = Favorito; FUENTE ROJA EN NEGRITA = Coordinó la asignatura.
   // No se utilizan fondos especiales.
   for(let r=headerRows;r<aoa.length;r++){
     const t=teachers[r-headerRows];
@@ -962,7 +962,7 @@ async function exportWorkbook(){
             name:'Aptos',
             sz:10,
             bold:favorite || coordinated,
-            color:{rgb:coordinated?'0563C1':'243746'}
+            color:{rgb:coordinated?'C00000':'243746'}
           },
           fill:{patternType:'solid',fgColor:{rgb:'FFFFFF'},bgColor:{rgb:'FFFFFF'}},
           alignment:{horizontal:'center',vertical:'center'},
@@ -1005,7 +1005,7 @@ async function exportWorkbook(){
   const wsBase=XLSX.utils.json_to_sheet(base);
   wsBase['!autofilter']={ref:wsBase['!ref']};
   wsBase['!freeze']={xSplit:2,ySplit:1,topLeftCell:'C2',activePane:'bottomRight',state:'frozen'};
-  // Resalta en azul y negrita el dato de coordinación también en Base maestra.
+  // Resalta en rojo y negrita el dato de coordinación también en Base maestra.
   if(base.length){
     const coordHeader='Coordinador de academia';
     const headers=Object.keys(base[0]);
@@ -1015,7 +1015,7 @@ async function exportWorkbook(){
         const addr=XLSX.utils.encode_cell({r,c:coordCol});
         if(wsBase[addr] && String(wsBase[addr].v||'').toLowerCase()==='sí'){
           wsBase[addr].s={
-            font:{name:'Aptos',sz:10,bold:true,color:{rgb:'0563C1'}},
+            font:{name:'Aptos',sz:10,bold:true,color:{rgb:'C00000'}},
             fill:{patternType:'solid',fgColor:{rgb:'FFFFFF'}},
             alignment:{horizontal:'center',vertical:'center'}
           };

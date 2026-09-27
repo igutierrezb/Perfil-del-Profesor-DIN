@@ -1,17 +1,25 @@
-# Perfil Académico Docente DIN · Versión 16
+# Perfil Académico Docente DIN · Versión 17
 
-V16 conserva la lógica estable de V15 y aplica refinamientos exclusivamente visuales/administrativos solicitados.
+V17 conserva la arquitectura estable y aplica compactación administrativa y ajustes de control solicitados.
 
-## Cambios V16
-- Se incorpora el logo de División Industrial aportado por el usuario:
-  - versión completa en acceso;
-  - emblema en encabezado.
-- Formato institucional y cuenta del usuario dejan de tener recuadro.
-- La clave azul de áreas queda integrada dentro del punto 4 de “Cómo capturar”.
-- La leyenda de estados se mueve junto a la navegación Anterior / Guardar y seguir.
-- La navegación del programa es más baja, usa fondo amarillo pastel y queda visualmente unida al encabezado del programa.
-- Área de conocimiento, Coordinación y Favorito ocupan menos ancho; Asignatura recibe mayor espacio.
-- Selecciones X/XX y área usan azul pastel en lugar de azul oscuro.
-- Administración y tronco común reciben ajustes de alineación/densidad.
-- La última hoja de impresión conserva altura natural.
-- Excel: materias coordinadas se muestran en **azul y negrita**; Favorito conserva ★ y no se usa fondo de color.
+## Cambios
+- Workflow actualizado para publicar correctamente los nuevos archivos de logo de División Industrial.
+- Control de captura más compacto.
+- `Desactivar/Activar edición de perfiles` queda junto a Guardar fecha y Borrar límite.
+- Con edición desactivada:
+  - los profesores pueden consultar todo;
+  - Revisión e impresión permanecen disponibles.
+- Al reactivar edición:
+  - pueden modificar nuevamente nombre, categoría y el resto del perfil, siempre que la fecha límite no haya vencido.
+- Configuración institucional compactada:
+  - Jefe de Unidad;
+  - Periodo;
+  - Código / Revisión / Fecha en una misma fila.
+- Captura de programas nuevos:
+  - dos cuatrimestres por fila;
+  - menor altura y espacio entre bloques;
+  - `Quitar` cambia a `Borrar`.
+- Excel:
+  - ★ = Favorito;
+  - **rojo y negrita** = materia coordinada;
+  - el indicador de coordinación en Base maestra también queda rojo/negrita.

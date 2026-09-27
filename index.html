@@ -216,19 +216,20 @@
           <span id="deadlineAdminStatus" class="deadline-admin-status"></span>
         </div>
       </div>
-      <div class="capture-control-grid">
-        <div class="control-panel-mini">
-          <b>Edición de perfiles</b>
-          <span>Puede cerrar o reabrir la edición sin impedir la consulta e impresión.</span>
-          <button id="editModeBtn" class="edit-mode-btn" onclick="toggleEditingLock()"></button>
-        </div>
-        <div class="control-panel-mini">
-          <b>Fecha límite</b>
+      <div class="capture-control-grid capture-control-single">
+        <div class="control-panel-mini capture-deadline-panel">
+          <div class="capture-inline-head">
+            <div>
+              <b>Fecha límite y edición</b>
+              <span>Los profesores pueden consultar e imprimir aunque la edición esté desactivada.</span>
+            </div>
+          </div>
           <label>Fecha y hora de cierre<input id="captureDeadlineAdmin" type="datetime-local"></label>
           <div id="deadlineAdminPreview" class="deadline-admin-preview"></div>
-          <div class="mini-actions">
-            <button class="primary" onclick="saveDeadline()">Guardar</button>
-            <button onclick="clearDeadline()">Quitar</button>
+          <div class="mini-actions capture-main-actions">
+            <button class="primary" onclick="saveDeadline()">Guardar fecha</button>
+            <button onclick="clearDeadline()">Borrar límite</button>
+            <button id="editModeBtn" class="edit-mode-btn" onclick="toggleEditingLock()"></button>
           </div>
         </div>
       </div>
@@ -236,12 +237,14 @@
 
     <details id="institutionalConfig" class="card admin-details" open>
       <summary>Configuración institucional</summary>
-      <div class="admin-grid admin-grid-compact">
-        <label>Jefe de Unidad<input id="jefe"></label>
-        <label>Periodo de vigencia<input id="periodoAdmin"></label>
-        <label>Código<input id="codigo"></label>
-        <label>Revisión<input id="revisionCal"></label>
-        <label>Fecha de revisión<input id="fechaRevision"></label>
+      <div class="admin-grid admin-grid-stacked">
+        <label class="admin-row-full">Jefe de Unidad<input id="jefe"></label>
+        <label class="admin-row-full">Periodo de vigencia<input id="periodoAdmin"></label>
+        <div class="admin-row-triple">
+          <label>Código<input id="codigo"></label>
+          <label>Revisión<input id="revisionCal"></label>
+          <label>Fecha de revisión<input id="fechaRevision"></label>
+        </div>
       </div>
       <div class="period-preserve-note">Cambiar el periodo <b>no borra ni reinicia</b> los datos capturados por los profesores; únicamente actualiza la vigencia mostrada.</div>
       <div class="save-row"><button class="save-btn" onclick="saveAdmin()">Guardar configuración institucional</button></div>

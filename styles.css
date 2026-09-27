@@ -2490,3 +2490,180 @@ textarea:focus-visible,
       48px!important;
   }
 }
+
+
+/* =========================================================
+   V17 · compactación administrativa + edición global
+   ========================================================= */
+
+/* Administración: más compacta y legible */
+.admin-adminline{
+  grid-template-columns:minmax(430px,.95fr) minmax(420px,1.05fr)!important;
+  gap:9px!important;
+}
+.capture-control-card,
+.admin-details{
+  padding:11px 13px!important;
+}
+.capture-control-card .section-head{
+  margin-bottom:7px!important;
+}
+.capture-control-card .section-head h2{
+  margin-bottom:1px!important;
+}
+.capture-control-card .section-head p{
+  margin:0!important;
+}
+.capture-control-single{
+  display:block!important;
+}
+.capture-deadline-panel{
+  padding:8px 9px!important;
+  gap:6px!important;
+}
+.capture-inline-head{
+  display:flex;
+  justify-content:space-between;
+  align-items:flex-start;
+  gap:8px;
+}
+.capture-inline-head>div{
+  display:flex;
+  flex-direction:column;
+  gap:1px;
+}
+.capture-inline-head>b,
+.capture-inline-head div>b{
+  font-size:10.5px;
+}
+.capture-inline-head span{
+  font-size:8.8px!important;
+}
+.capture-deadline-panel label{
+  margin:0!important;
+  font-size:9px!important;
+}
+.capture-deadline-panel input{
+  padding:6px 8px!important;
+}
+.capture-deadline-panel .deadline-admin-preview{
+  min-height:0!important;
+  padding:6px 8px!important;
+}
+.capture-deadline-panel .deadline-admin-preview b{
+  font-size:10.5px!important;
+}
+.capture-deadline-panel .deadline-admin-preview span{
+  margin-top:1px!important;
+  font-size:8.6px!important;
+}
+.capture-main-actions{
+  display:grid!important;
+  grid-template-columns:auto auto 1fr;
+  gap:6px!important;
+  align-items:center;
+}
+.capture-main-actions button{
+  min-height:31px!important;
+  padding:6px 9px!important;
+}
+.capture-main-actions .edit-mode-btn{
+  justify-self:stretch;
+  width:100%;
+}
+
+/* Configuración institucional: Jefe / Periodo / Código-Revisión-Fecha */
+.admin-grid-stacked{
+  display:grid!important;
+  grid-template-columns:1fr!important;
+  gap:5px!important;
+}
+.admin-grid-stacked .admin-row-full{
+  display:grid!important;
+  grid-template-columns:120px 1fr;
+  align-items:center;
+  gap:8px;
+  margin:0!important;
+}
+.admin-grid-stacked .admin-row-triple{
+  display:grid;
+  grid-template-columns:1fr .75fr 1fr;
+  gap:6px;
+}
+.admin-grid-stacked label{
+  margin:0!important;
+  font-size:8.8px!important;
+}
+.admin-grid-stacked input{
+  padding:6px 7px!important;
+  min-height:29px!important;
+}
+.admin-details .period-preserve-note{
+  margin-top:5px!important;
+  padding:5px 7px!important;
+  font-size:8.5px!important;
+}
+.admin-details .save-row{
+  margin-top:6px!important;
+}
+.admin-details .save-row button{
+  min-height:31px!important;
+  padding:6px 10px!important;
+}
+
+/* Crear programa: dos cuatrimestres por fila */
+#newProgramSemesters{
+  display:grid!important;
+  grid-template-columns:repeat(2,minmax(0,1fr));
+  gap:8px!important;
+  margin-top:7px;
+}
+.semester-editor{
+  margin:0!important;
+  padding:8px!important;
+  border-radius:9px!important;
+}
+.semester-editor-head{
+  margin-bottom:5px!important;
+}
+.semester-editor-head b{
+  font-size:11px!important;
+}
+.semester-editor-head button{
+  min-height:27px!important;
+  padding:4px 8px!important;
+}
+.semester-editor textarea{
+  min-height:78px!important;
+  height:78px!important;
+  padding:7px 8px!important;
+  line-height:1.25!important;
+}
+.semester-help{
+  display:block;
+  margin-top:3px!important;
+  line-height:1.15!important;
+  font-size:8px!important;
+}
+
+/* En modo edición bloqueada: los campos se ven, pero sin apariencia de ocultamiento */
+.profile-edit-locked #perfil input:disabled,
+.profile-edit-locked #perfil select:disabled,
+.profile-edit-locked #perfil textarea:disabled,
+.profile-edit-locked #captura input:disabled,
+.profile-edit-locked #captura select:disabled,
+.profile-edit-locked #captura textarea:disabled{
+  opacity:.88!important;
+  color:#304653!important;
+}
+
+/* Responsive */
+@media(max-width:1050px){
+  .admin-adminline{grid-template-columns:1fr!important}
+}
+@media(max-width:760px){
+  #newProgramSemesters{grid-template-columns:1fr!important}
+  .admin-grid-stacked .admin-row-full{grid-template-columns:1fr!important}
+  .admin-grid-stacked .admin-row-triple{grid-template-columns:1fr!important}
+  .capture-main-actions{grid-template-columns:1fr!important}
+}
