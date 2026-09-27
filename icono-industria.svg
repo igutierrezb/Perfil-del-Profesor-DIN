@@ -1,60 +1,71 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 220 220" role="img" aria-label="División Industrial">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 240 240" role="img" aria-label="División Industrial">
 <defs>
-  <linearGradient id="plate" x1="26" y1="16" x2="194" y2="205" gradientUnits="userSpaceOnUse">
-    <stop stop-color="#082E4A"/>
-    <stop offset=".52" stop-color="#0F6380"/>
-    <stop offset="1" stop-color="#1A9489"/>
-  </linearGradient>
-  <linearGradient id="steel" x1="62" y1="42" x2="167" y2="168">
+  <radialGradient id="bg" cx="36%" cy="28%" r="82%">
+    <stop offset="0" stop-color="#27B3A6"/>
+    <stop offset=".38" stop-color="#157A91"/>
+    <stop offset="1" stop-color="#0A3456"/>
+  </radialGradient>
+  <linearGradient id="steel" x1="50" y1="35" x2="186" y2="196">
     <stop stop-color="#FFFFFF"/>
-    <stop offset=".55" stop-color="#DDF6F2"/>
-    <stop offset="1" stop-color="#A9DED8"/>
+    <stop offset=".48" stop-color="#E8F8F5"/>
+    <stop offset="1" stop-color="#A6DDD7"/>
   </linearGradient>
-  <linearGradient id="accent" x1="52" y1="143" x2="173" y2="198">
-    <stop stop-color="#D5F2ED"/>
-    <stop offset="1" stop-color="#FFFFFF"/>
+  <linearGradient id="accent" x1="88" y1="95" x2="176" y2="174">
+    <stop stop-color="#FFD87A"/>
+    <stop offset="1" stop-color="#F5A63A"/>
   </linearGradient>
   <filter id="shadow" x="-25%" y="-25%" width="150%" height="150%">
-    <feDropShadow dx="0" dy="10" stdDeviation="9" flood-color="#031D2D" flood-opacity=".27"/>
+    <feDropShadow dx="0" dy="9" stdDeviation="9" flood-color="#052438" flood-opacity=".28"/>
   </filter>
 </defs>
 
-<!-- placa técnica octagonal -->
-<path d="M58 12H162L208 58V162L162 208H58L12 162V58Z" fill="url(#plate)" filter="url(#shadow)"/>
-<path d="M64 24H156L196 64V156L156 196H64L24 156V64Z" fill="none" stroke="#93D9D2" stroke-opacity=".48" stroke-width="2.5"/>
+<!-- insignia circular -->
+<circle cx="120" cy="120" r="105" fill="url(#bg)" filter="url(#shadow)"/>
+<circle cx="120" cy="120" r="94" fill="none" stroke="#9CE1DA" stroke-width="3" stroke-opacity=".45"/>
+<circle cx="120" cy="120" r="83" fill="none" stroke="#D7F3EF" stroke-width="1.5" stroke-opacity=".22"/>
 
-<!-- detalle de circuito / precisión -->
-<g fill="none" stroke="#8CD7D0" stroke-width="3" stroke-linecap="round" opacity=".72">
-  <path d="M34 72h24l11-11h18"/>
-  <path d="M146 42h23l13 13v19"/>
-  <path d="M38 168h27l10 10h22"/>
-</g>
-<g fill="#B7ECE6">
-  <circle cx="34" cy="72" r="4"/><circle cx="87" cy="61" r="4"/>
-  <circle cx="146" cy="42" r="4"/><circle cx="182" cy="74" r="4"/>
-  <circle cx="38" cy="168" r="4"/><circle cx="97" cy="178" r="4"/>
+<!-- anillo técnico segmentado -->
+<g fill="none" stroke="#B8EAE4" stroke-width="5" stroke-linecap="round" opacity=".72">
+  <path d="M120 29a91 91 0 0 1 57 20"/>
+  <path d="M192 67a91 91 0 0 1 16 53"/>
+  <path d="M194 160a91 91 0 0 1-42 41"/>
+  <path d="M87 205a91 91 0 0 1-47-36"/>
+  <path d="M31 132a91 91 0 0 1 15-55"/>
 </g>
 
-<!-- engrane principal -->
-<g transform="translate(148 82)" fill="none" stroke="url(#steel)" stroke-width="7" stroke-linecap="round">
-  <circle r="30"/>
-  <circle r="10" fill="#E9FAF7" stroke="none"/>
-  <path d="M0-46v10M0 36v10M-46 0h10M36 0h10M-33-33l8 8M25 25l8 8M33-33l-8 8M-25 25l-8 8"/>
+<!-- engrane -->
+<g transform="translate(164 78)" fill="none" stroke="url(#steel)" stroke-width="6" stroke-linecap="round">
+  <circle r="24"/>
+  <circle r="8" fill="#EAF9F6" stroke="none"/>
+  <path d="M0-37v8M0 29v8M-37 0h8M29 0h8M-26-26l6 6M20 20l6 6M26-26l-6 6M-20 20l-6 6"/>
 </g>
 
-<!-- casco de seguridad -->
-<path d="M38 104c0-25 19-45 44-45s44 20 44 45" fill="none" stroke="#fff" stroke-width="9" stroke-linecap="round"/>
-<path d="M31 108h103M82 59v28" stroke="#fff" stroke-width="9" stroke-linecap="round"/>
+<!-- brazo robótico articulado -->
+<g stroke="#FFFFFF" stroke-width="8" stroke-linecap="round" stroke-linejoin="round" fill="none">
+  <path d="M61 151h25l18-34 29 10"/>
+  <circle cx="86" cy="151" r="7" fill="#FFFFFF"/>
+  <circle cx="104" cy="117" r="7" fill="#FFFFFF"/>
+  <circle cx="133" cy="127" r="7" fill="#FFFFFF"/>
+  <path d="M133 127l21-18"/>
+</g>
+<path d="M153 103l15 12-7 8-15-12Z" fill="url(#accent)"/>
 
-<!-- nave industrial, chimenea y sierra de techos -->
-<path d="M33 183V132l31 18v-22l29 18v-24l29 18v-20l46 28v35H33Z" fill="url(#accent)"/>
-<path d="M154 134v-31h17v41" fill="#E7F8F5"/>
-<path d="M157 103h11" stroke="#8AD5CE" stroke-width="3"/>
-<rect x="48" y="158" width="16" height="25" rx="2" fill="#0B5474"/>
-<rect x="75" y="158" width="16" height="25" rx="2" fill="#0B5474"/>
-<rect x="102" y="158" width="16" height="25" rx="2" fill="#0B5474"/>
-<rect x="139" y="155" width="20" height="28" rx="2" fill="#0B5474"/>
+<!-- nave/fábrica estilizada en perspectiva -->
+<path d="M49 189v-39l27 15v-19l28 16v-20l28 16v-16l47 26v21H49Z" fill="#FFFFFF"/>
+<path d="M50 189h129" stroke="#8AD5CE" stroke-width="4" stroke-linecap="round"/>
+<rect x="61" y="169" width="14" height="20" rx="2" fill="#0D5273"/>
+<rect x="84" y="169" width="14" height="20" rx="2" fill="#0D5273"/>
+<rect x="108" y="169" width="14" height="20" rx="2" fill="#0D5273"/>
+<rect x="145" y="166" width="18" height="23" rx="2" fill="#0D5273"/>
 
-<!-- líneas técnicas inferiores -->
-<path d="M42 192h136" stroke="#8DD7D0" stroke-width="3" stroke-linecap="round"/>
+<!-- nodos digitales -->
+<g fill="#FFD87A">
+  <circle cx="53" cy="83" r="5"/>
+  <circle cx="70" cy="60" r="4"/>
+  <circle cx="196" cy="134" r="4"/>
+</g>
+<g stroke="#FFD87A" stroke-width="3" fill="none" stroke-linecap="round">
+  <path d="M53 83h20l12-12"/>
+  <path d="M196 134h-15l-9 9"/>
+</g>
 </svg>

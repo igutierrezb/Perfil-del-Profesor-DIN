@@ -1,23 +1,20 @@
-# Perfil Académico Docente DIN · Versión 11
+# Perfil Académico Docente DIN · Versión 12
 
-Actualización incremental sobre V10, conservando autenticación, Firestore, captura, favoritos, coordinación, cierre de captura y exportación administrativa.
+Actualización incremental sobre V11, conservando autenticación, Firestore, perfil vigente, impresión, troncos comunes y administración.
 
-## Cambios V11
-- Corrige el error de Excel `c is not defined`.
-- Nuevo logotipo industrial, completamente rediseñado y más elaborado.
-- Wordmark UTEQ de impresión reconstruido sin línea divisoria para evitar empalmes.
-- Cuenta regresiva más grande, centrada y visible en la banda superior.
-- El cambio de periodo no borra ni reinicia perfiles, respuestas ni coordinaciones.
-- Control de edición + fecha límite unificados en una tarjeta administrativa compacta.
-- Configuración institucional reducida y optimizada.
-- Administración de tronco común configurable:
-  - seleccionar programas que comparten tronco;
-  - seleccionar cuatrimestres sincronizados;
-  - crear, editar o quitar grupos de tronco común.
-- La sincronización de tronco común se realiza por nombre de asignatura en el mismo cuatrimestre.
-- La impresión solo muestra firmas y sello en la primera hoja.
-- Páginas de programas con tipografía aproximadamente un punto mayor.
-- Encabezados de tablas reforzados en negrita.
-- Primera hoja: valores de Nombre y Categoría aproximadamente cuatro puntos mayores, manteniendo pequeñas las etiquetas.
-- Columnas de impresión optimizadas para dar más ancho efectivo a las asignaturas.
-- Tres programas por hoja se distribuyen usando mejor la altura disponible.
+## Cambios V12
+- Nuevo logotipo circular, juvenil y más elaborado, con engrane, brazo robótico, fábrica y detalles digitales.
+- Wordmark UTEQ reconstruido con separación interna mucho mayor entre `UTEQ` y `UNIVERSIDAD TECNOLÓGICA DE QUERÉTARO`.
+- Área de conocimiento más compacta y encabezado en dos líneas.
+- Nueva columna `Coordinación` antes de `Favorito`.
+- Coordinación deshabilitada por defecto; solo se habilita después de declarar que se ha sido coordinador(a) de academia.
+- Cada asignatura puede marcarse individualmente con una palomita de coordinación.
+- Mensaje permanente: `Solo habilitar si has sido coordinador(a) de academia previamente`.
+- Favorito corregido para mostrar exactamente una estrella: `☆ Favorito` / `★ Favorito`.
+- Se elimina el botón administrativo redundante `Cerrar ahora`; se conservan el control de edición y la fecha límite.
+- Se elimina el segundo botón redundante de `Continuar a revisión e impresión` al final de Perfil por programa.
+- `Guardar todo el perfil` cambia a `Guardar avance`.
+- Después de `Imprimir / Guardar PDF`, el profesor decide:
+  - Aceptar: formaliza el perfil y bloquea edición para el periodo actual.
+  - Cancelar: continúa editando.
+- El bloqueo posterior a impresión se libera automáticamente cuando Administración cambia el periodo, sin borrar ningún dato capturado.

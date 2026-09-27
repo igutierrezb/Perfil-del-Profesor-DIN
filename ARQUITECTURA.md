@@ -1,24 +1,17 @@
-# Arquitectura V11
+# Arquitectura V12
 
-## Periodo
-`cfg.periodo` es únicamente metadato visual y administrativo. Cambiarlo no crea un perfil nuevo ni elimina:
-- `profile`;
-- `answers`;
-- `programMeta`.
+## Bloqueo por formalización
+`store.submittedPeriod` conserva el periodo en el que el profesor dio por finalizada su captura tras imprimir/guardar PDF.
 
-El documento Firestore del profesor continúa siendo `profiles/{uid}`, por lo que el perfil vigente se sobrescribe y conserva entre cambios de periodo.
+La edición se bloquea si:
+- `submittedPeriod === cfg.periodo`;
+- la fecha límite venció; o
+- Administración desactivó la edición.
 
-## Troncos comunes
-`commonRules` se almacena en configuración global. Cada regla contiene:
-- `id`;
-- `name`;
-- `programIds`;
-- `semesters` (índices base 0).
+Cuando cambia `cfg.periodo`, el valor anterior de `submittedPeriod` deja de coincidir y la edición vuelve a estar disponible. No se elimina `profile`, `answers` ni `programMeta`.
 
-La réplica busca la misma asignatura por nombre normalizado en el mismo cuatrimestre. Esto evita depender de que la asignatura tenga exactamente la misma posición dentro de las listas.
+## Coordinación por asignatura
+`programMeta[programId].coordinatorEnabled` habilita el modo de coordinación.
+`programMeta[programId].coordinators` almacena claves `cuatrimestre|índice`.
 
-## Impresión
-- firmas y sello: solo primera hoja;
-- tres programas por hoja posterior;
-- columnas de asignatura calculadas según cantidad de cuatrimestres;
-- Nivel y Área mantienen columnas estrechas.
+El PDF no imprime Favorito ni Coordinación. Ambos se conservan para la base administrativa/Excel.

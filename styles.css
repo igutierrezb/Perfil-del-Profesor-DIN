@@ -1363,3 +1363,188 @@ button:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-vis
   .program-trio .currTable td.level,
   .program-trio .currTable td.area{font-size:8.1px!important}
 }
+
+
+/* =========================================================
+   V12 · coordinación por fila + favorito corregido + logo
+   ========================================================= */
+
+/* Logo de la aplicación: circular, más grande y con presencia */
+.hero-icon{
+  width:88px!important;
+  height:88px!important;
+  border-radius:50%!important;
+  filter:drop-shadow(0 9px 18px rgba(5,43,66,.18));
+}
+.login-logo{
+  width:170px!important;
+  height:170px!important;
+  border-radius:50%!important;
+  filter:drop-shadow(0 13px 25px rgba(5,43,66,.22));
+}
+
+/* Perfil por programa: 6 columnas, área más compacta */
+.course-columns,.course{
+  grid-template-columns:
+    minmax(165px,1.25fr)
+    76px
+    82px
+    minmax(230px,.95fr)
+    86px
+    88px!important;
+  gap:5px!important;
+}
+.course-columns{
+  align-items:center!important;
+}
+.course-columns .area-head{
+  line-height:1.05;
+  text-align:center;
+}
+.course-columns .coord-head{
+  text-align:center;
+  line-height:1.05;
+}
+
+/* Área: botones más compactos, permite aprovechar altura */
+.area-buttons{
+  display:grid!important;
+  grid-template-columns:repeat(4,minmax(26px,1fr))!important;
+  gap:3px!important;
+  align-items:center;
+}
+.mini.area{
+  min-width:0!important;
+  width:100%!important;
+  padding:4px 2px!important;
+}
+
+/* Coordinación por fila */
+.compact-coordinator{
+  padding:9px 12px!important;
+  margin:0!important;
+  border-radius:0!important;
+}
+.coordinator-inline{
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:16px;
+}
+.coordinator-inline>div{
+  display:flex;
+  flex-direction:column;
+  gap:2px;
+}
+.coordinator-inline b{
+  font-size:10.5px;
+  color:#8b302a;
+}
+.coordinator-inline span{
+  font-size:9.4px;
+  color:#8d4b46;
+}
+.coord-main-toggle{
+  flex:0 0 auto;
+  padding:5px 8px;
+  border:1px solid #e4b2ad;
+  border-radius:8px;
+  background:#fff;
+}
+.coord-row-check{
+  width:30px;height:30px;
+  display:grid;
+  place-items:center;
+  justify-self:center;
+  border:1px solid #d3dde4;
+  border-radius:8px;
+  background:#f5f7f8;
+  color:#bbc4ca;
+  cursor:not-allowed;
+}
+.coord-row-check input{display:none}
+.coord-row-check span{
+  font-size:15px;
+  font-weight:900;
+  opacity:.25;
+}
+.coord-row-check:has(input:not(:disabled)){
+  cursor:pointer;
+  background:#fff;
+  border-color:#b8cbd7;
+  color:#4f7188;
+}
+.coord-row-check.on,
+.coord-row-check:has(input:checked){
+  background:#e7f5ed;
+  border-color:#7ab99b;
+  color:#24714f;
+}
+.coord-row-check.on span,
+.coord-row-check:has(input:checked) span{opacity:1}
+
+/* Favorito: exactamente una estrella */
+.ideal-btn{
+  min-width:78px!important;
+  white-space:nowrap;
+}
+
+/* Wordmark UTEQ: separación interna generosa */
+.sheetHead{
+  grid-template-columns:190px 1fr 110px!important;
+}
+.print-logo{
+  width:178px!important;
+  max-width:178px!important;
+  max-height:28px!important;
+}
+
+/* Evitar que filas parezcan tapadas: un poco más de aire vertical */
+.course{
+  min-height:50px!important;
+  padding-top:6px!important;
+  padding-bottom:6px!important;
+}
+.course .name{
+  overflow:visible!important;
+}
+
+/* Solo queda Guardar avance como acción global inferior */
+#captura>.actions{
+  justify-content:flex-start!important;
+}
+
+/* Impresión: protege ancho de materias */
+.program-trio .currTable td.subject{
+  padding-left:3.5px!important;
+  padding-right:3px!important;
+}
+.program-trio .currTable th.vhead{
+  width:auto!important;
+}
+
+/* Responsive */
+@media(max-width:1180px){
+  .course-columns,.course{
+    grid-template-columns:
+      minmax(160px,1.15fr)
+      72px
+      78px
+      minmax(215px,.9fr)
+      82px
+      86px!important;
+  }
+}
+@media(max-width:850px){
+  .coordinator-inline{align-items:flex-start;flex-direction:column}
+}
+
+/* Impresión: logo con más espacio real entre UTEQ y wordmark */
+@media print{
+  .sheetHead{grid-template-columns:184px 1fr 106px!important}
+  .print-logo{
+    width:172px!important;
+    max-width:172px!important;
+    max-height:27px!important;
+  }
+}

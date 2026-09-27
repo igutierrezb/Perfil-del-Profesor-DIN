@@ -1,8 +1,8 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 680 105" role="img" aria-label="Universidad Tecnológica de Querétaro">
-<rect width="680" height="105" fill="#fff"/>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 780 105" role="img" aria-label="Universidad Tecnológica de Querétaro">
+<rect width="780" height="105" fill="#fff"/>
 <g fill="#11599B">
   <text x="4" y="76" font-family="Arial,Helvetica,sans-serif" font-size="76" font-weight="800" letter-spacing="-4">UTEQ</text>
-  <text x="218" y="43" font-family="Arial,Helvetica,sans-serif" font-size="25" font-weight="700">UNIVERSIDAD TECNOLÓGICA</text>
-  <text x="218" y="75" font-family="Arial,Helvetica,sans-serif" font-size="25" font-weight="700">DE QUERÉTARO</text>
+  <text x="300" y="43" font-family="Arial,Helvetica,sans-serif" font-size="25" font-weight="700">UNIVERSIDAD TECNOLÓGICA</text>
+  <text x="300" y="75" font-family="Arial,Helvetica,sans-serif" font-size="25" font-weight="700">DE QUERÉTARO</text>
 </g>
 </svg>

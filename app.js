@@ -62,8 +62,11 @@ function weeklyHours(pid,s,c){
 function deadlinePassed(){
   return !!cfg.captureDeadline && Date.now()>=Number(cfg.captureDeadline);
 }
+function submissionLockedForCurrentPeriod(){
+  return !!store.submittedPeriod && store.submittedPeriod===cfg.periodo;
+}
 function editingAllowed(){
-  return isAdmin() || (!cfg.editingLocked && !deadlinePassed());
+  return isAdmin() || (!cfg.editingLocked && !deadlinePassed() && !submissionLockedForCurrentPeriod());
 }
 function formatDateTime(ts){
   if(!ts)return 'Sin fecha límite';
@@ -116,7 +119,13 @@ function applyEditState(){
   const banner=$('editingLockedBanner');
   if(banner){
     banner.classList.toggle('hidden',!locked);
-    if(locked)banner.textContent=deadlinePassed()?'⏱ Captura fuera de tiempo. Puede consultar e imprimir, pero la edición está cerrada.':'🔒 La edición de perfiles está temporalmente desactivada por Administración.';
+    if(locked){
+      banner.textContent=submissionLockedForCurrentPeriod()
+        ?'✓ Perfil formalizado. La edición quedó cerrada para este periodo; podrá consultar e imprimir.'
+        :deadlinePassed()
+          ?'⏱ Captura fuera de tiempo. Puede consultar e imprimir, pero la edición está cerrada.'
+          :'🔒 La edición de perfiles está temporalmente desactivada por Administración.';
+    }
   }
 }
 window.toggleEditingLock=function(){
@@ -230,6 +239,7 @@ function profileCloudPayload(){
     answers:JSON.parse(JSON.stringify(answers)),
     programMeta:JSON.parse(JSON.stringify(programMeta)),
     period:cfg.periodo,
+    submittedPeriod:store.submittedPeriod||null,
     updatedAt:serverTimestamp()
   };
 }
@@ -255,6 +265,7 @@ async function loadRemoteProfile(){
       if(d.profile)store.profile=d.profile;
       if(d.answers)answers=d.answers;
       if(d.programMeta)programMeta=d.programMeta;
+      if('submittedPeriod' in d)store.submittedPeriod=d.submittedPeriod||null;
       store.answers=answers;store.programMeta=programMeta;
       localStorage.setItem('PAD_UTEQ',JSON.stringify({...store,cfg,customPrograms,disabledPrograms,programAcronyms,commonRules,currentProgramIndex,lastSavedAt}));
       loadProfileValuesOnly();
@@ -477,14 +488,29 @@ window.toggleCoordinator=function(pid,id,checked){
   programMeta[pid].coordinators=arr;persist();
 }
 function renderCoordinator(p){
-  const eligible=eligibleCourses(p),meta=programMeta[p.id]||{},enabled=!!meta.coordinatorEnabled,chosen=meta.coordinators||[];
-  return `<details class="coordinator-panel coordinator-alert" ${enabled?'open':''}>
-    <summary><span>Coordinación de academia</span><span class="coord-mode-pill ${enabled?'on':''}">${enabled?'Habilitado':'Desactivado'}</span></summary>
-    <div class="coord-enable-row">
-      <label class="coord-main-toggle"><input type="checkbox" ${enabled?'checked':''} onchange="toggleCoordinatorMode('${p.id}',this.checked)"><span>He sido coordinador(a) de academia en este programa</span></label>
+  const meta=programMeta[p.id]||{},enabled=!!meta.coordinatorEnabled;
+  return `<div class="coordinator-panel coordinator-alert compact-coordinator">
+    <div class="coordinator-inline">
+      <div>
+        <b>Coordinación de academia</b>
+        <span>Solo habilitar si has sido coordinador(a) de academia previamente.</span>
+      </div>
+      <label class="coord-main-toggle">
+        <input type="checkbox" ${enabled?'checked':''} onchange="toggleCoordinatorMode('${p.id}',this.checked)">
+        <span>${enabled?'Sí, he sido coordinador(a)':'No habilitado'}</span>
+      </label>
     </div>
-    ${enabled?`<div class="coord-warning">Solo se debe marcar si efectivamente ha sido coordinador(a) de academia. Seleccione la(s) asignatura(s) correspondientes.</div><div class="coord-options">${eligible.length?eligible.map(o=>`<label class="coord-chip"><input type="checkbox" ${chosen.includes(o.id)?'checked':''} onchange="toggleCoordinator('${p.id}','${o.id}',this.checked)">${o.text}</label>`).join(''):`<span class="coord-empty">Primero capture una asignatura con competencia X/XX y área de conocimiento.</span>`}</div>`:''}
-  </details>`;
+  </div>`;
+}
+
+
+function rowCoordinatorChecked(pid,s,c){
+  return !!(((programMeta[pid]||{}).coordinators||[]).includes(`${s}|${c}`));
+}
+function rowCoordinatorEnabled(pid,s,c,name){
+  const meta=programMeta[pid]||{};
+  const a=getAns(pid,s,c,name);
+  return !!meta.coordinatorEnabled && !isEnglish(name) && a.status!=='off' && ['X','XX'].includes(a.status);
 }
 
 const pastelTitles=['#eef4f9','#f7efe7','#edf6f0','#f2effa','#fff4ea','#ecf6f8','#f8eef1','#eef5e9'];
@@ -496,7 +522,7 @@ function renderCurrentProgram(){
   let bg = pastelTitles[currentProgramIndex % pastelTitles.length];
   let h=`<article class="program"><div class="program-head" style="background:${bg}"><div class="program-title"><strong>${p.name}</strong><span><b>Salida lateral:</b> ${p.exit}</span></div><div class="program-progress">${st.done}/${st.total} revisadas${st.missing?` · ${st.missing} pendientes`:''}</div></div>${commonRuleForProgram(p.id)?`<div class="common-note">${commonDescription(p.id)}</div>`:''}${renderCoordinator(p)}<div class="program-scroll-wrap"><div class="scroll-hint">↔ Si la pantalla es más angosta, desplácese horizontalmente para ver todas las columnas.</div><div class="semesters-grid">`;
   p.semesters.forEach((sem,s)=>{
-    h+=`<div class="semester-card"><h4>${s+1}.° cuatrimestre <span>${sem.length} asignaturas</span></h4><div class="course-columns"><span>Asignatura</span><span>Habilitar</span><span>Competencia</span><span>Área conocimiento</span><span>Favorito</span></div>`;
+    h+=`<div class="semester-card"><h4>${s+1}.° cuatrimestre <span>${sem.length} asignaturas</span></h4><div class="course-columns"><span>Asignatura</span><span>Habilitar</span><span>Competencia</span><span class="area-head">Área de<br>conocimiento</span><span class="coord-head">Coordinación</span><span>Favorito</span></div>`;
     sem.forEach((name,c)=>{
       const a=getAns(p.id,s,c,name),na=isEnglish(name),enc=encodeURIComponent(name),enabled=!['off','na'].includes(a.status),pending=a.status==='pending',reviewed=!pending&&!na;
       h+=`<div class="course ${pending?'pending':''} ${a.status==='off'?'off':''} ${reviewed&&a.status!=='off'?'reviewed':''} ${na?'na':''}">
@@ -504,7 +530,11 @@ function renderCurrentProgram(){
       <label class="toggle ${na?'locked':''}"><input type="checkbox" ${enabled?'checked':''} ${na?'disabled':''} onchange="setEnabled('${p.id}',${s},${c},decodeURIComponent('${enc}'),this.checked)"><span class="switch"></span><span>${na?'Bloqueado':enabled?'Sí':'No'}</span></label>
       <div class="comp-buttons"><button class="mini ${a.status==='X'?'on':''}" ${!enabled?'disabled':''} onclick="setCompetence('${p.id}',${s},${c},decodeURIComponent('${enc}'),'X')">X</button><button class="mini ${a.status==='XX'?'on':''}" ${!enabled?'disabled':''} onclick="setCompetence('${p.id}',${s},${c},decodeURIComponent('${enc}'),'XX')">XX</button></div>
       <div class="area-buttons">${['1','2','3','12','13','23','123'].map(code=>`<button class="mini area ${originCode(a)===code?'on':''}" ${!['X','XX'].includes(a.status)?'disabled':''} onclick="setOriginCode('${p.id}',${s},${c},decodeURIComponent('${enc}'),'${code}')">${code}</button>`).join('')}</div>
-      <button class="ideal-btn ${a.ideal?'on':''}" ${!enabled?'disabled':''} onclick="toggleIdeal('${p.id}',${s},${c},decodeURIComponent('${enc}'))">★ ${a.ideal?'★ Favorito':'☆ Favorito'}</button></div>`
+      <label class="coord-row-check ${rowCoordinatorChecked(p.id,s,c)?'on':''}" title="Solo habilitar si has sido coordinador(a) de academia previamente.">
+        <input type="checkbox" ${rowCoordinatorChecked(p.id,s,c)?'checked':''} ${rowCoordinatorEnabled(p.id,s,c,name)?'':'disabled'} onchange="toggleCoordinator('${p.id}','${s}|${c}',this.checked)">
+        <span>✓</span>
+      </label>
+      <button class="ideal-btn ${a.ideal?'on':''}" ${!enabled?'disabled':''} onclick="toggleIdeal('${p.id}',${s},${c},decodeURIComponent('${enc}'))">${a.ideal?'★ Favorito':'☆ Favorito'}</button></div>`
     });
     h+='</div>';
   });
@@ -579,7 +609,29 @@ function buildPrint(){
   }
   $('printArea').innerHTML=html
 }
-window.printProfile=function(){const v=validateAll();if(!v.ok){window.go('captura',true);showCaptureErrors(v.errors);return}buildPrint();window.print()}
+window.printProfile=function(){
+  const v=validateAll();
+  if(!v.ok){window.go('captura',true);showCaptureErrors(v.errors);return}
+  buildPrint();
+  window.print();
+  setTimeout(()=>{
+    if(isAdmin())return;
+    const lock=window.confirm(
+      '¿Deseas dar por finalizada tu captura?\n\nAceptar: se deshabilitará la edición de este perfil hasta que Administración cambie al próximo periodo.\n\nCancelar: podrás seguir editando.'
+    );
+    if(lock){
+      store.submittedPeriod=cfg.periodo;
+      persist();
+      scheduleCloudProfileSave();
+      writeAudit('Perfil formalizado después de imprimir/guardar PDF');
+      applyEditState();
+      updateNavState();
+      toast('Perfil formalizado. La edición quedó cerrada para este periodo.');
+    }else{
+      toast('La edición permanece habilitada.');
+    }
+  },250);
+}
 
 
 function toLocalDateTimeValue(ts){
