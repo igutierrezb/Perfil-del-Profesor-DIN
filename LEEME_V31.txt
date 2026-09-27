@@ -1,0 +1,27 @@
+PERFIL PROFESOR DIN · V31
+
+CAMBIOS:
+1. Impresión/PDF corregida:
+   - se oculta por completo la interfaz web;
+   - sólo se imprime el formato institucional;
+   - se neutralizan estilos móviles durante impresión;
+   - se evita la hoja en blanco final;
+   - se conserva el logo UTEQ de impresión;
+   - firmas/sello permanecen al pie de cada hoja.
+
+2. Identidad DIN:
+   - se integra el paquete de imágenes más reciente;
+   - logo horizontal nuevo en acceso de escritorio;
+   - emblema industrial nuevo en encabezado;
+   - nuevos iconos de navegador/móvil derivados del paquete.
+
+3. Administración:
+   - Profesores y cierre de perfil muestra explícitamente
+     el día y la hora en que el profesor finalizó y envió su perfil.
+
+DEPLOY-PAGES.YML:
+- Si YA actualizó deploy-pages.yml con la V30 Mobile: NO necesita volver a cambiarlo.
+- La V31 conserva exactamente los mismos nombres de archivos desplegados.
+
+FIRESTORE:
+- No requiere cambio de reglas.

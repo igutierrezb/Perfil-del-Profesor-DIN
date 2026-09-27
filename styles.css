@@ -4871,3 +4871,233 @@ label.required-wrap-error{
     grid-template-columns:1fr!important;
   }
 }
+
+
+/* =========================================================
+   V31 · BLINDAJE DE IMPRESIÓN
+   Esta sección DEBE permanecer al final del CSS.
+   Neutraliza cualquier regla responsive cuando el navegador imprime.
+   ========================================================= */
+@page{
+  size:legal landscape;
+  margin:6mm;
+}
+
+@media print{
+
+  html,
+  body{
+    margin:0!important;
+    padding:0!important;
+    width:auto!important;
+    min-width:0!important;
+    max-width:none!important;
+    height:auto!important;
+    min-height:0!important;
+    overflow:visible!important;
+    background:#fff!important;
+  }
+
+  /* Nada de la interfaz web debe aparecer en PDF. */
+  body > .login-gate,
+  body > header,
+  body > .deadline-top-band,
+  body > nav,
+  body > footer,
+  body > .toast{
+    display:none!important;
+  }
+
+  main{
+    display:block!important;
+    width:auto!important;
+    min-width:0!important;
+    max-width:none!important;
+    margin:0!important;
+    padding:0!important;
+    overflow:visible!important;
+  }
+
+  main > section.view{
+    display:none!important;
+  }
+
+  main > #revision{
+    display:block!important;
+    width:auto!important;
+    min-width:0!important;
+    max-width:none!important;
+    margin:0!important;
+    padding:0!important;
+    overflow:visible!important;
+  }
+
+  /* Dentro de Revisión sólo se imprime el formato. */
+  #revision > :not(#printArea){
+    display:none!important;
+  }
+
+  #printArea{
+    display:block!important;
+    width:auto!important;
+    min-width:0!important;
+    max-width:none!important;
+    margin:0!important;
+    padding:0!important;
+    overflow:visible!important;
+    background:#fff!important;
+  }
+
+  /* La capa móvil V30 no puede modificar las hojas legales. */
+  #printArea .sheet{
+    width:auto!important;
+    min-width:0!important;
+    max-width:none!important;
+    margin:0!important;
+    border:0!important;
+    border-radius:0!important;
+    box-shadow:none!important;
+    transform:none!important;
+    overflow:hidden!important;
+    break-inside:avoid-page!important;
+    page-break-inside:avoid!important;
+    break-after:page!important;
+    page-break-after:always!important;
+  }
+
+  #printArea .sheet:last-child{
+    break-after:auto!important;
+    page-break-after:auto!important;
+    margin-bottom:0!important;
+  }
+
+  /* Restablecer encabezado del formato institucional. */
+  #printArea .sheetHead{
+    display:grid!important;
+    grid-template-columns:182px 1fr 112px!important;
+    gap:6px!important;
+    align-items:center!important;
+    padding-bottom:5px!important;
+  }
+
+  #printArea .brandPrint{
+    display:flex!important;
+    align-items:center!important;
+    min-height:32px!important;
+    overflow:hidden!important;
+  }
+
+  #printArea .print-logo{
+    width:158px!important;
+    max-width:158px!important;
+    max-height:32px!important;
+    object-fit:contain!important;
+    object-position:left center!important;
+  }
+
+  /* Primera hoja: una sola hoja, firmas al pie, sin cortes. */
+  #printArea .profile-first-sheet{
+    position:relative!important;
+    display:flex!important;
+    flex-direction:column!important;
+    box-sizing:border-box!important;
+    height:7.72in!important;
+    min-height:7.72in!important;
+    max-height:7.72in!important;
+    padding:3mm!important;
+    overflow:hidden!important;
+  }
+
+  #printArea .profile-first-sheet .profileTable{
+    flex:0 0 auto!important;
+    width:100%!important;
+    height:auto!important;
+    table-layout:fixed!important;
+  }
+
+  #printArea .profile-first-sheet .profileTable th,
+  #printArea .profile-first-sheet .profileTable td{
+    height:auto!important;
+    min-height:0!important;
+    padding-top:1.4px!important;
+    padding-bottom:1.4px!important;
+    line-height:1.04!important;
+  }
+
+  #printArea .profile-first-sheet .sign{
+    margin-top:auto!important;
+    margin-bottom:0!important;
+    flex:0 0 auto!important;
+  }
+
+  /* Hojas de programas: conservar el formato ya aprobado. */
+  #printArea .sheet.program-trio,
+  #printArea .sheet.program-trio.compact-last{
+    position:relative!important;
+    display:flex!important;
+    flex-direction:column!important;
+    box-sizing:border-box!important;
+    height:7.72in!important;
+    min-height:7.72in!important;
+    max-height:7.72in!important;
+    padding:3mm 3mm .68in!important;
+    overflow:hidden!important;
+  }
+
+  #printArea .program-trio .print-program{
+    flex:none!important;
+    height:auto!important;
+    min-height:0!important;
+    margin-top:4px!important;
+  }
+
+  #printArea .program-trio .currTable{
+    width:100%!important;
+    height:auto!important;
+    table-layout:fixed!important;
+  }
+
+  /* Firmas y sello reservados al centro inferior de TODAS las hojas 2+. */
+  #printArea .program-trio .sign{
+    position:absolute!important;
+    left:3%!important;
+    right:3%!important;
+    bottom:.08in!important;
+    width:94%!important;
+    margin:0!important;
+    padding:0!important;
+    display:grid!important;
+    grid-template-columns:1fr 105px 1fr!important;
+    gap:22px!important;
+    align-items:end!important;
+    break-inside:avoid!important;
+    background:#fff!important;
+  }
+
+  /* Evitar una hoja vacía adicional creada por márgenes/breaks. */
+  #printArea::after{
+    content:none!important;
+    display:none!important;
+  }
+}
+
+/* =========================================================
+   V31 · identidad DIN más reciente
+   ========================================================= */
+.hero-icon{
+  object-fit:contain!important;
+  background:transparent!important;
+}
+.login-logo{
+  object-fit:contain!important;
+  background:transparent!important;
+}
+
+/* Administración: fecha/hora de conclusión más legible */
+.teacher-admin-status span{
+  line-height:1.35!important;
+}
+.teacher-admin-row.finished .teacher-admin-status span{
+  font-weight:650!important;
+  color:#3c6655!important;
+}

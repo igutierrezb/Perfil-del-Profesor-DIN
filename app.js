@@ -828,7 +828,16 @@ window.saveAdmin=function(){
 function formatTeacherCompletion(d){
   if(d.submittedPeriod!==cfg.periodo)return 'Sin concluir';
   const ms=Number(d.finalizedAtMs)||0;
-  return ms?`Concluido · ${new Intl.DateTimeFormat('es-MX',{dateStyle:'medium',timeStyle:'short'}).format(new Date(ms))}`:'Concluido';
+  if(!ms)return 'Fecha y hora de conclusión no registradas';
+  return new Intl.DateTimeFormat('es-MX',{
+    weekday:'short',
+    day:'2-digit',
+    month:'short',
+    year:'numeric',
+    hour:'2-digit',
+    minute:'2-digit',
+    hour12:true
+  }).format(new Date(ms));
 }
 async function renderTeacherAdminList(){
   const root=$('teacherAdminList'),summary=$('teacherAdminSummary');
@@ -853,9 +862,12 @@ async function renderTeacherAdminList(){
       const doneNow=r.submittedPeriod===cfg.periodo;
       const override=!!r.individualEditEnabled;
       const statusTitle=override?'Edición individual habilitada':(doneNow?'Concluido':'En captura / sin concluir');
+      const lastCompletion=doneNow?formatTeacherCompletion(r):'';
       const statusText=override
-        ?'Este profesor puede editar aunque la edición general esté cerrada.'
-        :(doneNow?formatTeacherCompletion(r):'Edición disponible según los controles generales');
+        ?(doneNow
+          ?`Edición individual habilitada · Último cierre: ${lastCompletion}`
+          :'Este profesor puede editar aunque la edición general esté cerrada.')
+        :(doneNow?`Finalizó y envió: ${lastCompletion}`:'Edición disponible según los controles generales');
       return `<div class="teacher-admin-row ${override?'individual-open':doneNow?'finished':'open'}">
         <div class="teacher-admin-main">
           <b>${escapeHtml(r.name)}</b>
