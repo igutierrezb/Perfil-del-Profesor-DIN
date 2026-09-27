@@ -1,27 +1,24 @@
-# Arquitectura V9
+# Arquitectura V10
 
-## Programas activos
-Se agrega `disabledPrograms` al estado local. `allPrograms()` devuelve todos los programas; `programs()` devuelve solo los habilitados.
+## Capa local
+`localStorage` se conserva como respaldo inmediato y permite que la aplicación siga operando si Firestore no está disponible.
 
-La deshabilitación afecta:
-- captura;
-- validación;
-- impresión;
-- exportación Excel.
+## Capa central Firestore
+- `settings/app`: configuración global, fecha límite, estado de edición, programas activos, programas personalizados y acrónimos.
+- `profiles/{uid}`: perfil vigente del profesor; se sobrescribe con la versión actual.
+- `audit/{id}`: registro básico de acciones relevantes.
 
-## Programas personalizados con horas
-Los programas creados desde Administración ahora almacenan:
-- `semesters`: nombres de materias;
-- `hours`: matriz paralela de horas totales por materia.
+No se crea histórico anual: el perfil vigente se actualiza/sobrescribe, conforme a la decisión funcional del proyecto.
 
-El formato de entrada es `Asignatura - horas`.
+## Cierre de captura
+`cfg.captureDeadline` guarda un timestamp. Cuando vence:
+- profesores: solo consulta/impresión;
+- administrador: conserva edición;
+- el contador cambia a “CAPTURA FUERA DE TIEMPO”.
 
 ## Excel
-El encabezado fusionado por programa utiliza:
-`Nombre completo del programa (ACRÓNIMO)`.
-
-## Impresión
-- Primera hoja: metadatos de profesor ampliados.
-- Hojas siguientes: materias con mayor tamaño.
-- Logo UTEQ más compacto.
-- Tres programas por hoja y firmas al fondo.
+- Concentrado perfiles.
+- Base maestra.
+- Catálogo.
+- Resumen por asignatura.
+Marcas: `★` favorito y `C` coordinador de academia.

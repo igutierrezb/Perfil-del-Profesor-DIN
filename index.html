@@ -17,6 +17,7 @@
       <p>Acceso exclusivo con cuenta institucional <b>@uteq.edu.mx</b>.</p>
       <div class="period-badge" id="periodBadgeGate">Periodo de vigencia · SEP 2026 - AGO 2027</div>
       <div id="authStatusGate" class="auth-status gate">Sin sesión · requiere cuenta institucional</div>
+      <div id="deadlineGate" class="deadline-card compact">Fecha límite de captura no configurada.</div>
       <div class="gate-actions">
         <button id="btnLoginGate" class="primary big" onclick="signIn()">Ingresar con cuenta institucional</button>
       </div>
@@ -42,6 +43,8 @@
     <div class="hero-side">
       <div class="hero-chip">Formato institucional · EA-F-86</div>
       <div id="authStatus" class="auth-status">Sin sesión</div>
+      <div id="deadlineHeader" class="deadline-card header-deadline">Fecha límite no configurada.</div>
+      <div class="save-cloud-line"><span id="lastSaved">Guardado local</span><span id="cloudStatus">Sincronización pendiente</span></div>
       <div class="auth-buttons">
         <button id="btnLogin" class="ghost" onclick="signIn()">Ingresar con cuenta institucional</button>
         <button id="btnLogout" class="ghost hidden" onclick="signOutApp()">Cerrar sesión</button>
@@ -125,9 +128,13 @@
       <div class="progress">
         <strong id="progressText"></strong>
         <div><i id="progressBar"></i></div>
-        <small id="idealCounter">Materias ideales: 0 / mínimo 3</small>
+        <small id="idealCounter">Materias favoritas: 0 / mínimo 3</small>
+        <small id="programCounter"></small>
       </div>
+      <div id="deadlineCapture" class="deadline-card capture-deadline">Fecha límite no configurada.</div>
     </div>
+
+    <div id="editingLockedBanner" class="capture-lock-banner hidden"></div>
 
     <div class="instruction-band card danger-band">
       <div class="instruction-title">Cómo capturar cada asignatura</div>
@@ -136,7 +143,7 @@
         <div><b>2. Habilitar</b><span>Apagado = no puede impartirla y se imprimirá en blanco.</span></div>
         <div><b>3. Competencia</b><span>X Medio · XX Alto</span></div>
         <div class="highlight-cell"><b>4. Área que da el conocimiento</b><span><strong>Seleccione una sola opción:</strong> 1 · 2 · 3 · 12 · 13 · 23 · 123</span></div>
-        <div><b>5. Materia ideal</b><span>Marque ★ Ideal cuando sea una de sus materias preferentes.</span></div>
+        <div><b>5. Favorito</b><span>Marque ★ Favorito únicamente en las asignaturas que considera preferentes.</span></div>
       </div>
       <div class="knowledge-key"><b>1</b> Formación académica · <b>2</b> Experiencia docente · <b>3</b> Experiencia laboral</div>
     </div>
@@ -146,7 +153,7 @@
       <div class="program-name-flow" id="programFlowName"></div>
       <div class="flow-buttons">
         <button onclick="prevProgram()">← Anterior</button>
-        <button class="primary" onclick="saveAndNextProgram()">Guardar y seguir al siguiente programa →</button>
+        <button id="flowNextBtn" class="primary" onclick="saveAndNextProgram()">Guardar y seguir al siguiente programa →</button>
       </div>
     </div>
 
@@ -197,6 +204,28 @@
       </div>
     </div>
 
+
+    <div class="card deadline-admin-card">
+      <div class="section-head">
+        <div>
+          <h2>Fecha límite de captura</h2>
+          <p>Defina el momento exacto de cierre. Al vencer, los profesores podrán consultar e imprimir, pero no editar.</p>
+        </div>
+        <span id="deadlineAdminStatus" class="deadline-admin-status"></span>
+      </div>
+      <div class="deadline-admin-grid">
+        <label>Fecha y hora de cierre
+          <input id="captureDeadlineAdmin" type="datetime-local">
+        </label>
+        <div id="deadlineAdminPreview" class="deadline-admin-preview"></div>
+      </div>
+      <div class="admin-actions">
+        <button class="primary" onclick="saveDeadline()">Guardar fecha límite</button>
+        <button class="danger-soft" onclick="closeCaptureNow()">Cerrar captura ahora</button>
+        <button onclick="clearDeadline()">Quitar fecha límite</button>
+      </div>
+    </div>
+
     <details class="card admin-details" open>
       <summary>Configuración institucional</summary>
       <div class="admin-grid">
@@ -211,7 +240,7 @@
 
     <div class="card">
       <div class="section-head">
-        <div><h2>Base maestra para Office 365</h2><p>Exporta la captura completa a Excel (.xlsx).</p></div>
+        <div><h2>Base maestra para Office 365</h2><p>Exporta el concentrado de profesores, favoritos, coordinaciones, horas y resumen por asignatura.</p></div>
         <span class="admin-only">Solo administrador</span>
       </div>
       <div class="admin-actions">

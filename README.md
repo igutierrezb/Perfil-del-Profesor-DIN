@@ -1,25 +1,26 @@
-# Perfil Académico Docente DIN · Versión 9
+# Perfil Académico Docente DIN · Versión 10
 
-Versión incremental sobre V8. Se conserva autenticación, captura, troncos comunes, impresión a tres programas por hoja y exportación Excel.
+Consolidación de la versión estable, preservando autenticación, captura, troncos comunes, impresión y administración.
 
-## Cambios V9
-- El último programa ya no regresa al programa 1: el botón cambia a **Continuar a revisión e impresión**.
-- Logo industrial completamente rediseñado con una identidad más elaborada.
-- Logo UTEQ de impresión reducido nuevamente para evitar empalmes.
-- En la primera hoja, Nombre y Categoría tienen mayor tamaño para mejorar legibilidad.
-- En hojas de programas, los nombres de las materias aumentan de tamaño; únicamente las materias permanecen alineadas a la izquierda.
-- El encabezado de cada programa en Excel ahora muestra el nombre completo y el acrónimo entre paréntesis.
-- Al crear un programa educativo, cada materia se captura como `Asignatura - horas`.
-- Las horas de programas agregados se muestran en pantalla y se exportan a Excel, pero no se imprimen.
-- Administración incluye un panel para habilitar o deshabilitar cualquier programa educativo.
-- Un programa deshabilitado no aparece en captura, impresión ni Excel.
-- Se conserva el botón de activar/desactivar edición agregado en V8.
+## Cambios principales
+- Favorito reemplaza el término “Materia ideal”.
+- Botón de Favorito más compacto: ☆ Favorito / ★ Favorito.
+- Coordinación de academia desactivada por defecto y resaltada en rojo; solo se habilita si el profesor declara haber sido coordinador.
+- Excel identifica favoritos con ★ y coordinación con C; coordinación aparece con fondo rojo suave.
+- Nueva hoja de Excel “Resumen por asignatura”.
+- Excel administrativo consolida todos los profesores cuando Firestore está habilitado.
+- Progreso muestra pendientes, favoritos y programas completos.
+- Estados pendiente, deshabilitado, revisado y no aplica se distinguen visualmente.
+- Instrucciones de captura más grandes y visibles.
+- Acrónimos editables desde Administración.
+- Autoguardado y hora del último guardado.
+- Persistencia central opcional/segura con Firestore.
+- Auditoría básica de acciones.
+- Fecha y hora límite global definible por Administración.
+- Cuenta regresiva para profesores; últimas 24 h en ámbar, últimas 3 h en rojo y vencido en rojo intenso.
+- Al vencer, el profesor conserva acceso de consulta e impresión pero no puede editar.
+- El administrador puede cerrar inmediatamente, reabrir cambiando la fecha o quitar la fecha límite.
+- Impresión conserva tres programas por hoja y aumenta la legibilidad de materias desde la hoja 2.
 
-## Formato de materias nuevas
-Ejemplo:
-
-Cálculo diferencial - 90
-Física - 75
-Metrología - 60
-
-La cifra corresponde a las horas totales del cuatrimestre. La carga semanal del Excel se calcula dividiendo entre 15 semanas.
+## Firestore
+Consulte `FIRESTORE_SETUP.md` y `firestore.rules`. Si Firestore aún no está habilitado, la aplicación mantiene el funcionamiento local previo.

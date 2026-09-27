@@ -914,3 +914,188 @@ label{font-size:10.3px!important}
     font-size:6.25px!important;
   }
 }
+
+
+/* =========================================================
+   V10 · consolidación UX + nube + cierre de captura
+   ========================================================= */
+
+/* Cuenta regresiva */
+.deadline-card{
+  border:1px solid #cbdbe5;
+  background:#f4f9fc;
+  color:#294f68;
+  border-radius:10px;
+  padding:8px 11px;
+  font-weight:750;
+  line-height:1.2;
+}
+.deadline-card.compact{margin:10px 0 8px;font-size:12px}
+.header-deadline{font-size:10px;text-align:center;padding:6px 9px}
+.capture-deadline{margin-top:8px;min-width:260px;text-align:center;font-size:11px}
+.deadline-card.open{border-color:#acd9c7;background:#edf8f3;color:#245e49}
+.deadline-card.warning{border-color:#e5c06c;background:#fff6dd;color:#7a5710}
+.deadline-card.urgent{border-color:#db8a7f;background:#fff0ee;color:#91342d;animation:deadlinePulse 1.4s ease-in-out infinite}
+.deadline-card.expired{border-color:#c9463c;background:#fde5e3;color:#8c211b;font-weight:900}
+@keyframes deadlinePulse{50%{box-shadow:0 0 0 4px rgba(196,70,60,.08)}}
+.save-cloud-line{display:flex;gap:8px;justify-content:flex-end;flex-wrap:wrap;color:#d9edf6;font-size:9px}
+.cloud-status.ok{color:#d6f3e6}
+.cloud-status.warn{color:#ffe6b8}
+.capture-lock-banner{
+  margin:0 0 12px;
+  padding:12px 15px;
+  border-radius:10px;
+  background:#fde8e6;
+  border:1px solid #df918a;
+  color:#8f2d27;
+  font-weight:800;
+}
+
+/* Instrucciones mucho más visibles */
+.instruction-band{
+  padding:16px!important;
+  border-width:1.5px!important;
+}
+.instruction-title{
+  font-size:17px!important;
+  margin-bottom:10px!important;
+}
+.instruction-grid{
+  gap:9px!important;
+}
+.instruction-grid > div{
+  min-height:82px;
+  padding:11px 12px!important;
+}
+.instruction-grid b{font-size:11.8px!important}
+.instruction-grid span{font-size:11.3px!important;line-height:1.42!important}
+.knowledge-key{
+  margin-top:10px!important;
+  padding:9px 12px!important;
+  font-size:12.2px!important;
+}
+
+/* Estados inequívocos de asignatura */
+.course.pending{
+  background:linear-gradient(90deg,#fde4e1 0,#fff3f1 48%,#fff 100%)!important;
+  box-shadow:inset 5px 0 0 #c95047!important;
+}
+.course.pending .name{color:#8f2924!important;font-weight:650!important}
+.course.off{
+  background:#f3f5f6!important;
+  opacity:.72;
+  box-shadow:inset 5px 0 0 #aeb9c0!important;
+}
+.course.off .name{text-decoration:line-through;color:#687983!important}
+.course.reviewed{
+  background:linear-gradient(90deg,#f2faf6 0,#fff 42%)!important;
+  box-shadow:inset 4px 0 0 #52a47f!important;
+}
+.course.na{background:#f7f8f9!important;box-shadow:inset 4px 0 0 #c4ccd2!important}
+.course .name{
+  min-height:28px;
+  display:flex;
+  align-items:center;
+  flex-wrap:wrap;
+  line-height:1.18!important;
+}
+
+/* Favorito más compacto; fuente conserva tamaño */
+.ideal-btn{
+  padding:4px 7px!important;
+  min-height:28px!important;
+  width:auto!important;
+  justify-self:center;
+  border-radius:7px!important;
+}
+.ideal-btn.on{
+  background:#fff0bf!important;
+  border-color:#c99827!important;
+}
+
+/* Coordinación: rojo discreto, apagada por defecto */
+.coordinator-alert{
+  border:1px solid #e5b4b0!important;
+  background:#fff9f8!important;
+}
+.coordinator-alert summary{
+  color:#8f332e!important;
+  font-weight:750!important;
+}
+.coord-mode-pill{
+  margin-left:8px;padding:3px 7px;border-radius:999px;
+  background:#f3e2e0;color:#963b35;font-size:9px
+}
+.coord-mode-pill.on{background:#f9d8d5;color:#84261f}
+.coord-enable-row{padding:9px 12px}
+.coord-main-toggle{display:flex;align-items:center;gap:8px;font-weight:700;color:#78332f}
+.coord-warning{
+  margin:0 12px 9px;padding:8px 10px;border-radius:8px;
+  background:#fde8e6;border:1px solid #e4aaa5;color:#8d302a;
+  font-size:10px;font-weight:700
+}
+
+/* Progreso más informativo */
+.progress{min-width:300px}
+.progress small{display:block;margin-top:3px}
+
+/* Navegación: check visual al completar */
+.main-nav button.complete .nav-num{
+  background:#dff2e8!important;color:#27684d!important
+}
+.main-nav button.complete .nav-num::after{content:"✓";font-size:11px}
+.main-nav button.complete .nav-num{font-size:0}
+
+/* Administración organizada */
+.deadline-admin-card{border-color:#e1c5a8;background:linear-gradient(120deg,#fff,#fffaf3)}
+.deadline-admin-grid{
+  display:grid;grid-template-columns:minmax(280px,420px) 1fr;gap:16px;align-items:end
+}
+.deadline-admin-preview{
+  min-height:58px;padding:10px 12px;border:1px solid #dbe5eb;border-radius:10px;background:#fff
+}
+.deadline-admin-preview b,.deadline-admin-preview span{display:block}
+.deadline-admin-preview span{margin-top:4px;color:#647d8d;font-size:10px}
+.deadline-admin-status{padding:6px 9px;border-radius:999px;font-size:10px;font-weight:800}
+.deadline-admin-status.open{background:#e5f4eb;color:#286548}
+.deadline-admin-status.expired{background:#fbe1df;color:#922f29}
+.deadline-admin-status.neutral{background:#edf1f4;color:#61717c}
+.danger-soft{background:#fff0ef!important;color:#96362f!important;border:1px solid #e4aaa4!important}
+.program-admin-item{grid-template-columns:minmax(0,1fr) 135px auto!important}
+.acronym-edit{font-size:9px!important;color:#6b7f8d}
+.acronym-edit input{margin-top:3px;text-transform:uppercase;text-align:center;padding:7px!important}
+
+/* Accesibilidad / clic */
+button,.mini,.ideal-btn,.toggle input,.coord-chip input{touch-action:manipulation}
+button:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-visible{
+  outline:3px solid rgba(34,111,153,.24)!important;outline-offset:2px!important
+}
+
+/* Impresión: ~1.5 px mayor en contenido desde hoja 2, sin favoritos/coordinación */
+.program-trio .currTable td.subject{
+  font-size:9px!important;
+  line-height:1.08!important;
+}
+.program-trio .currTable td.level,
+.program-trio .currTable td.area{
+  font-size:7.5px!important;
+}
+.program-trio .currTable th{
+  font-size:7.2px!important;
+}
+.program-trio .print-program-title{
+  font-size:7.8px!important;
+}
+@media print{
+  .program-trio .currTable td.subject{font-size:8.7px!important}
+  .program-trio .currTable td.level,
+  .program-trio .currTable td.area{font-size:7.25px!important}
+  .program-trio .currTable th{font-size:6.95px!important}
+}
+
+/* Responsive */
+@media(max-width:900px){
+  .deadline-admin-grid{grid-template-columns:1fr}
+  .program-admin-item{grid-template-columns:1fr!important}
+  .capture-deadline{min-width:0;width:100%}
+}
