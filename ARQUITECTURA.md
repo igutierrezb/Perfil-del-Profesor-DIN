@@ -1,25 +1,34 @@
-# Arquitectura V4
+# Arquitectura V6
 
-## Acceso
-- Dominio permitido: `@uteq.edu.mx`
+## Autenticación
+Firebase Authentication con Google.
+- Usuarios permitidos: `@uteq.edu.mx`
 - Administrador: `ivan.gutierrez@uteq.edu.mx`
-- Firebase Authentication con Google.
+- La aplicación permanece detrás de la compuerta de login.
 
-## Captura
-- Inglés queda como NO APLICA.
-- El resto inicia como pendiente/revisable.
-- Área de conocimiento: opción única 1, 2, 3, 12, 13, 23 o 123.
-- Flujo secuencial por programa.
-- Troncos comunes se sincronizan en cuatrimestres 1–3 según catálogo.
+## Configuración Firebase
+La configuración real ya no se almacena en el repositorio.
+GitHub Actions genera `firebase-config.js` durante el despliegue usando:
+- FIREBASE_API_KEY
+- FIREBASE_AUTH_DOMAIN
+- FIREBASE_PROJECT_ID
+- FIREBASE_APP_ID
 
-## Administración
-- Configuración institucional.
-- Alta de programas educativos.
-- Exportación de base maestra Excel para Office 365.
-- Solo se muestra al correo administrador autenticado.
+## Datos
+Se conserva el modelo existente de V5:
+- perfil,
+- respuestas por materia,
+- troncos comunes,
+- coordinaciones,
+- materias ideales,
+- catálogo y programas añadidos,
+- exportación administrativa.
 
 ## Impresión
-- Hoja inicial con datos, formación y experiencia.
-- Dos programas por hoja.
-- Una zona de firmas y sello por hoja.
-- Encabezados verticales en Nivel y Área de competencia.
+- primera hoja: datos profesionales;
+- hojas posteriores: dos programas por hoja;
+- un bloque de firma y sello por hoja;
+- encabezados de tabla pastel;
+- nivel y área en columnas estrechas;
+- mayor espacio previo a firmas;
+- logo institucional azul.

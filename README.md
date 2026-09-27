@@ -1,33 +1,37 @@
-# Perfil Académico Docente DIN · Versión 4
+# Perfil Académico Docente DIN · Versión 6
 
-## Sustituir en GitHub
-- index.html
-- styles.css
-- app.js
-- catalog.js
-- logo-uteq.png
-- icono-industria.svg
+Versión conservadora: mantiene la lógica funcional y concentra los cambios en autenticación segura de despliegue,
+acabado visual e impresión.
 
-## Agregar
-- firebase-config.js
+## Mejoras V6
+- Acceso a la plataforma únicamente después de autenticación institucional.
+- Administración visible solo para `ivan.gutierrez@uteq.edu.mx`.
+- API key eliminada del código fuente del repositorio.
+- Despliegue de GitHub Pages mediante Actions + Secrets.
+- Tipografía del perfil por programa con menos negritas.
+- Periodo de vigencia bajo el título principal.
+- Ícono industrial renovado.
+- Logo UTEQ de impresión recoloreado en azul y alineado con el nombre institucional.
+- Nombre, categoría, competencia y área centrados en hojas de programas.
+- Contenido de tablas alineado hacia la parte inferior.
+- Bordes reforzados para impresión.
+- Encabezados de cada programa con tonalidades pastel.
+- Zona de firma y sello desplazada hacia abajo para dar mayor espacio de firma.
 
-## Cambios principales
-- Experiencia laboral en una sola línea por organización.
-- Bloque visual rojizo de instrucciones.
-- Área del conocimiento con opciones 1, 2, 3, 12, 13, 23 y 123 en una sola línea.
-- Flujo secuencial por programa: Guardar y seguir al siguiente.
-- Impresión con columnas proporcionales y encabezados verticales para Nivel y Área de competencia.
-- Logo UTEQ + texto institucional azul en impresión.
-- Datos de Calidad en tres líneas limpias.
-- Nombre, categoría, competencia y área centrados en una sola línea en hojas de programas.
-- Autenticación preparada para cuentas @uteq.edu.mx.
-- Administración restringida a ivan.gutierrez@uteq.edu.mx cuando Firebase esté configurado.
+## Archivos a sustituir
+- `index.html`
+- `styles.css`
+- `app.js`
+- `catalog.js`
+- `firebase-config.js`
+- `logo-uteq.png`
+- `logo-uteq-blue.png`
+- `icono-industria.svg`
+- `README.md`
+- `ARQUITECTURA.md`
 
-## Activar autenticación
-1. Cree un proyecto Firebase.
-2. Active Authentication > Sign-in method > Google.
-3. Agregue el dominio de GitHub Pages a Authorized domains.
-4. En Project settings > Your apps > Web app copie `apiKey`, `authDomain`, `projectId` y `appId`.
-5. Péguelos en `firebase-config.js`.
+## Archivos nuevos
+- `.github/workflows/deploy-pages.yml`
+- `SETUP_FIREBASE_GITHUB.md`
 
-Mientras `firebase-config.js` esté vacío, la plataforma funciona en modo local para pruebas.
+Lea `SETUP_FIREBASE_GITHUB.md` antes de volver a probar el inicio de sesión.

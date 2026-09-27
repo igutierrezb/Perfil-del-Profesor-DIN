@@ -7,6 +7,25 @@
 <link rel="stylesheet" href="styles.css">
 </head>
 <body>
+<div id="loginGate" class="login-gate">
+  <div class="login-card">
+    <img src="icono-industria.svg" class="login-logo" alt="División Industrial">
+    <div class="login-copy">
+      <div class="eyebrow">Universidad Tecnológica de Querétaro · División Industrial</div>
+      <h1>Perfil Académico Docente</h1>
+      <p>Acceso exclusivo con cuenta institucional <b>@uteq.edu.mx</b>.</p>
+      <div class="period-badge" id="periodBadgeGate">Periodo de vigencia · SEP 2026 - AGO 2027</div>
+      <div id="authStatusGate" class="auth-status gate">Sin sesión · requiere cuenta institucional</div>
+      <div class="gate-actions">
+        <button id="btnLoginGate" class="primary big" onclick="signIn()">Ingresar con cuenta institucional</button>
+      </div>
+      <small>La información vertida en esta plataforma se administra bajo los mismos criterios señalados en el
+        <a href="https://www.uteq.edu.mx/ConoceLaUTEQ/Default.aspx?gXr=217" target="_blank" rel="noopener">Aviso de Privacidad de la UTEQ</a>.
+      </small>
+    </div>
+  </div>
+</div>
+
 <header class="hero">
   <div class="hero-inner">
     <div class="brand-block">
@@ -15,13 +34,12 @@
         <div class="eyebrow">Universidad Tecnológica de Querétaro · División Industrial</div>
         <h1>Perfil Académico Docente</h1>
         <p>Actualización, formalización y gestión del perfil por asignatura</p>
+        <div class="period-badge inline" id="periodBadgeInline">Periodo de vigencia · SEP 2026 - AGO 2027</div>
       </div>
     </div>
     <div class="hero-side">
-      <label>Periodo de vigencia</label>
-      <input id="periodo" placeholder="SEP 2026 - AGO 2027">
       <div class="hero-chip">Formato institucional · EA-F-86</div>
-      <div id="authStatus" class="auth-status">Modo local</div>
+      <div id="authStatus" class="auth-status">Sin sesión</div>
       <div class="auth-buttons">
         <button id="btnLogin" class="ghost" onclick="signIn()">Ingresar con cuenta institucional</button>
         <button id="btnLogout" class="ghost hidden" onclick="signOutApp()">Cerrar sesión</button>
@@ -36,16 +54,6 @@
   <button data-view="revision" id="navRevision"><span>3</span> Revisión e impresión</button>
   <button data-view="admin" id="adminTab" class="admin-tab hidden"><span>⚙</span> Administración</button>
 </nav>
-
-<div id="authGate" class="auth-gate hidden">
-  <div class="auth-card">
-    <img src="icono-industria.svg" alt="">
-    <div>
-      <h3>Acceso institucional requerido</h3>
-      <p>Esta versión está preparada para autenticación con cuentas <b>@uteq.edu.mx</b>. Para activarla, complete <b>firebase-config.js</b>.</p>
-    </div>
-  </div>
-</div>
 
 <main>
   <section id="perfil" class="view active">
@@ -124,7 +132,7 @@
       <div class="instruction-grid">
         <div><b>1. Asignatura</b><span>Revise cada materia del programa.</span></div>
         <div><b>2. Habilitar</b><span>Apagado = no puede impartirla y se imprimirá en blanco.</span></div>
-        <div><b>3. Competencia</b><span><strong>X</strong> Medio · <strong>XX</strong> Alto</span></div>
+        <div><b>3. Competencia</b><span>X Medio · XX Alto</span></div>
         <div class="highlight-cell"><b>4. Área que da el conocimiento</b><span><strong>Seleccione una sola opción:</strong> 1 · 2 · 3 · 12 · 13 · 23 · 123</span></div>
         <div><b>5. Materia ideal</b><span>Marque ★ Ideal cuando sea una de sus materias preferentes.</span></div>
       </div>
