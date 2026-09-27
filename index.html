@@ -79,9 +79,9 @@
         <span class="required-note">Obligatorio</span>
       </div>
       <div class="teacher-line">
-        <label>Apellido paterno *<input id="apPat"></label>
-        <label>Apellido materno *<input id="apMat"></label>
-        <label>Nombres *<input id="nombres"></label>
+        <label>Apellido paterno *<input id="apPat" placeholder="Ej. Hernández"></label>
+        <label>Apellido materno *<input id="apMat" placeholder="Ej. López"></label>
+        <label>Nombres *<input id="nombres" placeholder="Ej. Ana Patricia"></label>
         <label>Categoría *<select id="categoria"></select></label>
       </div>
       <div class="save-row"><button class="save-btn" onclick="saveSection()">Guardar datos del profesor</button></div>
@@ -125,7 +125,7 @@
       <div class="toolbar-left">
         <span class="section-kicker">Paso 2 de 3</span>
         <h2>Perfil por programa educativo</h2>
-        <p>Revise todas las asignaturas. Marque X/XX y su área de conocimiento, o deshabilítelas si no puede impartirlas.</p>
+        
       </div>
       <div class="progress">
         <strong id="progressText"></strong>
@@ -143,7 +143,7 @@
       <div class="instruction-grid instruction-grid-six">
         <div><b>1. Asignatura</b><span>Revise cada materia del programa.</span></div>
         <div><b>2. Habilitar</b><span>Apagado = no puede impartirla y se imprimirá en blanco.</span></div>
-        <div><b>3. Competencia</b><span>X Medio · XX Alto.</span></div>
+        <div class="competence-instruction"><b>3. Competencia</b><span>Revise la asignatura y marque <strong>X = Medio</strong> o <strong>XX = Alto</strong>. Si no puede impartirla, deshabilítela en el punto 2.</span></div>
         <div class="highlight-cell area-instruction"><b>4. Área de conocimiento</b><span><strong>Seleccione una sola opción:</strong> 1 · 2 · 3 · 12 · 13 · 23 · 123.</span><div class="knowledge-key knowledge-key-inline"><b>1</b> Formación académica · <b>2</b> Experiencia docente · <b>3</b> Experiencia laboral</div></div>
         <div><b>5. Coordinación</b><span>Marque ✓ solo si ha coordinado previamente esa asignatura.</span></div>
         <div><b>6. Favorito</b><span>Marque ★ únicamente en sus asignaturas preferentes.</span></div>
@@ -189,15 +189,6 @@
   </section>
 
   <section id="admin" class="view">
-    <div class="admin-hero card">
-      <div>
-        <span class="section-kicker">Administración</span>
-        <h2>Configuración y base maestra</h2>
-        <p>Solo disponible para <b>ivan.gutierrez@uteq.edu.mx</b> cuando la autenticación institucional esté configurada.</p>
-      </div>
-      <span class="admin-lock">🔒 Administración</span>
-    </div>
-
     <div class="admin-quickbar card">
       <button onclick="document.getElementById('captureControlCard').scrollIntoView({behavior:'smooth',block:'start'})">⚙ Control de captura</button>
       <button onclick="document.getElementById('institutionalConfig').scrollIntoView({behavior:'smooth',block:'start'})">▤ Configuración institucional</button>
@@ -263,12 +254,25 @@
       <div id="teacherAdminList" class="teacher-admin-list"></div>
     </div>
 
-    <div class="card">
+    <div class="card programs-common-card">
       <div class="section-head">
-        <div><h2>Programas educativos activos</h2><p>Puede habilitar o deshabilitar cualquier programa. Los deshabilitados no aparecen en captura, impresión ni Excel.</p></div>
+        <div>
+          <h2>Programas educativos y troncos comunes</h2>
+          <p>Administre acrónimo, edición del programa, tronco común y estado de cada programa desde una sola sección.</p>
+        </div>
+      </div>
+      <div class="program-admin-legend">
+        <span class="program-chip acronym-chip">Acrónimo</span>
+        <span class="program-chip edit-chip">Editar</span>
+        <span class="program-chip common-chip">Tronco común</span>
+        <span class="program-chip state-chip">Estado</span>
       </div>
       <div id="programAdminList" class="program-admin-list"></div>
       <div id="commonRuleEditor" class="common-rule-editor hidden"></div>
+      <div class="common-rules-integrated">
+        <h3>Troncos comunes configurados</h3>
+        <div id="commonRules"></div>
+      </div>
     </div>
 
     <div id="programEditorCard" class="card program-editor-card">
@@ -309,10 +313,6 @@
       <div id="customProgramsList"></div>
     </div>
 
-    <div class="card">
-      <h3>Troncos comunes configurados</h3>
-      <div id="commonRules"></div>
-    </div>
   </section>
 </main>
 

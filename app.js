@@ -78,10 +78,17 @@ function deadlinePassed(){
 function submissionLockedForCurrentPeriod(){
   return !!store.submittedPeriod && store.submittedPeriod===cfg.periodo;
 }
+function individualEditOverride(){
+  return !!store.individualEditEnabled;
+}
 function editingAllowed(){
-  // El administrador conserva acceso. Para el profesor se respetan tres cierres independientes:
-  // edición global, fecha límite y cierre individual al finalizar su PDF.
-  return isAdmin() || (!cfg.editingLocked && !deadlinePassed() && !submissionLockedForCurrentPeriod());
+  // El administrador siempre conserva acceso.
+  // Un permiso individual puede reabrir SOLO ese perfil incluso si la edición global está cerrada.
+  // Sin permiso individual se respetan el bloqueo global, la fecha límite y el cierre por finalización.
+  return isAdmin() || (!deadlinePassed() && (
+    individualEditOverride() ||
+    (!cfg.editingLocked && !submissionLockedForCurrentPeriod())
+  ));
 }
 function formatDateTime(ts){
   if(!ts)return 'Sin fecha límite';
@@ -146,14 +153,24 @@ function applyEditState(){
     }
   }
 }
-window.toggleEditingLock=function(){
+window.toggleEditingLock=async function(){
   if(!isAdmin()){toast('Solo el administrador puede cambiar este estado.');return}
-  cfg.editingLocked=!cfg.editingLocked;
-  persist();
-  renderAdmin();
-  applyEditState();
-  saveGlobalSettings(cfg.editingLocked?'Edición global desactivada':'Edición global activada');
-  toast(cfg.editingLocked?'Edición desactivada. Consulta e impresión permanecen disponibles.':'Edición activada. Los profesores pueden modificar nuevamente todos sus datos.');
+  const previous=!!cfg.editingLocked;
+  cfg.editingLocked=!previous;
+  try{
+    persist();
+    await saveGlobalSettings(cfg.editingLocked?'Edición global desactivada':'Edición global activada');
+    renderAdmin();
+    applyEditState();
+    toast(cfg.editingLocked
+      ?'Edición general desactivada. Solo podrán editar los perfiles con habilitación individual.'
+      :'Edición general activada para perfiles que no estén finalizados.');
+  }catch(e){
+    cfg.editingLocked=previous;
+    persist();renderAdmin();applyEditState();
+    console.error(e);
+    alert('No fue posible cambiar el estado general de edición. Revise la conexión con Firestore.');
+  }
 }
 
 
@@ -231,7 +248,7 @@ function applyGlobalSettings(data){
   if(Array.isArray(data.commonRules))commonRules=data.commonRules;
   currentProgramIndex=Math.min(currentProgramIndex,Math.max(0,programs().length-1));
   localStorage.setItem('PAD_UTEQ',JSON.stringify({...store,cfg,answers,programMeta,customPrograms,programOverrides,disabledPrograms,programAcronyms,commonRules,currentProgramIndex,lastSavedAt}));
-  updatePeriodBadges();renderCurrentProgram();renderAdmin();updateCountdownUI();updateNavState();
+  updatePeriodBadges();renderCurrentProgram();renderAdmin();updateCountdownUI();applyEditState();updateNavState();
 }
 async function saveGlobalSettings(action='Configuración global actualizada'){
   if(!db||!isAdmin())return;
@@ -261,6 +278,7 @@ function profileCloudPayload(){
     period:cfg.periodo,
     submittedPeriod:store.submittedPeriod||null,
     finalizedAtMs:store.finalizedAtMs||null,
+    individualEditEnabled:!!store.individualEditEnabled,
     updatedAt:serverTimestamp()
   };
 }
@@ -288,6 +306,7 @@ async function loadRemoteProfile(){
       if(d.programMeta)programMeta=d.programMeta;
       if('submittedPeriod' in d)store.submittedPeriod=d.submittedPeriod||null;
       if('finalizedAtMs' in d)store.finalizedAtMs=Number(d.finalizedAtMs)||null;
+      if('individualEditEnabled' in d)store.individualEditEnabled=!!d.individualEditEnabled;
       store.answers=answers;store.programMeta=programMeta;
       localStorage.setItem('PAD_UTEQ',JSON.stringify({...store,cfg,customPrograms,programOverrides,disabledPrograms,programAcronyms,commonRules,currentProgramIndex,lastSavedAt}));
       loadProfileValuesOnly();
@@ -322,13 +341,17 @@ async function initCloud(){
   cloudProfileMetaUnsub=onSnapshot(doc(db,'profiles',currentUser.uid),s=>{
     if(!s.exists())return;
     const d=s.data()||{};
-    const prior=store.submittedPeriod||null;
+    const priorPeriod=store.submittedPeriod||null;
+    const priorOverride=!!store.individualEditEnabled;
     store.submittedPeriod=d.submittedPeriod||null;
     store.finalizedAtMs=Number(d.finalizedAtMs)||null;
-    if(prior!==store.submittedPeriod){
+    store.individualEditEnabled=!!d.individualEditEnabled;
+    if(priorPeriod!==store.submittedPeriod || priorOverride!==store.individualEditEnabled){
       localStorage.setItem('PAD_UTEQ',JSON.stringify({...store,cfg,answers,programMeta,customPrograms,programOverrides,disabledPrograms,programAcronyms,commonRules,currentProgramIndex,lastSavedAt}));
       applyEditState();updateNavState();
-      toast(store.submittedPeriod===cfg.periodo?'Perfil finalizado. Edición bloqueada.':'Administración habilitó nuevamente la edición de su perfil.');
+      toast(store.individualEditEnabled
+        ?'Administración habilitó la edición únicamente para su perfil.'
+        :(store.submittedPeriod===cfg.periodo?'Perfil finalizado. Edición bloqueada.':'La habilitación individual de edición terminó.'));
     }
   },e=>console.warn('No fue posible escuchar el estado del perfil',e));
 }
@@ -444,9 +467,9 @@ function updateNavState(){
 
 function buildProfileRows(){
   const f=['Licenciatura o TSU','Posgrado 1','Posgrado 2','Posgrado 3','Posgrado 4','Posgrado 5','Posgrado 6'];
-  $('formacion').innerHTML=f.map((lab,i)=>`<div class="form-row two"><div class="row-label">${lab}${i===0?' *':''}</div><input placeholder="Grado / estudio" data-g="f${i+1}a"><input placeholder="Institución" data-g="f${i+1}b"></div>`).join('');
-  $('docencia').innerHTML=Array.from({length:4},(_,i)=>`<div class="form-row two"><div class="row-label">Institución ${i+1}${i===0?' *':''}</div><input placeholder="Institución" data-g="d${i+1}a"><input placeholder="Periodo" data-g="d${i+1}c"></div>`).join('');
-  $('laboral').innerHTML=Array.from({length:5},(_,i)=>`<div class="form-row"><div class="row-label">Organización ${i+1}${i===0?' *':''}</div><input placeholder="Organización" data-g="l${i+1}a"><input placeholder="Cargo" data-g="l${i+1}b"><input placeholder="Periodo" data-g="l${i+1}c"></div>`).join('');
+  $('formacion').innerHTML=f.map((lab,i)=>`<div class="form-row two"><div class="row-label">${lab}${i===0?' *':''}</div><input placeholder="${i===0?'Ej. Licenciatura en Ingeniería Industrial':'Ej. Maestría en Educación'}" data-g="f${i+1}a"><input placeholder="Ej. Universidad Tecnológica de Querétaro" data-g="f${i+1}b"></div>`).join('');
+  $('docencia').innerHTML=Array.from({length:4},(_,i)=>`<div class="form-row two"><div class="row-label">Institución ${i+1}${i===0?' *':''}</div><input placeholder="Ej. UTEQ" data-g="d${i+1}a"><input placeholder="Ej. sep 2023 - ago 2025" data-g="d${i+1}c"></div>`).join('');
+  $('laboral').innerHTML=Array.from({length:5},(_,i)=>`<div class="form-row"><div class="row-label">Organización ${i+1}${i===0?' *':''}</div><input placeholder="Ej. Empresa / institución" data-g="l${i+1}a"><input placeholder="Ej. Jefe de área" data-g="l${i+1}b"><input placeholder="Ej. ene 2020 - dic 2023" data-g="l${i+1}c"></div>`).join('');
 }
 function loadProfileValuesOnly(){
   const p=store.profile||{};
@@ -819,7 +842,7 @@ async function renderTeacherAdminList(){
     snap.forEach(ds=>{
       const d=ds.data()||{},p=d.profile||{};
       const name=[p.apPat,p.apMat,p.nombres].filter(Boolean).join(' ')||d.displayName||d.email||'(Sin nombre)';
-      const row={uid:ds.id,name,email:d.email||'',categoria:p.categoria||'',submittedPeriod:d.submittedPeriod||null,finalizedAtMs:Number(d.finalizedAtMs)||0,updatedAt:d.updatedAt};
+      const row={uid:ds.id,name,email:d.email||'',categoria:p.categoria||'',submittedPeriod:d.submittedPeriod||null,finalizedAtMs:Number(d.finalizedAtMs)||0,individualEditEnabled:!!d.individualEditEnabled,updatedAt:d.updatedAt};
       rows.push(row);teacherAdminCache[row.uid]=row;
     });
     rows.sort((a,b)=>a.name.localeCompare(b.name,'es',{sensitivity:'base'}));
@@ -828,17 +851,22 @@ async function renderTeacherAdminList(){
     if(!rows.length){root.innerHTML='<div class="teacher-empty">Aún no hay perfiles de profesores guardados.</div>';return}
     root.innerHTML=rows.map(r=>{
       const doneNow=r.submittedPeriod===cfg.periodo;
-      return `<div class="teacher-admin-row ${doneNow?'finished':'open'}">
+      const override=!!r.individualEditEnabled;
+      const statusTitle=override?'Edición individual habilitada':(doneNow?'Concluido':'En captura / sin concluir');
+      const statusText=override
+        ?'Este profesor puede editar aunque la edición general esté cerrada.'
+        :(doneNow?formatTeacherCompletion(r):'Edición disponible según los controles generales');
+      return `<div class="teacher-admin-row ${override?'individual-open':doneNow?'finished':'open'}">
         <div class="teacher-admin-main">
           <b>${escapeHtml(r.name)}</b>
           <span>${escapeHtml(r.email||'Sin correo registrado')}${r.categoria?` · ${escapeHtml(r.categoria)}`:''}</span>
         </div>
-        <div class="teacher-admin-status ${doneNow?'finished':'open'}">
-          <strong>${doneNow?'Concluido':'En captura / sin concluir'}</strong>
-          <span>${doneNow?escapeHtml(formatTeacherCompletion(r)):'Edición disponible según los controles generales'}</span>
+        <div class="teacher-admin-status ${override?'individual-open':doneNow?'finished':'open'}">
+          <strong>${escapeHtml(statusTitle)}</strong>
+          <span>${escapeHtml(statusText)}</span>
         </div>
         <div class="teacher-admin-actions">
-          ${doneNow?`<button class="teacher-reopen-btn" onclick="reopenTeacherProfile('${r.uid}')">Habilitar edición</button>`:''}
+          ${doneNow||override?`<button class="teacher-reopen-btn ${override?'active':''}" onclick="toggleTeacherEditOverride('${r.uid}',${override?'false':'true'})">${override?'Deshabilitar edición':'Habilitar edición'}</button>`:''}
           <button class="teacher-delete-btn" onclick="deleteTeacherProfile('${r.uid}')">Eliminar perfil</button>
         </div>
       </div>`;
@@ -852,25 +880,30 @@ async function renderTeacherAdminList(){
 function escapeHtml(value){
   return String(value??'').replace(/[&<>"']/g,ch=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#039;'}[ch]));
 }
-window.reopenTeacherProfile=async function(uid){
+window.toggleTeacherEditOverride=async function(uid,enable){
   if(!isAdmin()||!db)return;
   const r=teacherAdminCache[uid]||{};
-  if(!confirm(`¿Habilitar nuevamente la edición para ${r.name||r.email||'este profesor'}?\\n\\nSolo este perfil se reabrirá; los demás permanecerán sin cambios.`))return;
+  const who=r.name||r.email||'este profesor';
+  const question=enable
+    ?`¿Habilitar la edición únicamente para ${who}?\n\nEste permiso individual funcionará incluso si la edición general está desactivada.`
+    :`¿Deshabilitar nuevamente la edición de ${who}?\n\nEl perfil volverá a respetar su cierre por finalización y los controles generales.`;
+  if(!confirm(question))return;
   try{
     await setDoc(doc(db,'profiles',uid),{
-      submittedPeriod:null,
-      finalizedAtMs:null,
-      reopenedAt:serverTimestamp(),
-      reopenedBy:currentUser.email||''
+      individualEditEnabled:!!enable,
+      reopenedAt:enable?serverTimestamp():null,
+      reopenedBy:enable?(currentUser.email||''):null,
+      individualEditUpdatedAt:serverTimestamp()
     },{merge:true});
-    await writeAudit(`Edición individual habilitada para ${r.email||uid}`);
-    toast('Edición habilitada únicamente para ese profesor.');
+    await writeAudit(`${enable?'Edición individual habilitada':'Edición individual deshabilitada'} para ${r.email||uid}`);
+    toast(enable?'Edición habilitada únicamente para ese profesor.':'Edición individual deshabilitada.');
     await renderTeacherAdminList();
   }catch(e){
-    console.error(e);
-    alert('No fue posible habilitar la edición individual. Verifique que las reglas de Firestore actualizadas estén publicadas.');
+    console.error('Error de edición individual',e);
+    alert(`No fue posible ${enable?'habilitar':'deshabilitar'} la edición individual.\n\nCódigo: ${e?.code||'sin código'}\n\nVerifique que firestore.rules V21 esté publicado.`);
   }
 }
+window.reopenTeacherProfile=function(uid){return window.toggleTeacherEditOverride(uid,true)}
 window.deleteTeacherProfile=async function(uid){
   if(!isAdmin()||!db)return;
   const r=teacherAdminCache[uid]||{};
@@ -1101,11 +1134,11 @@ function renderProgramAdminList(){
     const custom=p.id.startsWith('custom_');
     const rule=commonRuleForProgram(p.id);
     return `<div class="program-admin-item ${enabled?'':'disabled'}">
-      <div><b>${p.name}</b><small>${p.exit}${custom?' · Programa agregado':''}${rule?` · <strong>Tronco común</strong>`:''}</small></div>
-      <label class="acronym-edit">Acrónimo<input value="${programAcronym(p)}" maxlength="18" onchange="setProgramAcronym('${p.id}',this.value)"></label>
-      <button class="edit-program-btn" onclick="openProgramEditor('${p.id}')">Editar</button>
-      <button class="common-program-btn ${rule?'active':''}" onclick="openCommonRuleEditor('${p.id}')">${rule?'Tronco común ✓':'Configurar tronco'}</button>
-      <button class="${enabled?'disable-program':'enable-program'}" onclick="toggleProgramEnabled('${p.id}')">${enabled?'Deshabilitar':'Habilitar'}</button>
+      <div class="program-admin-name"><b>${p.name}</b><small>${p.exit}${custom?' · Programa agregado':''}${rule?` · <strong>Tronco común</strong>`:''}</small></div>
+      <label class="acronym-edit"><span class="admin-icon acronym-icon">ABC</span><span>Acrónimo</span><input value="${programAcronym(p)}" maxlength="18" onchange="setProgramAcronym('${p.id}',this.value)"></label>
+      <button class="edit-program-btn program-action-btn" onclick="openProgramEditor('${p.id}')"><span class="admin-icon edit-icon">✎</span>Editar</button>
+      <button class="common-program-btn program-action-btn ${rule?'active':''}" onclick="openCommonRuleEditor('${p.id}')"><span class="admin-icon common-icon">↔</span>${rule?'Tronco común':'Configurar tronco'}</button>
+      <button class="program-action-btn ${enabled?'disable-program':'enable-program'}" onclick="toggleProgramEnabled('${p.id}')"><span class="admin-icon state-icon">${enabled?'−':'+'}</span>${enabled?'Deshabilitar':'Habilitar'}</button>
     </div>`
   }).join('');
 }

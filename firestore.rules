@@ -24,7 +24,12 @@ service cloud.firestore {
 
     match /profiles/{uid} {
       allow read: if admin() || (institutional() && request.auth.uid == uid);
-      allow create, update: if admin() || (institutional() && request.auth.uid == uid);
+
+      // El profesor administra únicamente su propio perfil.
+      // Administración puede reabrir/cerrar de forma individual perfiles ajenos.
+      allow create, update: if admin()
+        || (institutional() && request.auth.uid == uid);
+
       allow delete: if admin();
     }
 
