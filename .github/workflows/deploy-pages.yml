@@ -40,7 +40,7 @@ jobs:
           test -n "$FIREBASE_APP_ID"
 
           mkdir -p dist
-          cp index.html styles.css app.js catalog.js logo-uteq.png logo-uteq-blue.png icono-industria.svg README.md ARQUITECTURA.md dist/
+          cp index.html styles.css app.js catalog.js logo-uteq.png logo-uteq-blue.png logo-uteq-wordmark.svg icono-industria.svg favicon.svg README.md ARQUITECTURA.md dist/
 
           cat > dist/firebase-config.js <<EOF
           window.FIREBASE_CONFIG = {
@@ -65,4 +65,3 @@ jobs:
       - name: Deploy to GitHub Pages
         id: deployment
         uses: actions/deploy-pages@v4
-
