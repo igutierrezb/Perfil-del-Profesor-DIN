@@ -1,16 +1,17 @@
-# Perfil Académico Docente DIN · Versión 26
+# Perfil Académico Docente DIN · Versión 27
 
-## Cambios
-- En impresión/PDF:
-  - el nombre del profesor aumenta aproximadamente 4 puntos;
-  - el nombre del Jefe de Unidad de Coordinación Académica aumenta aproximadamente 4 puntos;
-  - las etiquetas de cargo conservan tamaño compacto;
-  - no cambia la zona reservada para firmas, por lo que no se desplazan las tablas.
-- Exportar Excel:
-  - botón verde más grande;
-  - tipografía mayor;
-  - icono Excel más visible;
-  - gradiente verde acorde con la identidad de Excel.
+Actualización exclusivamente visual del botón de exportación.
+
+## Cambio
+- `Exportar a Excel` ahora utiliza un diseño inspirado en la identidad visual de Excel / Microsoft 365:
+  - verde Excel;
+  - ficha blanca para el icono;
+  - mayor tamaño y jerarquía tipográfica;
+  - subtítulo `Libro de Microsoft Excel · .xlsx`;
+  - relieve y estados hover/active;
+  - selector CSS de mayor especificidad para evitar que las reglas generales de Administración vuelvan a pintarlo de azul.
+
+No se modifica la función `exportExcel()` ni ninguna lógica del sistema.
 
 ## Deploy
 `deploy-pages.yml`: NO necesita actualización.

@@ -3888,3 +3888,142 @@ label.required-wrap-error{
     max-height:48px!important;
   }
 }
+
+
+/* =========================================================
+   V27 · Botón Exportar a Excel estilo Office / Excel
+   ========================================================= */
+
+/* La especificidad con #admin evita que las reglas generales
+   de botones administrativos vuelvan a pintarlo de azul. */
+#admin .admin-quickbar button.excel-export-btn{
+  min-width:238px!important;
+  width:auto!important;
+  height:56px!important;
+  min-height:56px!important;
+  padding:7px 18px 7px 9px!important;
+  display:inline-flex!important;
+  align-items:center!important;
+  justify-content:flex-start!important;
+  gap:12px!important;
+
+  background:
+    linear-gradient(135deg,#21a366 0%,#217346 46%,#185c37 100%)!important;
+  border:1px solid #145c39!important;
+  border-radius:12px!important;
+  color:#fff!important;
+
+  box-shadow:
+    inset 0 1px 0 rgba(255,255,255,.20),
+    0 3px 0 #0e4a2b,
+    0 8px 18px rgba(24,92,55,.24)!important;
+
+  font-family:inherit!important;
+  line-height:1!important;
+  overflow:visible!important;
+  transition:transform .16s ease, box-shadow .16s ease, filter .16s ease!important;
+}
+
+/* Franja tipo Office en el costado izquierdo */
+#admin .admin-quickbar button.excel-export-btn::before{
+  content:""!important;
+  width:6px!important;
+  align-self:stretch!important;
+  margin:-7px 0 -7px -9px!important;
+  border-radius:11px 0 0 11px!important;
+  background:#107c41!important;
+  box-shadow:inset -1px 0 0 rgba(255,255,255,.16)!important;
+  flex:0 0 6px!important;
+}
+
+#admin .admin-quickbar button.excel-export-btn:hover{
+  transform:translateY(-1px)!important;
+  filter:brightness(1.035)!important;
+  box-shadow:
+    inset 0 1px 0 rgba(255,255,255,.24),
+    0 4px 0 #0d4428,
+    0 10px 22px rgba(24,92,55,.28)!important;
+}
+
+#admin .admin-quickbar button.excel-export-btn:active{
+  transform:translateY(2px)!important;
+  box-shadow:
+    inset 0 1px 0 rgba(255,255,255,.14),
+    0 1px 0 #0d4428,
+    0 4px 10px rgba(24,92,55,.18)!important;
+}
+
+/* Icono tipo Excel dentro de una ficha blanca */
+#admin .admin-quickbar button.excel-export-btn .excel-logo{
+  width:38px!important;
+  height:38px!important;
+  min-width:38px!important;
+  flex:0 0 38px!important;
+  display:inline-flex!important;
+  align-items:center!important;
+  justify-content:center!important;
+  padding:0!important;
+  margin:0!important;
+
+  background:#fff!important;
+  border:1px solid rgba(255,255,255,.8)!important;
+  border-radius:9px!important;
+  box-shadow:0 2px 7px rgba(4,51,29,.18)!important;
+}
+
+#admin .admin-quickbar button.excel-export-btn .excel-logo svg{
+  width:27px!important;
+  height:27px!important;
+  display:block!important;
+}
+
+/* Copia tipográfica: mucho más visible */
+#admin .admin-quickbar button.excel-export-btn .excel-export-copy{
+  min-width:0!important;
+  display:flex!important;
+  flex-direction:column!important;
+  align-items:flex-start!important;
+  justify-content:center!important;
+  gap:3px!important;
+  text-align:left!important;
+}
+
+#admin .admin-quickbar button.excel-export-btn .excel-export-copy strong{
+  margin:0!important;
+  padding:0!important;
+  color:#fff!important;
+  font-size:14px!important;
+  font-weight:850!important;
+  line-height:1.02!important;
+  letter-spacing:.005em!important;
+  white-space:nowrap!important;
+}
+
+#admin .admin-quickbar button.excel-export-btn .excel-export-copy small{
+  margin:0!important;
+  padding:0!important;
+  color:rgba(255,255,255,.88)!important;
+  font-size:8.6px!important;
+  font-weight:600!important;
+  line-height:1.05!important;
+  white-space:nowrap!important;
+}
+
+/* Darle un poco más de aire al área del botón sin aumentar toda Administración */
+#admin .admin-quickbar{
+  align-items:center!important;
+}
+
+@media(max-width:760px){
+  #admin .admin-quickbar button.excel-export-btn{
+    min-width:210px!important;
+    height:52px!important;
+    min-height:52px!important;
+  }
+  #admin .admin-quickbar button.excel-export-btn .excel-export-copy strong{
+    font-size:12.5px!important;
+  }
+  #admin .admin-quickbar button.excel-export-btn .excel-export-copy small{
+    white-space:normal!important;
+  }
+}
