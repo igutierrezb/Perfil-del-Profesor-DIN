@@ -1,1 +1,68 @@
+name: Deploy Perfil Profesor DIN
+
+on:
+  push:
+    branches: ["main"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: "pages"
+  cancel-in-progress: true
+
+jobs:
+  deploy:
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Prepare site
+        shell: bash
+        env:
+          FIREBASE_API_KEY: ${{ secrets.FIREBASE_API_KEY }}
+          FIREBASE_AUTH_DOMAIN: ${{ secrets.FIREBASE_AUTH_DOMAIN }}
+          FIREBASE_PROJECT_ID: ${{ secrets.FIREBASE_PROJECT_ID }}
+          FIREBASE_APP_ID: ${{ secrets.FIREBASE_APP_ID }}
+        run: |
+          set -euo pipefail
+          test -n "$FIREBASE_API_KEY"
+          test -n "$FIREBASE_AUTH_DOMAIN"
+          test -n "$FIREBASE_PROJECT_ID"
+          test -n "$FIREBASE_APP_ID"
+
+          mkdir -p dist
+          cp index.html styles.css app.js catalog.js logo-uteq.png logo-uteq-blue.png icono-industria.svg README.md ARQUITECTURA.md dist/
+
+          cat > dist/firebase-config.js <<EOF
+          window.FIREBASE_CONFIG = {
+            apiKey: "$FIREBASE_API_KEY",
+            authDomain: "$FIREBASE_AUTH_DOMAIN",
+            projectId: "$FIREBASE_PROJECT_ID",
+            appId: "$FIREBASE_APP_ID"
+          };
+
+          window.PAD_ALLOWED_DOMAIN = "uteq.edu.mx";
+          window.PAD_ADMIN_EMAIL = "ivan.gutierrez@uteq.edu.mx";
+          EOF
+
+      - name: Configure Pages
+        uses: actions/configure-pages@v5
+
+      - name: Upload Pages artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: dist
+
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4
 
