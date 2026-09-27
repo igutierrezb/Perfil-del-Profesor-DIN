@@ -12,7 +12,7 @@ const DEFAULT_COMMON_RULES=[
 ];
 let answers=store.answers||{},programMeta=store.programMeta||{},customPrograms=store.customPrograms||[],programOverrides=store.programOverrides||{},disabledPrograms=store.disabledPrograms||[],programAcronyms=store.programAcronyms||{},commonRules=Array.isArray(store.commonRules)?store.commonRules:JSON.parse(JSON.stringify(DEFAULT_COMMON_RULES));
 let currentProgramIndex=Number.isInteger(store.currentProgramIndex)?store.currentProgramIndex:0;
-let newSemesterCount=5,auth=null,currentUser=null,authReady=false,db=null,cloudSettingsUnsub=null,cloudProfileMetaUnsub=null,remoteProfileLoaded=false,cloudAvailable=false,cloudSaveTimer=null,countdownTimer=null,lastSavedAt=store.lastSavedAt||null,editingCommonRuleId=null,editingProgramId=null,teacherAdminCache={};
+let newSemesterCount=5,programEditorSemesters=[],auth=null,currentUser=null,authReady=false,db=null,cloudSettingsUnsub=null,cloudProfileMetaUnsub=null,remoteProfileLoaded=false,cloudAvailable=false,cloudSaveTimer=null,countdownTimer=null,lastSavedAt=store.lastSavedAt||null,editingCommonRuleId=null,editingProgramId=null,teacherAdminCache={};
 const allowedDomain=(window.PAD_ALLOWED_DOMAIN||'uteq.edu.mx').toLowerCase();
 const adminEmail=(window.PAD_ADMIN_EMAIL||'ivan.gutierrez@uteq.edu.mx').toLowerCase();
 
@@ -930,22 +930,116 @@ function renderAdmin(){
   if(!editingProgramId && !$('newProgramSemesters')?.children?.length)renderSemesterEditors();
   renderProgramAdminList();renderCustomPrograms();renderRules();applyEditState();renderTeacherAdminList()
 }
+function normalizeEditorSemesterValues(values){
+  if(!Array.isArray(values))return [];
+  return values.map(sem=>{
+    if(Array.isArray(sem)){
+      return sem.map(item=>({
+        name:String(item?.name||''),
+        hours:item?.hours!==undefined&&item?.hours!==null?String(item.hours):''
+      }));
+    }
+    if(typeof sem==='string'){
+      return sem.split(/\n+/).map(parseCustomSubjectLine).filter(x=>x.name).map(x=>({name:x.name,hours:x.hours?String(x.hours):''}));
+    }
+    return [];
+  });
+}
+function ensureProgramEditorSemesters(){
+  while(programEditorSemesters.length<newSemesterCount)programEditorSemesters.push([{name:'',hours:''}]);
+  if(programEditorSemesters.length>newSemesterCount)programEditorSemesters.length=newSemesterCount;
+  programEditorSemesters=programEditorSemesters.map(sem=>Array.isArray(sem)&&sem.length?sem:[{name:'',hours:''}]);
+}
 function renderSemesterEditors(values=null){
-  let h='';
-  for(let i=0;i<newSemesterCount;i++)h+=`<div class="semester-editor"><div class="semester-editor-head"><b>${i+1}.° cuatrimestre</b>${newSemesterCount>1?`<button onclick="removeSemesterEditor(${i})">Borrar</button>`:''}</div><textarea id="newSem${i}" placeholder="Ejemplo:\nCálculo diferencial - 90\nFísica - 75"></textarea><small class="semester-help">Formato: Asignatura - horas totales del cuatrimestre</small></div>`;
-  $('newProgramSemesters').innerHTML=h;
-  if(Array.isArray(values)) values.forEach((v,i)=>{const el=$(`newSem${i}`);if(el)el.value=v||''});
+  if(values!==null)programEditorSemesters=normalizeEditorSemesterValues(values);
+  ensureProgramEditorSemesters();
+
+  $('newProgramSemesters').innerHTML=programEditorSemesters.map((sem,s)=>`
+    <section class="semester-subject-editor" data-semester="${s}">
+      <div class="semester-editor-head">
+        <div>
+          <b>${s+1}.° cuatrimestre</b>
+          <span>${sem.filter(x=>String(x.name||'').trim()).length} materia${sem.filter(x=>String(x.name||'').trim()).length===1?'':'s'}</span>
+        </div>
+        ${newSemesterCount>1?`<button type="button" class="semester-delete-btn" onclick="removeSemesterEditor(${s})">Borrar cuatrimestre</button>`:''}
+      </div>
+
+      <div class="subject-editor-labels">
+        <span>Materia</span><span>Horas</span><span>Acciones</span>
+      </div>
+
+      <div class="subject-editor-list">
+        ${sem.map((item,c)=>`
+          <div class="subject-editor-row" data-subject-row="${s}-${c}">
+            <input
+              id="subjectName_${s}_${c}"
+              class="subject-name-field"
+              value="${escapeHtml(item.name||'')}"
+              placeholder="Ej. Cálculo diferencial"
+              oninput="updateProgramSubject(${s},${c},'name',this.value)">
+            <input
+              id="subjectHours_${s}_${c}"
+              class="subject-hours-field"
+              type="number"
+              min="1"
+              step="1"
+              value="${escapeHtml(item.hours||'')}"
+              placeholder="Ej. 90"
+              oninput="updateProgramSubject(${s},${c},'hours',this.value)">
+            <div class="subject-row-actions">
+              <button type="button" class="subject-edit-btn" onclick="editProgramSubject(${s},${c})">Editar</button>
+              <button type="button" class="subject-remove-btn" onclick="removeProgramSubject(${s},${c})">Eliminar</button>
+            </div>
+          </div>`).join('')}
+      </div>
+
+      <button type="button" class="add-subject-btn" onclick="addProgramSubject(${s})">＋ Agregar materia</button>
+    </section>`).join('');
+}
+window.updateProgramSubject=function(s,c,field,value){
+  ensureProgramEditorSemesters();
+  if(!programEditorSemesters[s]?.[c])return;
+  programEditorSemesters[s][c][field]=value;
+}
+window.addProgramSubject=function(s){
+  ensureProgramEditorSemesters();
+  programEditorSemesters[s].push({name:'',hours:''});
+  const c=programEditorSemesters[s].length-1;
+  renderSemesterEditors();
+  setTimeout(()=>document.getElementById(`subjectName_${s}_${c}`)?.focus(),0);
+}
+window.removeProgramSubject=function(s,c){
+  ensureProgramEditorSemesters();
+  const row=programEditorSemesters[s]?.[c];
+  if(!row)return;
+  const hasData=String(row.name||'').trim()||String(row.hours||'').trim();
+  if(hasData&&!confirm('¿Eliminar esta materia del cuatrimestre?'))return;
+  programEditorSemesters[s].splice(c,1);
+  if(!programEditorSemesters[s].length)programEditorSemesters[s].push({name:'',hours:''});
+  renderSemesterEditors();
+}
+window.editProgramSubject=function(s,c){
+  const el=document.getElementById(`subjectName_${s}_${c}`);
+  if(el){
+    el.focus();
+    el.select();
+  }
 }
 window.addSemesterEditor=function(){
-  const vals=Array.from({length:newSemesterCount},(_,x)=>$(`newSem${x}`)?.value||'');
-  newSemesterCount++;
-  renderSemesterEditors(vals);
+  ensureProgramEditorSemesters();
+  programEditorSemesters.push([{name:'',hours:''}]);
+  newSemesterCount=programEditorSemesters.length;
+  renderSemesterEditors();
+  setTimeout(()=>document.getElementById(`subjectName_${newSemesterCount-1}_0`)?.focus(),0);
 }
 window.removeSemesterEditor=function(i){
-  const vals=Array.from({length:newSemesterCount},(_,x)=>$(`newSem${x}`)?.value||'');
-  vals.splice(i,1);
-  newSemesterCount=Math.max(1,newSemesterCount-1);
-  renderSemesterEditors(vals);
+  ensureProgramEditorSemesters();
+  const sem=programEditorSemesters[i]||[];
+  if(sem.some(x=>String(x.name||'').trim())&&!confirm(`¿Borrar el ${i+1}.° cuatrimestre y todas sus materias?`))return;
+  programEditorSemesters.splice(i,1);
+  newSemesterCount=Math.max(1,programEditorSemesters.length);
+  if(!programEditorSemesters.length)programEditorSemesters=[[{name:'',hours:''}]];
+  renderSemesterEditors();
 }
 function slug(s){return 'custom_'+s.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/[^a-z0-9]+/g,'_')+'_'+Date.now()}
 function parseCustomSubjectLine(line){
@@ -956,15 +1050,19 @@ function parseCustomSubjectLine(line){
 }
 function formatProgramSemester(pr,s){
   const sem=pr.semesters?.[s]||[],hrs=pr.hours?.[s]||[];
-  return sem.map((name,c)=>`${subjectCase(name)} - ${Number(hrs[c])||subjectHours(pr.id,s,c)||''}`).join('\n');
+  return sem.map((name,c)=>({
+    name:subjectCase(name),
+    hours:Number(hrs[c])||subjectHours(pr.id,s,c)||''
+  }));
 }
 function resetProgramEditor(){
   editingProgramId=null;
   newSemesterCount=5;
+  programEditorSemesters=Array.from({length:newSemesterCount},()=>[{name:'',hours:''}]);
   $('newProgramName').value='';
   $('newProgramExit').value='';
   $('programEditorTitle').textContent='Agregar programa educativo';
-  $('programEditorHelp').textContent='Capture nombre, salida lateral y materias. Puede escribirlas manualmente o importar una imagen del mapa curricular.';
+  $('programEditorHelp').textContent='Capture nombre y salida lateral. Agregue cada materia y sus horas dentro del cuatrimestre correspondiente.';
   $('programEditorMode').textContent='Nuevo';
   $('cancelProgramEditBtn').classList.add('hidden');
   $('saveProgramEditorBtn').textContent='Guardar nuevo programa educativo';
@@ -999,10 +1097,10 @@ window.openProgramEditor=function(id){
   $('newProgramName').value=pr.name||'';
   $('newProgramExit').value=pr.exit||'';
   newSemesterCount=Math.max(1,pr.semesters?.length||5);
-  const vals=Array.from({length:newSemesterCount},(_,s)=>formatProgramSemester(pr,s));
-  renderSemesterEditors(vals);
+  programEditorSemesters=Array.from({length:newSemesterCount},(_,s)=>formatProgramSemester(pr,s));
+  renderSemesterEditors(programEditorSemesters);
   $('programEditorTitle').textContent='Editar programa educativo';
-  $('programEditorHelp').textContent='Puede modificar nombre, salida lateral, materias y horas. Los cambios se aplican al catálogo vigente.';
+  $('programEditorHelp').textContent='Edite cada materia y sus horas directamente dentro de su cuatrimestre. También puede agregar o eliminar materias de forma independiente.';
   $('programEditorMode').textContent='Edición';
   $('cancelProgramEditBtn').classList.remove('hidden');
   $('saveProgramEditorBtn').textContent='Guardar cambios';
@@ -1010,11 +1108,19 @@ window.openProgramEditor=function(id){
 }
 window.saveProgramEditor=function(){
   const name=$('newProgramName').value.trim(),exit=$('newProgramExit').value.trim();
-  const parsed=Array.from({length:newSemesterCount},(_,i)=>($(`newSem${i}`).value||'').split(/\n+/).map(parseCustomSubjectLine).filter(x=>x.name));
+  ensureProgramEditorSemesters();
+  const parsed=programEditorSemesters.map(rows=>rows
+    .map(x=>({name:String(x.name||'').trim(),hours:Number(x.hours)||0}))
+    .filter(x=>x.name||x.hours));
   const semesters=parsed.map(rows=>rows.map(x=>x.name));
   const hours=parsed.map(rows=>rows.map(x=>x.hours));
-  if(!name||!exit||semesters.some(x=>!x.length)){toast('Complete nombre, salida lateral y materias.');return}
-  if(parsed.some(rows=>rows.some(x=>!x.hours))){toast('Agregue las horas de cada materia con el formato: Asignatura - horas.');return}
+
+  if(!name||!exit){toast('Complete el nombre del programa y la salida lateral.');return}
+  if(parsed.some(rows=>!rows.length)){toast('Cada cuatrimestre debe contener al menos una materia.');return}
+  if(parsed.some(rows=>rows.some(x=>!x.name||!x.hours))){
+    toast('Revise cada materia: debe tener nombre y horas.');
+    return;
+  }
 
   if(editingProgramId){
     const oldProgram=allPrograms().find(p=>p.id===editingProgramId);
@@ -1146,249 +1252,6 @@ function renderProgramAdminList(){
 window.deleteCustomProgram=function(id){if(!confirm('¿Eliminar este programa?'))return;customPrograms=customPrograms.filter(p=>p.id!==id);disabledPrograms=disabledPrograms.filter(x=>x!==id);currentProgramIndex=Math.min(currentProgramIndex,Math.max(0,programs().length-1));persist();saveGlobalSettings('Programa educativo eliminado');renderAdmin();renderCurrentProgram()}
 function renderCustomPrograms(){
   $('customProgramsList').innerHTML=customPrograms.length?`<h3 style="margin-top:16px">Programas agregados</h3>`+customPrograms.map(p=>`<div class="custom-program-item"><div><b>${p.name}</b><br>${p.exit}<br><small>${p.semesters.reduce((n,s)=>n+s.length,0)} materias · horas configuradas</small></div><div class="custom-program-actions"><button onclick="openProgramEditor('${p.id}')">Editar</button><button onclick="deleteCustomProgram('${p.id}')">Eliminar</button></div></div>`).join(''):''
-}
-
-function normalizeOcrText(text){
-  return String(text||'').replace(/\r/g,'').replace(/[|]+/g,' ').replace(/[ \t]+/g,' ').replace(/\n{3,}/g,'\n\n').trim();
-}
-function detectSemesterHeading(line){
-  const s=String(line||'').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'');
-  const words={primer:1,primero:1,segundo:2,tercer:3,tercero:3,cuarto:4,quinto:5,sexto:6,septimo:7,octavo:8,noveno:9};
-  for(const [w,n] of Object.entries(words)){
-    if(new RegExp(`\\b${w}\\b.*cuatrimestre`).test(s))return n-1;
-  }
-  const m=s.match(/\b([1-9])\s*(?:[.°ºo]|er|do|ro|to)?\s*(?:cuatrimestre|cuatri)\b/);
-  return m?Number(m[1])-1:null;
-}
-function isLikelyOcrNoise(line){
-  const s=String(line||'').trim();
-  if(!s)return true;
-  if(/^(asignatura|materia|horas?|h\/?sem|cuatrimestre|nivel|area|competencia)$/i.test(s))return true;
-  if(/^(universidad|division|programa educativo)$/i.test(s))return true;
-  return false;
-}
-
-function wordText(w){return String(w?.text||'').trim()}
-function wordCx(w){const b=w?.bbox||{};return ((Number(b.x0)||0)+(Number(b.x1)||0))/2}
-function wordCy(w){const b=w?.bbox||{};return ((Number(b.y0)||0)+(Number(b.y1)||0))/2}
-function cleanDetectedSubject(s){
-  return String(s||'')
-    .replace(/^[^A-Za-zÁÉÍÓÚÜÑáéíóúüñ]+/,'')
-    .replace(/\s+/g,' ')
-    .replace(/\b(?:h|hrs?|horas?)$/i,'')
-    .trim();
-}
-function detectQuarterFromText(s){
-  const t=String(s||'').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'');
-  const map={primer:1,primero:1,segundo:2,tercer:3,tercero:3,cuarto:4,quinto:5,sexto:6,septimo:7,octavo:8,noveno:9};
-  for(const [k,v] of Object.entries(map))if(t.includes(k))return v;
-  const m=t.match(/\b([1-9])\s*(?:[.°º]|er|do|ro|to)?\b/);
-  return m?Number(m[1]):null;
-}
-function parseCurriculumOcrSpatial(data){
-  const words=(data?.words||[]).filter(w=>wordText(w) && w?.bbox);
-  if(!words.length)return null;
-
-  const lineGroups=new Map();
-  words.forEach(w=>{
-    const key=`${w.block_num||0}|${w.par_num||0}|${w.line_num||0}`;
-    if(!lineGroups.has(key))lineGroups.set(key,[]);
-    lineGroups.get(key).push(w);
-  });
-
-  const lines=[...lineGroups.values()].map(ws=>{
-    ws.sort((a,b)=>wordCx(a)-wordCx(b));
-    return {words:ws,text:ws.map(wordText).join(' '),y:ws.reduce((n,w)=>n+wordCy(w),0)/ws.length};
-  }).sort((a,b)=>a.y-b.y);
-
-  let headingY=null;
-  const headings=[];
-
-  for(const line of lines){
-    if(/cuatrimestre|cuatri/i.test(line.text)){
-      for(let i=0;i<line.words.length;i++){
-        if(/cuatrimestre|cuatri/i.test(wordText(line.words[i]))){
-          const nearby=line.words.slice(Math.max(0,i-3),i+1).map(wordText).join(' ');
-          const q=detectQuarterFromText(nearby);
-          if(q){
-            headings.push({quarter:q-1,x:wordCx(line.words[Math.max(0,i-1)]||line.words[i]),y:line.y});
-            headingY=headingY===null?line.y:Math.min(headingY,line.y);
-          }
-        }
-      }
-    }
-  }
-
-  if(headings.length<2){
-    const ordinal={primero:1,primer:1,segundo:2,tercero:3,tercer:3,cuarto:4,quinto:5,sexto:6,septimo:7,octavo:8,noveno:9};
-    for(const w of words){
-      const t=wordText(w).toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/[^\w]/g,'');
-      if(ordinal[t]){
-        headings.push({quarter:ordinal[t]-1,x:wordCx(w),y:wordCy(w)});
-        headingY=headingY===null?wordCy(w):Math.min(headingY,wordCy(w));
-      }
-    }
-  }
-
-  const seen=new Map();
-  headings.sort((a,b)=>a.x-b.x).forEach(h=>{if(!seen.has(h.quarter))seen.set(h.quarter,h)});
-  let cols=[...seen.values()].sort((a,b)=>a.x-b.x);
-  if(cols.length<2)return null;
-
-  cols=cols.map((c,i)=>({...c,quarter:i}));
-  const boundaries=[-Infinity];
-  for(let i=1;i<cols.length;i++)boundaries.push((cols[i-1].x+cols[i].x)/2);
-  boundaries.push(Infinity);
-
-  const semesters=Array.from({length:cols.length},()=>[]);
-  const startY=(headingY||0)+6;
-
-  for(const line of lines){
-    if(line.y<=startY)continue;
-
-    for(let ci=0;ci<cols.length;ci++){
-      const slice=line.words.filter(w=>{
-        const x=wordCx(w);
-        return x>boundaries[ci] && x<=boundaries[ci+1];
-      }).sort((a,b)=>wordCx(a)-wordCx(b));
-
-      if(!slice.length)continue;
-
-      let raw=slice.map(wordText).join(' ').replace(/[|]/g,' ').replace(/\s+/g,' ').trim();
-      if(!raw || isLikelyOcrNoise(raw))continue;
-      if(/cuatrimestre|asignatura|materia|universidad|programa educativo|licenciatura|t[eé]cnico superior/i.test(raw))continue;
-
-      let hours=0;
-      const hm=raw.match(/(?:^|\s)(\d{2,3})(?:\s*(?:h|hrs?|horas?))?\s*$/i);
-      if(hm){
-        hours=Number(hm[1])||0;
-        raw=raw.slice(0,hm.index).trim();
-      }
-
-      const name=cleanDetectedSubject(raw);
-      if(name.length<3 || /^\d+$/.test(name))continue;
-
-      const last=semesters[ci][semesters[ci].length-1];
-      if(!hours && last && !last.hours && name.split(' ').length<=5){
-        last.name=`${last.name} ${name}`.replace(/\s+/g,' ').trim();
-      }else{
-        semesters[ci].push({name,hours});
-      }
-    }
-  }
-
-  const subjectCount=semesters.reduce((n,s)=>n+s.length,0);
-  return subjectCount?{name:'',exit:'',semesters,spatial:true}:null;
-}
-function renderOcrCurriculumPreview(parsed){
-  const root=$('ocrCurriculumPreview');
-  if(!root)return;
-  const rows=[];
-  (parsed?.semesters||[]).forEach((sem,s)=>{
-    sem.forEach(item=>rows.push({quarter:s+1,name:item.name||'',hours:item.hours||''}));
-  });
-
-  if(!rows.length){
-    root.innerHTML='<div class="ocr-empty">No se detectaron materias estructuradas.</div>';
-    return;
-  }
-
-  root.innerHTML=`<div class="ocr-preview-title">Tiras detectadas por cuatrimestre</div>
-    <div class="ocr-preview-table">
-      <div class="ocr-preview-head"><span>Cuatrimestre</span><span>Materia</span><span>Horas</span></div>
-      ${rows.map(r=>`<div class="ocr-preview-row"><span>${r.quarter}.°</span><span>${escapeHtml(subjectCase(r.name))}</span><span>${r.hours||'—'}</span></div>`).join('')}
-    </div>`;
-}
-
-function parseCurriculumOcr(text){
-  const lines=normalizeOcrText(text).split('\n').map(x=>x.trim()).filter(Boolean);
-  let name='',exit='',current=null;
-  const rows=[];
-  function ensure(s){while(rows.length<=s)rows.push([])}
-  lines.forEach(raw=>{
-    const line=raw.replace(/[•·]/g,' ').replace(/\s+/g,' ').trim();
-    const sem=detectSemesterHeading(line);
-    if(sem!==null){current=sem;ensure(sem);return}
-    if(!name && /licenciatura|ingenieria|ingeniería/i.test(line) && line.length>12 && line.length<180){
-      name=line.trim();return;
-    }
-    if(!exit && /(t[eé]cnico superior universitario|tsu)/i.test(line) && line.length<190){
-      exit=line.trim();return;
-    }
-    if(current===null || isLikelyOcrNoise(line))return;
-
-    const onlyHours=line.match(/^(\d{2,3}(?:[.,]\d+)?)\s*(?:h|hrs?|horas?)?$/i);
-    if(onlyHours && rows[current]?.length){
-      const last=rows[current][rows[current].length-1];
-      if(!last.hours)last.hours=Number(onlyHours[1].replace(',','.'))||0;
-      return;
-    }
-
-    const parsed=parseCustomSubjectLine(line);
-    if(parsed.name && parsed.name.length>=3 && !/^\d+$/.test(parsed.name)){
-      rows[current].push(parsed);
-    }
-  });
-  return {name,exit,semesters:rows.length?rows:Array.from({length:5},()=>[])};
-}
-function applyParsedCurriculum(parsed){
-  if(parsed.name)$('newProgramName').value=parsed.name;
-  if(parsed.exit)$('newProgramExit').value=parsed.exit;
-  const count=Math.max(1,parsed.semesters.length||5);
-  newSemesterCount=count;
-  const values=Array.from({length:count},(_,s)=>{
-    const rows=parsed.semesters[s]||[];
-    return rows.map(x=>`${subjectCase(x.name)}${x.hours?` - ${x.hours}`:''}`).join('\n');
-  });
-  renderSemesterEditors(values);
-  return {
-    subjects:parsed.semesters.reduce((n,s)=>n+s.length,0),
-    missingHours:parsed.semesters.reduce((n,s)=>n+s.filter(x=>!x.hours).length,0)
-  };
-}
-window.importProgramFromImage=async function(){
-  if(!isAdmin())return;
-  const input=$('programImageImport'),file=input?.files?.[0],status=$('programImageStatus');
-  if(!file){toast('Seleccione primero una imagen.');return}
-  if(!window.Tesseract){toast('No fue posible cargar el módulo de reconocimiento de imagen.');return}
-  try{
-    status.textContent='Preparando imagen…';status.className='program-image-status working';
-    const result=await window.Tesseract.recognize(file,'spa',{
-      logger:m=>{
-        if(m.status==='recognizing text')status.textContent=`Leyendo imagen… ${Math.round((m.progress||0)*100)}%`;
-        else if(m.status)status.textContent='Procesando imagen…';
-      }
-    });
-    const text=normalizeOcrText(result?.data?.text||'');
-    $('ocrRawText').value=text;
-    $('ocrReview').classList.remove('hidden');
-
-    const spatial=parseCurriculumOcrSpatial(result?.data);
-    const parsed=spatial||parseCurriculumOcr(text);
-    renderOcrCurriculumPreview(parsed);
-    const stats=applyParsedCurriculum(parsed);
-    status.textContent=`Importación lista: ${stats.subjects} materias detectadas${stats.missingHours?` · ${stats.missingHours} sin horas`:''}. Revise cuatrimestre, materia y horas antes de guardar.`;
-    status.className='program-image-status ok';
-    toast('Información importada. Revise nombres, materias y horas.');
-  }catch(e){
-    console.error(e);
-    status.textContent='No fue posible leer la imagen. Intente con una captura más nítida.';
-    status.className='program-image-status error';
-    toast('No fue posible importar la imagen.');
-  }
-}
-window.applyOcrTextToProgram=function(){
-  const text=$('ocrRawText')?.value||'';
-  if(!text.trim()){toast('No hay texto para interpretar.');return}
-  const parsed=parseCurriculumOcr(text);
-  renderOcrCurriculumPreview(parsed);
-  const stats=applyParsedCurriculum(parsed);
-  const st=$('programImageStatus');
-  if(st){
-    st.textContent=`Texto aplicado: ${stats.subjects} materias${stats.missingHours?` · ${stats.missingHours} sin horas`:''}.`;
-    st.className='program-image-status ok';
-  }
-  toast('Texto interpretado. Revise la información.');
 }
 
 function renderRules(){
