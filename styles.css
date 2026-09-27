@@ -5520,3 +5520,302 @@ body.printing-profile #printArea{
     grid-template-columns:repeat(4,minmax(0,1fr))!important;
   }
 }
+
+
+/* =========================================================
+   V33 · encabezado de programa limpio y jerarquía visual
+   ========================================================= */
+
+/* El bloque amarillo deja de existir visualmente */
+.program-header-flow{
+  grid-template-columns:132px minmax(0,1fr) auto!important;
+  gap:12px!important;
+  padding:10px 12px!important;
+  background:#f8fbfd!important;
+  border:1px solid #d9e6ed!important;
+  box-shadow:0 3px 10px rgba(23,64,91,.06)!important;
+  border-radius:12px!important;
+  margin-bottom:8px!important;
+}
+
+.program-step-badge{
+  padding:8px 10px!important;
+  border:1px solid #a9c8da!important;
+  background:#eaf4f9!important;
+  color:#174f72!important;
+  border-radius:9px!important;
+  font-size:10px!important;
+  font-weight:800!important;
+}
+
+.program-name-flow{
+  display:flex!important;
+  flex-direction:column!important;
+  gap:2px!important;
+  min-width:0!important;
+}
+.program-name-flow strong{
+  color:#0e4265!important;
+  font-size:16px!important;
+  line-height:1.12!important;
+  font-weight:850!important;
+}
+.program-name-flow span{
+  color:#59707f!important;
+  font-size:9.5px!important;
+  line-height:1.25!important;
+  font-weight:600!important;
+}
+
+/* Leyenda de estados eliminada */
+.nav-state-legend{
+  display:none!important;
+}
+
+/* Cintillo grande, rojo y más legible */
+.capture-marquee{
+  margin-top:0!important;
+  background:linear-gradient(90deg,#8f241d,#c43a2b,#8f241d)!important;
+  border-top:1px solid #7a1915!important;
+  border-bottom:1px solid #7a1915!important;
+  box-shadow:inset 0 1px 0 rgba(255,255,255,.13)!important;
+}
+.capture-marquee-track span{
+  padding-top:9px!important;
+  padding-bottom:9px!important;
+  font-size:10.5px!important;
+  font-weight:800!important;
+  letter-spacing:.008em!important;
+}
+.capture-marquee-track span::before{
+  color:#ffd75b!important;
+}
+
+/* Estado del programa, discreto */
+.program-progress-strip{
+  display:flex;
+  justify-content:flex-end;
+  padding:7px 10px 3px;
+}
+.program-progress-strip span{
+  display:inline-flex;
+  padding:4px 8px;
+  border:1px solid #c8dbe6;
+  border-radius:999px;
+  background:#f7fbfd;
+  color:#235a78;
+  font-size:8.5px;
+  font-weight:800;
+}
+
+/* Nota de Coordinador / Favorito fuera del encabezado */
+.coord-fav-note{
+  margin:2px 10px 6px!important;
+  padding:5px 8px!important;
+  border-left:4px solid #cf3c31!important;
+  background:#fff5f3!important;
+  color:#9d2d24!important;
+  font-size:8.8px!important;
+  font-weight:800!important;
+  line-height:1.25!important;
+}
+
+/* =========================================================
+   V33 · aprovechamiento horizontal
+   ========================================================= */
+
+@media (min-width:1260px){
+  main{
+    max-width:1840px!important;
+    padding-left:10px!important;
+    padding-right:10px!important;
+  }
+
+  .semesters-grid{
+    width:100%!important;
+    min-width:0!important;
+    grid-template-columns:repeat(2,minmax(0,1fr))!important;
+  }
+
+  .semester-card{
+    min-width:0!important;
+    padding-left:9px!important;
+    padding-right:9px!important;
+  }
+
+  .course-columns,
+  .course{
+    grid-template-columns:
+      minmax(220px,1.85fr)
+      72px
+      78px
+      188px
+      78px
+      48px!important;
+    gap:4px!important;
+  }
+
+  .area-buttons{
+    display:grid!important;
+    grid-template-columns:repeat(7,23px)!important;
+    justify-content:center!important;
+    gap:3px!important;
+    width:100%!important;
+  }
+
+  .area-buttons .mini{
+    width:23px!important;
+    min-width:23px!important;
+    max-width:23px!important;
+    height:27px!important;
+    min-height:27px!important;
+    padding:2px 0!important;
+    font-size:8.5px!important;
+    border-radius:6px!important;
+  }
+
+  .comp-buttons{
+    gap:3px!important;
+  }
+  .comp-buttons .mini{
+    width:31px!important;
+    min-width:31px!important;
+    height:29px!important;
+    min-height:29px!important;
+  }
+}
+
+/* Pantallas de escritorio medianas: una columna para evitar recortes */
+@media (min-width:781px) and (max-width:1259px){
+  .semesters-grid{
+    width:100%!important;
+    min-width:0!important;
+    grid-template-columns:1fr!important;
+  }
+  .program-scroll-wrap{
+    overflow-x:visible!important;
+  }
+}
+
+/* Cabeceras de Coordinador y Favorito con respiración propia */
+.course-columns .coord-head{
+  padding-left:8px!important;
+  padding-right:8px!important;
+  white-space:nowrap!important;
+  font-size:8px!important;
+}
+.course-columns .fav-head{
+  padding-left:8px!important;
+  padding-right:6px!important;
+  font-size:11px!important;
+  color:#ffe38a!important;
+}
+
+/* Botón Coordinador más proporcionado y visual */
+.coord-row-check{
+  width:31px!important;
+  height:31px!important;
+  min-width:31px!important;
+  min-height:31px!important;
+  border-radius:50%!important;
+  border:1.5px solid #b5cad6!important;
+  background:#fff!important;
+  box-shadow:0 2px 6px rgba(30,77,105,.08)!important;
+}
+.coord-row-check span{
+  font-size:16px!important;
+}
+.coord-row-check.on,
+.coord-row-check:has(input:checked){
+  background:#dff2e8!important;
+  border-color:#63aa83!important;
+  color:#1d704a!important;
+  box-shadow:0 0 0 3px rgba(57,151,100,.10)!important;
+}
+
+/* Favorito: sólo estrella */
+.ideal-btn{
+  width:34px!important;
+  min-width:34px!important;
+  max-width:34px!important;
+  height:31px!important;
+  min-height:31px!important;
+  padding:0!important;
+  display:grid!important;
+  place-items:center!important;
+  border-radius:8px!important;
+  font-size:17px!important;
+  line-height:1!important;
+  overflow:visible!important;
+}
+.ideal-btn.on{
+  font-size:18px!important;
+}
+
+/* Divisores verticales más sutiles */
+.course-columns>span:not(:first-child),
+.course> :not(.name){
+  border-left:1px solid #e7edf1!important;
+  padding-left:5px!important;
+}
+
+/* =========================================================
+   V33 · encabezado principal armonizado con DIN
+   ========================================================= */
+
+.hero{
+  background:
+    linear-gradient(115deg,#f8fbfd 0%,#eef6f8 56%,#e1f0f2 100%)!important;
+  border-bottom:4px solid #e1872c!important;
+  box-shadow:0 4px 14px rgba(21,59,82,.08)!important;
+}
+
+.hero .eyebrow{
+  color:#2c6b79!important;
+}
+.hero h1{
+  color:#0c3553!important;
+  text-shadow:none!important;
+}
+.hero p{
+  color:#4e6574!important;
+}
+.hero .period-badge{
+  background:#fff!important;
+  border-color:#9fc5d2!important;
+  color:#174d69!important;
+}
+.hero-side,
+.hero-side *{
+  color:#244b60;
+}
+.hero .ghost{
+  background:#ffffff!important;
+  color:#174d69!important;
+  border-color:#9fc5d2!important;
+}
+.hero-icon{
+  background:rgba(255,255,255,.72)!important;
+  padding:5px!important;
+  border-radius:12px!important;
+  filter:drop-shadow(0 5px 10px rgba(13,59,84,.13))!important;
+}
+
+/* =========================================================
+   V33 · móvil
+   ========================================================= */
+@media (max-width:780px){
+  .program-header-flow{
+    grid-template-columns:1fr!important;
+  }
+  .program-name-flow strong{
+    font-size:14px!important;
+  }
+  .capture-marquee-track span{
+    font-size:9.5px!important;
+  }
+  .coord-fav-note{
+    margin-left:0!important;
+    margin-right:0!important;
+  }
+}

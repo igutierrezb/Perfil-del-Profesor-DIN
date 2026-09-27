@@ -664,6 +664,53 @@ window.toggleCoordinator=function(pid,id,checked){
 }
 function renderCoordinator(p){ return ''; }
 
+function currentProgramIssues(){
+  const p=currentProgram();
+  if(!p)return [];
+  const issues=[];
+  p.semesters.forEach((sem,s)=>sem.forEach((name,c)=>{
+    if(isEnglish(name))return;
+    const a=getAns(p.id,s,c,name);
+    if(a.status==='off')return;
+    if(a.status==='pending'){
+      issues.push({type:'competence',s,c,name,message:'Seleccione X o XX, o deshabilite la materia si no puede impartirla.'});
+      return;
+    }
+    if(['X','XX'].includes(a.status)&&!(a.origins||[]).length){
+      issues.push({type:'area',s,c,name,message:'Seleccione el área de conocimiento.'});
+    }
+  }));
+  return issues;
+}
+function showCurrentProgramBlock(issues){
+  if(!issues?.length)return;
+  captureErrorModeActive=true;
+  const p=currentProgram();
+  const mapped=issues.map(x=>({
+    ...x,
+    pi:currentProgramIndex,
+    pid:p.id,
+    programName:p.name,
+    exit:p.exit
+  }));
+  $('captureErrors').innerHTML=captureIssuePanel(mapped);
+  renderCurrentProgram();
+  requestAnimationFrame(()=>{
+    const first=mapped[0];
+    const row=document.querySelector(`[data-course-loc="${first.pi}|${first.s}|${first.c}"]`);
+    if(row)row.scrollIntoView({behavior:'smooth',block:'center'});
+  });
+  toast('Complete primero las materias habilitadas de este programa.');
+}
+function canLeaveCurrentProgram(){
+  const issues=currentProgramIssues();
+  if(issues.length){
+    showCurrentProgramBlock(issues);
+    return false;
+  }
+  return true;
+}
+
 
 function rowCoordinatorChecked(pid,s,c){
   return !!(((programMeta[pid]||{}).coordinators||[]).includes(`${s}|${c}`));
@@ -677,23 +724,21 @@ const pastelTitles=['#eef4f9','#f7efe7','#edf6f0','#f2effa','#fff4ea','#ecf6f8',
 function renderCurrentProgram(){
   const p=currentProgram();if(!p)return;
   $('programStep').textContent=`Programa ${currentProgramIndex+1} de ${programs().length}`;
-  $('programFlowName').textContent=`${p.name} — ${p.exit}`;
+  $('programFlowName').innerHTML=`<strong>${escapeHtml(p.name)}</strong><span>${escapeHtml(p.exit)}</span>`;
   const st=programStats(p);
   let bg = pastelTitles[currentProgramIndex % pastelTitles.length];
 
   const guideText='Guía rápida: activa la asignatura que puedes impartir · selecciona tu nivel de dominio (X = medio, XX = alto) · indica el origen del conocimiento (1 formación, 2 experiencia docente, 3 experiencia laboral o 12, 13, 23, 123) · marca ✓ si ya coordinaste esa materia · opcional: marca ★ Favorito si es una de tus asignaturas ideales para impartir.';
 
   let h=`<article class="program">
-    <div class="program-head" style="background:${bg}">
-      <div class="program-title"><strong>${p.name}</strong><span><b>Salida lateral:</b> ${p.exit}</span></div>
-      <div class="program-progress">${st.done}/${st.total} revisadas${st.missing?` · ${st.missing} pendientes`:''}</div>
-    </div>
     <div class="capture-marquee" aria-label="${guideText}">
       <div class="capture-marquee-track"><span>${guideText}</span><span aria-hidden="true">${guideText}</span></div>
     </div>
     ${commonRuleForProgram(p.id)?`<div class="common-note"><b>↔ Tronco común · sincronizado</b><span>${commonDescription(p.id)}</span></div>`:''}
     ${renderCoordinator(p)}
     <div class="program-scroll-wrap">
+      <div class="program-progress-strip"><span>${st.done}/${st.total} revisadas${st.missing?` · ${st.missing} pendientes`:''}</span></div>
+      <div class="coord-fav-note">✓ Si ya has coordinado una asignatura, o ★ si es una de tus materias favoritas, selecciónalo.</div>
       <div class="scroll-hint">↔ Si la pantalla es más angosta, desplácese horizontalmente para ver todas las columnas.</div>
       <div class="semesters-grid">`;
 
@@ -705,8 +750,8 @@ function renderCurrentProgram(){
         <span>Habilitar</span>
         <span>Competencia</span>
         <span class="area-head">Área de conocimiento</span>
-        <span class="coord-head">¿Has coordinado la materia?</span>
-        <span class="fav-head">Favorito</span>
+        <span class="coord-head">¿Coordinador?</span>
+        <span class="fav-head">★</span>
       </div>`;
 
     sem.forEach((name,c)=>{
@@ -744,7 +789,7 @@ function renderCurrentProgram(){
             <input type="checkbox" aria-label="¿Has coordinado ${subjectCase(name)}?" ${rowCoordinatorChecked(p.id,s,c)?'checked':''} ${rowCoordinatorEnabled(p.id,s,c,name)?'':'disabled'} onchange="toggleCoordinator('${p.id}','${s}|${c}',this.checked)">
             <span>✓</span>
           </label>
-          <button class="ideal-btn ${a.ideal?'on':''}" onclick="toggleIdeal('${p.id}',${s},${c},decodeURIComponent('${enc}'))">${a.ideal?'★ Favorito':'☆ Favorito'}</button>`;
+          <button class="ideal-btn ${a.ideal?'on':''}" aria-label="${a.ideal?'Quitar de favoritas':'Marcar como favorita'}" title="${a.ideal?'Materia favorita':'Marcar como favorita'}" onclick="toggleIdeal('${p.id}',${s},${c},decodeURIComponent('${enc}'))">${a.ideal?'★':'☆'}</button>`;
         }else{
           h+=`<div class="control-placeholder"></div><div class="control-placeholder"></div><div class="control-placeholder"></div><div class="control-placeholder"></div>`;
         }
@@ -759,7 +804,7 @@ function renderCurrentProgram(){
   h+=`</div></div>
     <div class="program-save">
       <small>${st.missing?'Las filas resaltadas indican información pendiente.':'Programa completo.'}</small>
-      <button class="save-btn" onclick="${lastProgram?'validateAndReview()':'saveAndNextProgram()'}">${lastProgram?'Continuar a revisión e impresión →':'Guardar y seguir →'}</button>
+      <button class="save-btn" onclick="saveAndNextProgram()">${lastProgram?'Continuar a revisión e impresión →':'Guardar y seguir →'}</button>
     </div>
   </article>`;
 
@@ -767,17 +812,24 @@ function renderCurrentProgram(){
   const flowBtn=$('flowNextBtn');
   if(flowBtn){
     flowBtn.textContent=lastProgram?'Continuar a revisión e impresión →':'Guardar y seguir →';
-    flowBtn.onclick=lastProgram?()=>validateAndReview():()=>saveAndNextProgram();
+    flowBtn.onclick=()=>saveAndNextProgram();
   }
   updateProgress();lockRevisionNav();updateNavState();applyEditState();
   refreshCaptureErrorState();
 }
-window.prevProgram=function(){currentProgramIndex=(currentProgramIndex-1+programs().length)%programs().length;persist();renderCurrentProgram();scrollTo({top:$('captura').offsetTop-55,behavior:'smooth'})}
+window.prevProgram=function(){
+  if(!canLeaveCurrentProgram())return;
+  currentProgramIndex=(currentProgramIndex-1+programs().length)%programs().length;
+  persist();renderCurrentProgram();
+  scrollTo({top:$('captura').offsetTop-55,behavior:'smooth'})
+}
 window.saveAndNextProgram=function(){
+  if(!canLeaveCurrentProgram())return;
   persist();toast('Programa guardado.');
   if(currentProgramIndex>=programs().length-1){validateAndReview();return}
   currentProgramIndex++;
-  persist();renderCurrentProgram();scrollTo({top:$('captura').offsetTop-55,behavior:'smooth'})
+  persist();renderCurrentProgram();
+  scrollTo({top:$('captura').offsetTop-55,behavior:'smooth'})
 }
 
 function pendingCourseNames(limit=4){

@@ -1,0 +1,24 @@
+PERFIL PROFESOR DIN · V33
+
+CAMBIOS
+- Se elimina la franja amarilla superior y la leyenda Pendiente/Revisada/No puede impartir/No aplica.
+- Se elimina el nombre duplicado del programa.
+- El nombre del programa actual se vuelve protagonista junto a “Programa X de 8”.
+- No se permite avanzar ni retroceder hasta completar todas las materias habilitadas del programa actual.
+- Área de conocimiento usa botones más pequeños y los 7 códigos caben en una sola línea en escritorio amplio.
+- Encabezado “¿Has coordinado la materia?” se simplifica a “¿Coordinador?”.
+- Favorito se reduce a una estrella grande sin texto.
+- Se agrega una nota roja sobre Coordinador/Favorito.
+- Coordinador se convierte en un control circular, proporcionado y más visual.
+- Se optimiza el ancho de los cuatrimestres:
+  - 2 columnas en escritorio amplio;
+  - 1 columna en escritorio mediano para evitar recortes;
+  - 1 columna en móvil.
+- El cintillo animado es más grande y rojo.
+- El encabezado principal pasa a fondo claro con acento naranja/teal para contrastar mejor con el emblema DIN.
+
+DEPLOY-PAGES.YML
+- NO necesita actualización si ya está usando V30/V31/V32.
+
+FIRESTORE
+- No necesita cambios.
