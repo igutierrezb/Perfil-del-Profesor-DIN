@@ -1,26 +1,32 @@
-# Arquitectura V7
+# Arquitectura V8
 
-## Sin cambios funcionales
-Se conserva:
-- Firebase Authentication;
-- restricción `@uteq.edu.mx`;
-- administrador `ivan.gutierrez@uteq.edu.mx`;
-- perfil, materias, X/XX, áreas, materia ideal y coordinaciones;
-- troncos comunes;
-- configuración administrativa.
+## Conservado
+- Firebase Authentication y dominio institucional.
+- Administrador exclusivo `ivan.gutierrez@uteq.edu.mx`.
+- Captura X / XX, áreas 1-2-3, materia ideal, coordinaciones y troncos comunes.
+- Programas personalizados.
+- Impresión y exportación Excel.
+- GitHub Actions + GitHub Pages.
 
-## Presentación
-- `favicon.svg`: ícono para pestaña/favoritos.
-- `icono-industria.svg`: identidad visual de la plataforma.
-- `logo-uteq-wordmark.svg`: wordmark azul utilizado en impresión.
+## Datos curriculares
+`catalog.js` conserva los nombres de los programas y ahora incorpora `PROGRAM_HOURS`, un arreglo paralelo con las horas totales por cuatrimestre para cada asignatura base.
 
-## Excel
-La exportación administrativa genera:
-1. `Concentrado perfiles`: matriz horizontal por programa y asignatura.
-2. `Base maestra`: registros normalizados.
-3. `Catálogo`: catálogo curricular.
+Funciones nuevas:
+- `subjectHours(programa, cuatrimestre, asignatura)`
+- `weeklyHours(...)`
 
-Las filas `Horas al cuatrimestre` y `Horas a la semana` se dejan vacías mientras esos datos no estén incorporados al catálogo.
+## Concentrado Excel
+La hoja `Concentrado perfiles` utiliza:
+- Columna A: Profesor.
+- Columna B: Categoría.
+- Desde columna C: asignaturas agrupadas por programa.
+- Filas superiores: asignatura, horas al cuatrimestre, horas por semana y cuatrimestre.
+- Celdas del profesor: X o XX.
 
-## Limitación actual
-Los perfiles continúan almacenados localmente. Para que Administración consolide automáticamente a todos los profesores que capturen desde cualquier equipo, será necesario persistir los perfiles en Firestore.
+## Control de edición
+`cfg.editingLocked` controla la edición del perfil en la instalación/navegador actual.
+No es un bloqueo multiusuario global mientras la configuración siga en `localStorage`.
+
+## Impresión
+La primera hoja conserva los datos profesionales.
+Las siguientes hojas usan la clase `program-trio` para distribuir hasta tres programas, encabezado compacto y firmas/sello al fondo.

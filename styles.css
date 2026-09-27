@@ -536,3 +536,242 @@ label{font-size:11px!important}
   .program-pair .sign{padding-top:18px!important}
   .currTable th,.currTable td{border:1px solid #4e6577!important}
 }
+
+
+/* =========================================================
+   V8 · AJUSTES FINALES SOLICITADOS
+   ========================================================= */
+
+/* Logo principal moderno */
+.hero-icon{width:78px;height:78px}
+.login-logo{width:158px;height:158px}
+
+/* Menú más visual: número + icono discreto */
+.main-nav button{
+  display:inline-flex;
+  align-items:center;
+  gap:5px;
+  font-size:13.5px;
+}
+.main-nav button .nav-num{
+  display:inline-grid;
+  place-items:center;
+  width:22px;height:22px;
+  border-radius:50%;
+  background:#edf2f6;
+  margin-right:1px;
+  font-size:11.5px;
+  font-weight:800;
+}
+.main-nav button .nav-ico{
+  display:inline-grid;
+  place-items:center;
+  width:18px;height:18px;
+  margin-right:2px;
+  background:transparent;
+  color:#4e7189;
+  font-size:13px;
+  font-weight:700;
+}
+.main-nav .admin-tab .nav-num{background:#f5dede;color:#982d2d}
+.main-nav .admin-tab .nav-ico{color:#a32f2f}
+
+/* Reducción aproximada de 0.5 pt / ~0.67 px.
+   Las materias del perfil por programa conservan su tamaño. */
+.login-copy p{font-size:14.3px}
+.login-copy small{font-size:12.3px}
+.eyebrow{font-size:10.4px}
+.hero h1{font-size:28.3px}
+.hero p{font-size:11.3px}
+.hero-chip{font-size:9.4px}
+.auth-status{font-size:10.4px}
+.section-kicker{font-size:8.4px}
+h2{font-size:20.3px}
+.welcome p,.section-head p,.admin-hero p,.profile-toolbar p{font-size:12.3px!important}
+.welcome-badge,.admin-lock{font-size:10.3px}
+.required-note,.admin-only{font-size:9.3px}
+label{font-size:10.3px!important}
+.row-label{font-size:11.3px!important}
+.progress{font-size:10.3px}
+.instruction-title{font-size:15.3px}
+.instruction-grid b{font-size:10.3px}
+.instruction-grid span{font-size:10.3px!important}
+.knowledge-key{font-size:11.3px!important}
+.program-step-badge,.program-name-flow{font-size:13.3px}
+.program-title strong{font-size:16.3px}
+.program-title span{font-size:11.3px!important}
+.program-progress{font-size:10.3px!important}
+.common-note{font-size:10.3px}
+.coordinator-panel summary{font-size:10.3px}
+.coord-chip,.coord-empty{font-size:9.3px!important}
+.semester-card h4{font-size:12.3px}
+.semester-card h4 span{font-size:9.3px!important}
+.course-columns{font-size:8.3px}
+.toggle{font-size:10.3px!important}
+.mini{font-size:8.3px}
+.ideal-btn{font-size:9.3px}
+.program-save small{font-size:10.3px!important}
+.site-footer{font-size:10.3px!important}
+.save-btn,.actions button,.admin-actions button,.flow-buttons button,.ghost{font-size:13.3px}
+
+/* ÚNICA excepción: materias mantienen el tamaño anterior */
+.course .name,.name{font-size:12px!important}
+.course-hours{
+  font-size:9px;
+  color:#718493;
+  font-weight:500;
+  white-space:nowrap;
+}
+
+/* Pendientes más visibles sin saturar */
+.course.pending{
+  background:linear-gradient(90deg,#fdebea 0,#fff5f4 44%,#fff 100%)!important;
+  box-shadow:inset 4px 0 0 #d66f67;
+}
+.course.pending .name{
+  color:#8e302f!important;
+  font-weight:600!important;
+}
+.course.pending::after{
+  content:"Pendiente";
+  justify-self:end;
+  color:#a3433f;
+  font-size:8.5px;
+  font-weight:700;
+}
+
+/* Como ::after participa en grid, se oculta para no crear 6ª columna;
+   el énfasis real queda en fondo y barra lateral. */
+.course.pending::after{display:none}
+
+/* Estado de edición administrativa */
+.edit-control-card{
+  border-color:#dcc9c5;
+  background:linear-gradient(120deg,#fff,#fff8f7);
+}
+.edit-mode-status{
+  padding:7px 10px;
+  border-radius:999px;
+  font-size:10px;
+  font-weight:800;
+}
+.edit-mode-status.open{background:#e7f5ed;color:#24634a;border:1px solid #b7dfc8}
+.edit-mode-status.locked{background:#fde9e7;color:#983b35;border:1px solid #e6b4af}
+.edit-mode-btn.deactivate{background:#8f302d!important;color:#fff!important}
+.edit-mode-btn.activate{background:#287555!important;color:#fff!important}
+.profile-edit-locked #perfil .card,
+.profile-edit-locked #captura .program{
+  position:relative;
+}
+.profile-edit-locked #captura .course{opacity:.78}
+.profile-edit-locked input:disabled,
+.profile-edit-locked select:disabled,
+.profile-edit-locked textarea:disabled,
+.profile-edit-locked button:disabled{
+  cursor:not-allowed;
+}
+.gate-credit{
+  margin-top:17px;
+  padding-top:12px;
+  border-top:1px solid #dbe4ea;
+  color:#7b8790;
+  font-size:10px;
+  text-align:right;
+}
+.creator-credit{color:#405c70}
+
+/* Impresión: logo UTEQ más pequeño para eliminar empalmes */
+.sheetHead{
+  grid-template-columns:245px 1fr 130px!important;
+  gap:8px!important;
+  padding-bottom:4px!important;
+}
+.brandPrint{min-height:42px!important}
+.print-logo{
+  width:215px!important;
+  max-height:43px!important;
+}
+.sheetTitle h2{font-size:15px!important;margin:0 0 1px!important;line-height:1!important}
+.sheetTitle b,.sheetTitle span{font-size:8.2px!important;line-height:1.05!important}
+.quality-plain{font-size:7.6px!important}
+.meta.center.compactline{
+  margin:3px auto 5px!important;
+  gap:12px!important;
+  font-size:7.8px!important;
+}
+
+/* Tres programas por hoja legal horizontal */
+.sheet.program-trio{
+  display:flex!important;
+  flex-direction:column!important;
+  min-height:7.75in!important;
+  max-height:7.75in!important;
+  overflow:hidden!important;
+}
+.program-trio .print-program{
+  margin-top:4px!important;
+  break-inside:avoid!important;
+  page-break-inside:avoid!important;
+}
+.program-trio .print-program-title{
+  font-size:6.7px!important;
+  line-height:1.05!important;
+  padding:2.2px 4px!important;
+  color:#173147!important;
+  border-color:#536a7c!important;
+}
+.program-trio .currTable th,
+.program-trio .currTable td{
+  font-size:5.8px!important;
+  line-height:1.0!important;
+  padding:1px 2px!important;
+  border:1px solid #4d6272!important;
+  color:#142b3c!important;
+}
+.program-trio .currTable th{
+  font-weight:700!important;
+}
+.program-trio .currTable td{
+  text-align:center!important;
+  vertical-align:bottom!important;
+}
+.program-trio .currTable td.subject{
+  text-align:left!important; /* Solo la materia a la izquierda */
+  padding-left:3px!important;
+  font-weight:500!important;
+}
+.program-trio .currTable th.vhead{
+  width:15px!important;
+}
+.program-trio .sign{
+  margin-top:auto!important;
+  padding-top:10px!important;
+  flex:0 0 auto!important;
+  grid-template-columns:1fr 115px 1fr!important;
+  gap:26px!important;
+}
+.program-trio .signature-line{font-size:6.8px!important;padding-top:4px!important}
+.program-trio .stamp-box{height:39px!important;font-size:7px!important}
+
+/* Paleta con contraste visible a color y legible en escala de grises */
+.print-program-title,.currTable th{
+  color:#173147!important;
+  text-shadow:none!important;
+}
+.currTable th,.currTable td{
+  border-color:#4b6171!important;
+}
+
+/* No se imprimen las horas junto a la materia en la vista web */
+@media print{
+  .course-hours{display:none!important}
+  .sheet.program-trio{
+    min-height:7.72in!important;
+    max-height:7.72in!important;
+  }
+  .sheetHead{grid-template-columns:235px 1fr 125px!important}
+  .print-logo{width:205px!important;max-height:41px!important}
+  .program-trio .currTable th,
+  .program-trio .currTable td{font-size:5.65px!important}
+  .program-trio .sign{padding-top:8px!important}
+}

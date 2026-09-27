@@ -4,7 +4,7 @@ import { getAuth, GoogleAuthProvider, signInWithPopup, signOut, onAuthStateChang
 
 const $=id=>document.getElementById(id);
 const store=JSON.parse(localStorage.getItem('PAD_UTEQ')||'{}');
-const cfg=Object.assign({jefe:'Iván Gutiérrez Bautista',codigo:'EA-F-86',revision:'Rev.01',fechaRevision:'21-sep-2018',periodo:'SEP 2026 - AGO 2027'},store.cfg||{});
+const cfg=Object.assign({jefe:'Iván Gutiérrez Bautista',codigo:'EA-F-86',revision:'Rev.01',fechaRevision:'21-sep-2018',periodo:'SEP 2026 - AGO 2027',editingLocked:false},store.cfg||{});
 let answers=store.answers||{},programMeta=store.programMeta||{},customPrograms=store.customPrograms||[];
 let currentProgramIndex=Number.isInteger(store.currentProgramIndex)?store.currentProgramIndex:0;
 let newSemesterCount=5,auth=null,currentUser=null,authReady=false;
@@ -36,6 +36,46 @@ function programAcronym(pr){
     mantenimiento:'IMI-MI'
   };
   return map[pr.id]||pr.id.replace(/^custom_/,'PE-').slice(0,12).toUpperCase();
+}
+
+
+function subjectHours(pid,s,c){
+  const rows=(typeof PROGRAM_HOURS!=='undefined'&&PROGRAM_HOURS[pid])||[];
+  return Number(rows?.[s]?.[c])||0;
+}
+function weeklyHours(pid,s,c){
+  const total=subjectHours(pid,s,c);
+  if(!total)return '';
+  const weekly=total/15;
+  return Number.isInteger(weekly)?weekly:Number(weekly.toFixed(1));
+}
+function editingAllowed(){return !cfg.editingLocked||isAdmin()}
+function requireEditing(){
+  if(editingAllowed())return true;
+  toast('La edición de perfiles está temporalmente desactivada.');
+  return false;
+}
+function applyEditState(){
+  const locked=!editingAllowed();
+  document.body.classList.toggle('profile-edit-locked',locked);
+  ['perfil','captura'].forEach(id=>{
+    const root=$(id); if(!root)return;
+    root.querySelectorAll('input,select,textarea,button').forEach(el=>{
+      if(el.closest('.flow-buttons') && el.textContent.includes('Anterior')) return;
+      if(id==='captura' && el.textContent.includes('Continuar a revisión')) return;
+      el.disabled=locked;
+    });
+  });
+  const banner=$('editingLockedBanner');
+  if(banner)banner.classList.toggle('hidden',!locked);
+}
+window.toggleEditingLock=function(){
+  if(!isAdmin()){toast('Solo el administrador puede cambiar este estado.');return}
+  cfg.editingLocked=!cfg.editingLocked;
+  persist();
+  renderAdmin();
+  applyEditState();
+  toast(cfg.editingLocked?'Edición de perfiles desactivada.':'Edición de perfiles activada.');
 }
 
 function getAns(pid,s,c,name){
@@ -125,24 +165,40 @@ function loadProfile(){
 }
 function collectProfile(){let extra={};document.querySelectorAll('[data-g]').forEach(x=>extra[x.dataset.g]=x.value.trim());store.profile={apPat:$('apPat').value.trim(),apMat:$('apMat').value.trim(),nombres:$('nombres').value.trim(),categoria:$('categoria').value,extra};persist();return store.profile}
 function validateProfile(){const p=collectProfile(),e=p.extra||{},errs=[];if(!p.apPat)errs.push('Capture el apellido paterno.');if(!p.apMat)errs.push('Capture el apellido materno.');if(!p.nombres)errs.push('Capture los nombres.');if(!p.categoria)errs.push('Seleccione la categoría.');if(!e.f1a||!e.f1b)errs.push('Capture la primera línea de Formación profesional.');if(!e.d1a||!e.d1c)errs.push('Capture la primera línea de Experiencia docente.');if(!e.l1a||!e.l1b||!e.l1c)errs.push('Capture la primera línea de Experiencia laboral.');return{ok:!errs.length,errors:errs}}
-window.saveSection=function(){collectProfile();toast('Sección guardada.')}
-window.continueToCapture=function(){const v=validateProfile();$('profileErrors').innerHTML=v.ok?'':statusBox(v.errors,'Complete los datos obligatorios antes de continuar.');if(!v.ok)return;renderCurrentProgram();window.go('captura',true)}
+window.saveSection=function(){if(!requireEditing())return;collectProfile();toast('Sección guardada.')}
+window.continueToCapture=function(){if(!requireEditing())return;const v=validateProfile();$('profileErrors').innerHTML=v.ok?'':statusBox(v.errors,'Complete los datos obligatorios antes de continuar.');if(!v.ok)return;renderCurrentProgram();window.go('captura',true)}
 
 function originCode(a){return(a.origins||[]).join('')}
 function normalizeOrigins(code){return String(code).split('').map(Number)}
-window.setEnabled=function(pid,s,c,name,on){if(isEnglish(name))return;const r=getAns(pid,s,c,name);r.status=on?(r.status==='off'?'pending':r.status):'off';if(!on){r.origins=[];r.ideal=false}answers[key(pid,s,c)]=r;replicateCommon(pid,s,c,r);persist();renderCurrentProgram()}
-window.setCompetence=function(pid,s,c,name,level){const r=getAns(pid,s,c,name);if(['off','na'].includes(r.status))return;r.status=level;r.origins=[];answers[key(pid,s,c)]=r;replicateCommon(pid,s,c,r);persist();renderCurrentProgram()}
-window.setOriginCode=function(pid,s,c,name,code){const r=getAns(pid,s,c,name);if(!['X','XX'].includes(r.status))return;r.origins=normalizeOrigins(code);answers[key(pid,s,c)]=r;replicateCommon(pid,s,c,r);persist();renderCurrentProgram()}
-window.toggleIdeal=function(pid,s,c,name){const r=getAns(pid,s,c,name);if(!['X','XX'].includes(r.status)||(r.origins||[]).length===0){toast('Primero seleccione competencia y área de conocimiento.');return}r.ideal=!r.ideal;answers[key(pid,s,c)]=r;replicateCommon(pid,s,c,r);persist();renderCurrentProgram()}
+window.setEnabled=function(pid,s,c,name,on){if(!requireEditing())return;if(isEnglish(name))return;const r=getAns(pid,s,c,name);r.status=on?(r.status==='off'?'pending':r.status):'off';if(!on){r.origins=[];r.ideal=false}answers[key(pid,s,c)]=r;replicateCommon(pid,s,c,r);persist();renderCurrentProgram()}
+window.setCompetence=function(pid,s,c,name,level){if(!requireEditing())return;const r=getAns(pid,s,c,name);if(['off','na'].includes(r.status))return;r.status=level;r.origins=[];answers[key(pid,s,c)]=r;replicateCommon(pid,s,c,r);persist();renderCurrentProgram()}
+window.setOriginCode=function(pid,s,c,name,code){if(!requireEditing())return;const r=getAns(pid,s,c,name);if(!['X','XX'].includes(r.status))return;r.origins=normalizeOrigins(code);answers[key(pid,s,c)]=r;replicateCommon(pid,s,c,r);persist();renderCurrentProgram()}
+window.toggleIdeal=function(pid,s,c,name){if(!requireEditing())return;const r=getAns(pid,s,c,name);if(!['X','XX'].includes(r.status)||(r.origins||[]).length===0){toast('Primero seleccione competencia y área de conocimiento.');return}r.ideal=!r.ideal;answers[key(pid,s,c)]=r;replicateCommon(pid,s,c,r);persist();renderCurrentProgram()}
 function replicateCommon(pid,s,c,r){const p=programs().find(x=>x.id===pid);if(!(s<3&&p&&p.common&&COMMON_GROUPS[p.common]))return;COMMON_GROUPS[p.common].forEach(other=>answers[key(other,s,c)]={status:r.status,origins:[...(r.origins||[])],ideal:!!r.ideal})}
 
 function programStats(p){let total=0,done=0,missing=0;p.semesters.forEach((sem,s)=>sem.forEach((name,c)=>{if(isEnglish(name))return;total++;const a=getAns(p.id,s,c,name);if(a.status!=='pending')done++;else missing++}));return{total,done,missing}}
-function overallStats(){let total=0,done=0,invalid=0,pending=[];programs().forEach((p,pi)=>p.semesters.forEach((sem,s)=>sem.forEach((name,c)=>{if(isEnglish(name))return;total++;const a=getAns(p.id,s,c,name);if(a.status!=='pending')done++;else pending.push({pi,name});if(['X','XX'].includes(a.status)&&!(a.origins||[]).length)invalid++})));return{total,done,invalid,pending}}
+function overallStats(){
+  let total=0,done=0,invalid=0,pending=[];
+  const pendingLogical=new Map();
+  programs().forEach((p,pi)=>p.semesters.forEach((sem,s)=>sem.forEach((name,c)=>{
+    if(isEnglish(name))return;
+    total++;
+    const a=getAns(p.id,s,c,name);
+    if(a.status!=='pending')done++;
+    else{
+      pending.push({pi,name});
+      const logical=(s<3&&p.common)?`${p.common}|${s}|${c}`:`${p.id}|${s}|${c}`;
+      if(!pendingLogical.has(logical))pendingLogical.set(logical,{pi,name});
+    }
+    if(['X','XX'].includes(a.status)&&!(a.origins||[]).length)invalid++;
+  })));
+  return{total,done,invalid,pending,pendingUnique:[...pendingLogical.values()],remainingUnique:pendingLogical.size}
+}
 function idealCount(){const u=new Set();programs().forEach(p=>p.semesters.forEach((sem,s)=>sem.forEach((name,c)=>{if(getAns(p.id,s,c,name).ideal)u.add(`${p.id}|${s}|${c}`)})));return u.size}
-function updateProgress(){const x=overallStats(),pct=x.total?Math.round(x.done/x.total*100):0;$('progressText').textContent=`${x.done} de ${x.total} revisadas (${pct}%)`;$('progressBar').style.width=pct+'%';$('idealCounter').textContent=`Materias ideales: ${idealCount()} / mínimo 3`}
+function updateProgress(){const x=overallStats(),pct=x.total?Math.round(x.done/x.total*100):0;$('progressText').textContent=`${x.done} de ${x.total} revisadas (${pct}%)${x.remainingUnique?` · ${x.remainingUnique} decisión${x.remainingUnique===1?'':'es'} pendiente${x.remainingUnique===1?'':'s'}`:''}`;$('progressBar').style.width=pct+'%';$('idealCounter').textContent=`Materias ideales: ${idealCount()} / mínimo 3`}
 function currentProgram(){return programs()[currentProgramIndex]}
 function eligibleCourses(p){const opts=[];p.semesters.forEach((sem,s)=>sem.forEach((name,c)=>{const a=getAns(p.id,s,c,name);if(['X','XX'].includes(a.status)&&(a.origins||[]).length)opts.push({id:`${s}|${c}`,text:`${s+1}.° · ${subjectCase(name)}`})}));return opts}
-window.toggleCoordinator=function(pid,id,checked){programMeta[pid]=programMeta[pid]||{};let arr=programMeta[pid].coordinators||[];arr=checked?[...new Set([...arr,id])]:arr.filter(x=>x!==id);programMeta[pid].coordinators=arr;persist()}
+window.toggleCoordinator=function(pid,id,checked){if(!requireEditing())return;programMeta[pid]=programMeta[pid]||{};let arr=programMeta[pid].coordinators||[];arr=checked?[...new Set([...arr,id])]:arr.filter(x=>x!==id);programMeta[pid].coordinators=arr;persist()}
 function renderCoordinator(p){const eligible=eligibleCourses(p),chosen=(programMeta[p.id]||{}).coordinators||[];return `<details class="coordinator-panel"><summary>Coordinación de academia (opcional) · Puede seleccionar más de una materia</summary><div class="coord-options">${eligible.length?eligible.map(o=>`<label class="coord-chip"><input type="checkbox" ${chosen.includes(o.id)?'checked':''} onchange="toggleCoordinator('${p.id}','${o.id}',this.checked)">${o.text}</label>`).join(''):`<span class="coord-empty">Se habilita cuando existan materias con competencia capturada.</span>`}</div></details>`}
 
 const pastelTitles=['#eef4f9','#f7efe7','#edf6f0','#f2effa','#fff4ea','#ecf6f8','#f8eef1','#eef5e9'];
@@ -158,7 +214,7 @@ function renderCurrentProgram(){
     sem.forEach((name,c)=>{
       const a=getAns(p.id,s,c,name),na=isEnglish(name),enc=encodeURIComponent(name),enabled=!['off','na'].includes(a.status),pending=a.status==='pending';
       h+=`<div class="course ${pending?'pending':''} ${a.status==='off'?'off':''} ${na?'na':''}">
-      <div class="name">${subjectCase(name)}${na?' · NO APLICA':''}</div>
+      <div class="name">${subjectCase(name)}${subjectHours(p.id,s,c)?` <small class="course-hours">(${subjectHours(p.id,s,c)} h)</small>`:'' }${na?' · NO APLICA':''}</div>
       <label class="toggle ${na?'locked':''}"><input type="checkbox" ${enabled?'checked':''} ${na?'disabled':''} onchange="setEnabled('${p.id}',${s},${c},decodeURIComponent('${enc}'),this.checked)"><span class="switch"></span><span>${na?'Bloqueado':enabled?'Sí':'No'}</span></label>
       <div class="comp-buttons"><button class="mini ${a.status==='X'?'on':''}" ${!enabled?'disabled':''} onclick="setCompetence('${p.id}',${s},${c},decodeURIComponent('${enc}'),'X')">X</button><button class="mini ${a.status==='XX'?'on':''}" ${!enabled?'disabled':''} onclick="setCompetence('${p.id}',${s},${c},decodeURIComponent('${enc}'),'XX')">XX</button></div>
       <div class="area-buttons">${['1','2','3','12','13','23','123'].map(code=>`<button class="mini area ${originCode(a)===code?'on':''}" ${!['X','XX'].includes(a.status)?'disabled':''} onclick="setOriginCode('${p.id}',${s},${c},decodeURIComponent('${enc}'),'${code}')">${code}</button>`).join('')}</div>
@@ -172,12 +228,12 @@ function renderCurrentProgram(){
 window.prevProgram=function(){currentProgramIndex=(currentProgramIndex-1+programs().length)%programs().length;persist();renderCurrentProgram();scrollTo({top:$('captura').offsetTop-55,behavior:'smooth'})}
 window.saveAndNextProgram=function(){persist();toast('Programa guardado.');currentProgramIndex=(currentProgramIndex+1)%programs().length;persist();renderCurrentProgram();scrollTo({top:$('captura').offsetTop-55,behavior:'smooth'})}
 
-function validateCapture(){const x=overallStats(),errs=[];if(x.done<x.total)errs.push(`Faltan ${x.total-x.done} asignaturas por revisar.`);if(x.invalid)errs.push(`${x.invalid} asignatura(s) tienen X/XX pero no tienen área de conocimiento.`);if(idealCount()<3)errs.push(`Debe seleccionar al menos 3 materias ideales. Actualmente hay ${idealCount()}.`);return{ok:!errs.length,errors:errs}}
+function validateCapture(){const x=overallStats(),errs=[];if(x.remainingUnique)errs.push(`Falta${x.remainingUnique===1?'':'n'} ${x.remainingUnique} asignatura${x.remainingUnique===1?'':'s'} por revisar.`);if(x.invalid)errs.push(`${x.invalid} asignatura(s) tienen X/XX pero no tienen área de conocimiento.`);if(idealCount()<3)errs.push(`Debe seleccionar al menos 3 materias ideales. Actualmente hay ${idealCount()}.`);return{ok:!errs.length,errors:errs}}
 function validateAll(){const p=validateProfile(),c=validateCapture();return{ok:p.ok&&c.ok,errors:[...p.errors,...c.errors]}}
-function showCaptureErrors(errs){$('captureErrors').innerHTML=statusBox(errs,'No puede pasar a revisión todavía.');const p=overallStats().pending;if(p.length){currentProgramIndex=p[0].pi;renderCurrentProgram()}}
+function showCaptureErrors(errs){$('captureErrors').innerHTML=statusBox(errs,'No puede pasar a revisión todavía.');const p=overallStats().pendingUnique;if(p.length){currentProgramIndex=p[0].pi;renderCurrentProgram()}}
 window.validateAndReview=function(){collectProfile();persist();const v=validateAll();if(!v.ok){showCaptureErrors(v.errors);toast('Complete las materias pendientes.');return}$('captureErrors').innerHTML='';$('validation').innerHTML=`<div class="status-box ok"><b>Perfil completo.</b><br>La información puede formalizarse e imprimirse.</div>`;buildPrint();window.go('revision',true)}
 function lockRevisionNav(){$('navRevision').classList.toggle('locked',!validateAll().ok)}
-window.saveAll=function(show=false){collectProfile();persist();updateProgress();lockRevisionNav();if(show)toast('Perfil guardado.')}
+window.saveAll=function(show=false){if(!requireEditing())return;collectProfile();persist();updateProgress();lockRevisionNav();if(show)toast('Perfil guardado.')}
 
 function printHeader(){
   return `<div class="sheetHead">
@@ -196,7 +252,7 @@ function preambleSheet(){
   return `<div class="sheet">${printHeader()}<div class="meta center compactline"><span><b>Nombre:</b> ${fullName()}</span><span><b>Categoría:</b> ${store.profile?.categoria||''}</span></div><table class="profileTable"><tr><th colspan="4">1. FORMACIÓN PROFESIONAL</th></tr>${f.map((lab,i)=>`<tr><td><b>${lab}</b></td><td>${e[`f${i+1}a`]||''}</td><td><b>Institución</b></td><td>${e[`f${i+1}b`]||''}</td></tr>`).join('')}<tr><th colspan="4">2. EXPERIENCIA DOCENTE</th></tr>${[1,2,3,4].map(i=>`<tr><td><b>Institución ${i}</b></td><td colspan="2">${e[`d${i}a`]||''}</td><td><b>Periodo:</b> ${e[`d${i}c`]||''}</td></tr>`).join('')}<tr><th colspan="4">3. EXPERIENCIA LABORAL</th></tr>${[1,2,3,4,5].map(i=>`<tr><td><b>Organización ${i}</b></td><td>${e[`l${i}a`]||''}</td><td><b>Cargo:</b> ${e[`l${i}b`]||''}</td><td><b>Periodo:</b> ${e[`l${i}c`]||''}</td></tr>`).join('')}</table>${signatures()}</div>`
 }
 function pastelColor(index){
-  return ['#edf3f9','#f8f0e8','#edf7f1','#f3effa','#fff3ea','#ebf6f8','#f9edf1','#eef6ea'][index % 8]
+  return ['#dcecf8','#f5e3d2','#dfeee2','#e8e1f2','#f8e7d7','#dceff0','#f2dde3','#e1ecd7'][index % 8]
 }
 function printProgram(pr, idx){
   const max=Math.max(...pr.semesters.map(s=>s.length));
@@ -219,15 +275,21 @@ function buildPrint(){
   collectProfile();
   const ps=programs();
   let html=preambleSheet();
-  for(let i=0;i<ps.length;i+=2){
-    html+=`<div class="sheet program-pair">${printHeader()}${metaCentered()}${printProgram(ps[i],i)}${ps[i+1]?printProgram(ps[i+1],i+1):''}${signatures()}</div>`
+  for(let i=0;i<ps.length;i+=3){
+    html+=`<div class="sheet program-trio">${printHeader()}${metaCentered()}${printProgram(ps[i],i)}${ps[i+1]?printProgram(ps[i+1],i+1):''}${ps[i+2]?printProgram(ps[i+2],i+2):''}${signatures()}</div>`
   }
   $('printArea').innerHTML=html
 }
 window.printProfile=function(){const v=validateAll();if(!v.ok){window.go('captura',true);showCaptureErrors(v.errors);return}buildPrint();window.print()}
 
 window.saveAdmin=function(){cfg.jefe=$('jefe').value.trim()||cfg.jefe;cfg.codigo=$('codigo').value.trim()||cfg.codigo;cfg.revision=$('revisionCal').value.trim()||cfg.revision;cfg.fechaRevision=$('fechaRevision').value.trim()||cfg.fechaRevision;cfg.periodo=$('periodoAdmin').value.trim()||cfg.periodo;updatePeriodBadges();persist();toast('Configuración guardada.')}
-function renderAdmin(){$('jefe').value=cfg.jefe;$('codigo').value=cfg.codigo;$('revisionCal').value=cfg.revision;$('fechaRevision').value=cfg.fechaRevision;$('periodoAdmin').value=cfg.periodo;renderSemesterEditors();renderCustomPrograms();renderRules()}
+function renderAdmin(){
+  $('jefe').value=cfg.jefe;$('codigo').value=cfg.codigo;$('revisionCal').value=cfg.revision;$('fechaRevision').value=cfg.fechaRevision;$('periodoAdmin').value=cfg.periodo;
+  const st=$('editModeStatus'),btn=$('editModeBtn');
+  if(st){st.textContent=cfg.editingLocked?'Edición desactivada':'Edición activa';st.className='edit-mode-status '+(cfg.editingLocked?'locked':'open')}
+  if(btn){btn.textContent=cfg.editingLocked?'Activar edición de perfiles':'Desactivar edición de perfiles';btn.className='edit-mode-btn '+(cfg.editingLocked?'activate':'deactivate')}
+  renderSemesterEditors();renderCustomPrograms();renderRules();applyEditState()
+}
 function renderSemesterEditors(){let h='';for(let i=0;i<newSemesterCount;i++)h+=`<div class="semester-editor"><div class="semester-editor-head"><b>${i+1}.° cuatrimestre</b>${newSemesterCount>1?`<button onclick="removeSemesterEditor(${i})">Quitar</button>`:''}</div><textarea id="newSem${i}" placeholder="Una asignatura por línea"></textarea></div>`;$('newProgramSemesters').innerHTML=h}
 window.addSemesterEditor=function(){newSemesterCount++;renderSemesterEditors()}
 window.removeSemesterEditor=function(i){const vals=Array.from({length:newSemesterCount},(_,x)=>$(`newSem${x}`)?.value||'');vals.splice(i,1);newSemesterCount=Math.max(1,newSemesterCount-1);renderSemesterEditors();vals.forEach((v,x)=>$(`newSem${x}`).value=v)}
@@ -268,21 +330,23 @@ async function exportWorkbook(){
   aoa[2][0]='HORAS AL CUATRIMESTRE';
   aoa[3][0]='HORAS A LA SEMANA';
   aoa[4][0]='CUATRIMESTRE';
-  aoa[5][0]='PROFESOR / CATEGORÍA';
+  aoa[5][0]='PROFESOR';
+  aoa[5][1]='CATEGORÍA';
 
-  let col=1;
+  let col=2;
   const merges=[];
   const programRanges=[];
   ps.forEach((pr,pi)=>{
     const startCol=col;
     pr.semesters.forEach((sem,s)=>sem.forEach((name,c)=>{
       aoa[1][col]=subjectCase(name);
-      aoa[2][col]=''; // Dato no disponible en el catálogo actual
-      aoa[3][col]=''; // Dato no disponible en el catálogo actual
+      aoa[2][col]=subjectHours(pr.id,s,c)||'';
+      aoa[3][col]=weeklyHours(pr.id,s,c)||'';
       aoa[4][col]=s+1;
       teachers.forEach((t,ti)=>{
         const a=getAns(pr.id,s,c,name);
-        aoa[headerRows+ti][0]=`${t.name}${t.category?` · ${t.category}`:''}`;
+        aoa[headerRows+ti][0]=t.name;
+        aoa[headerRows+ti][1]=t.category;
         aoa[headerRows+ti][col]=['X','XX'].includes(a.status)?a.status:'';
       });
       col++;
@@ -297,8 +361,8 @@ async function exportWorkbook(){
 
   const ws=XLSX.utils.aoa_to_sheet(aoa);
   ws['!merges']=merges;
-  ws['!freeze']={xSplit:1,ySplit:6,topLeftCell:'B7',activePane:'bottomRight',state:'frozen'};
-  ws['!cols']=[{wch:34},...Array.from({length:col-1},()=>({wch:13}))];
+  ws['!freeze']={xSplit:2,ySplit:6,topLeftCell:'C7',activePane:'bottomRight',state:'frozen'};
+  ws['!cols']=[{wch:30},{wch:32},...Array.from({length:col-2},()=>({wch:13}))];
   ws['!rows']=[
     {hpt:25},{hpt:86},{hpt:24},{hpt:24},{hpt:22},{hpt:28},
     ...teachers.map(()=>({hpt:24}))
@@ -311,14 +375,14 @@ async function exportWorkbook(){
     ws[addr].s=style;
   }
 
-  // Columna de profesores
+  // Columnas Profesor y Categoría
   for(let r=0;r<aoa.length;r++){
-    styleCell(XLSX.utils.encode_cell({r,c:0}),{
+    [0,1].forEach(c=>styleCell(XLSX.utils.encode_cell({r,c}),{
       font:{bold:r<6,color:{rgb:'183B59'}},
       fill:{fgColor:{rgb:r<6?'EAF2F8':'FFFFFF'}},
       alignment:{vertical:'center',horizontal:r<6?'center':'left',wrapText:true},
       border:{top:{style:'thin',color:{rgb:'AAB7C4'}},bottom:{style:'thin',color:{rgb:'AAB7C4'}},left:{style:'thin',color:{rgb:'AAB7C4'}},right:{style:'thin',color:{rgb:'AAB7C4'}}}
-    });
+    }));
   }
 
   // Programas y materias
@@ -369,8 +433,8 @@ async function exportWorkbook(){
       'Salida lateral':pr.exit,
       Cuatrimestre:s+1,
       Asignatura:subjectCase(name),
-      'Horas al cuatrimestre':'',
-      'Horas a la semana':'',
+      'Horas al cuatrimestre':subjectHours(pr.id,s,c)||'',
+      'Horas a la semana':weeklyHours(pr.id,s,c)||'',
       'Estado interno':a.status,
       'Nivel competencia':['X','XX'].includes(a.status)?a.status:'',
       'Área conocimiento':originCode(a),
@@ -413,6 +477,7 @@ function init(){
   initAuth();
   renderCurrentProgram();
   renderAdmin();
+  applyEditState();
   lockRevisionNav();
 }
 init();

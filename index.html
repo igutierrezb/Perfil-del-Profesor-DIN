@@ -23,6 +23,7 @@
       <small>La información vertida en esta plataforma se administra bajo los mismos criterios señalados en el
         <a href="https://www.uteq.edu.mx/ConoceLaUTEQ/Default.aspx?gXr=217" target="_blank" rel="noopener">Aviso de Privacidad de la UTEQ</a>.
       </small>
+      <div class="gate-credit">Sitio diseñado, creado y administrado por <b>Iván Gutiérrez Bautista</b>.</div>
     </div>
   </div>
 </div>
@@ -50,10 +51,10 @@
 </header>
 
 <nav class="main-nav">
-  <button data-view="perfil" class="active"><span>1</span> Datos del profesor</button>
-  <button data-view="captura"><span>2</span> Perfil por programa</button>
-  <button data-view="revision" id="navRevision"><span>3</span> Revisión e impresión</button>
-  <button data-view="admin" id="adminTab" class="admin-tab hidden"><span>⚙</span> Administración</button>
+  <button data-view="perfil" class="active"><span class="nav-num">1</span><span class="nav-ico" aria-hidden="true">▣</span> Datos del profesor</button>
+  <button data-view="captura"><span class="nav-num">2</span><span class="nav-ico" aria-hidden="true">▤</span> Perfil por programa</button>
+  <button data-view="revision" id="navRevision"><span class="nav-num">3</span><span class="nav-ico" aria-hidden="true">⌕</span> Revisión e impresión</button>
+  <button data-view="admin" id="adminTab" class="admin-tab hidden"><span class="nav-num">4</span><span class="nav-ico" aria-hidden="true">⚙</span> Administración</button>
 </nav>
 
 <main>
@@ -183,6 +184,19 @@
       <span class="admin-lock">🔒 Administración</span>
     </div>
 
+    <div class="card edit-control-card">
+      <div class="section-head">
+        <div>
+          <h2>Edición de perfiles</h2>
+          <p>Permite mantener el acceso al sitio y bloquear temporalmente los controles de captura.</p>
+        </div>
+        <span id="editModeStatus" class="edit-mode-status"></span>
+      </div>
+      <div class="admin-actions">
+        <button id="editModeBtn" class="edit-mode-btn" onclick="toggleEditingLock()"></button>
+      </div>
+    </div>
+
     <details class="card admin-details" open>
       <summary>Configuración institucional</summary>
       <div class="admin-grid">
@@ -229,7 +243,7 @@
 </main>
 
 <footer class="site-footer">
-  <div>Diseñada, elaborada y administrada por <b>Iván Gutiérrez Bautista</b>.</div>
+  <div class="creator-credit">Sitio diseñado, creado y administrado por <b>Iván Gutiérrez Bautista</b>.</div>
   <div>La información vertida en esta plataforma se administra bajo los mismos criterios señalados en el
     <a href="https://www.uteq.edu.mx/ConoceLaUTEQ/Default.aspx?gXr=217" target="_blank" rel="noopener">Aviso de Privacidad de la UTEQ</a>.
   </div>
