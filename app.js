@@ -844,7 +844,7 @@ async function exportWorkbook(){
   const headerRows=6;
   const aoa=Array.from({length:headerRows+teachers.length},()=>[]);
   aoa[0][0]='PROGRAMA EDUCATIVO';
-  aoa[0][1]='Leyenda: ★ = Favorito · texto rojo = Coordinó la asignatura';
+  aoa[0][1]='Leyenda: ★ = Favorito · azul/negrita = Coordinó la asignatura';
   aoa[1][0]='ASIGNATURA';
   aoa[2][0]='HORAS AL CUATRIMESTRE';
   aoa[3][0]='HORAS A LA SEMANA';
@@ -945,7 +945,7 @@ async function exportWorkbook(){
 
 
   // Marcas administrativas del concentrado:
-  // ★ = Favorito; FUENTE ROJA = Coordinó la asignatura.
+  // ★ = Favorito; FUENTE AZUL EN NEGRITA = Coordinó la asignatura.
   // No se utilizan fondos especiales.
   for(let r=headerRows;r<aoa.length;r++){
     const t=teachers[r-headerRows];
@@ -962,7 +962,7 @@ async function exportWorkbook(){
             name:'Aptos',
             sz:10,
             bold:favorite || coordinated,
-            color:{rgb:coordinated?'FF0000':'243746'}
+            color:{rgb:coordinated?'0563C1':'243746'}
           },
           fill:{patternType:'solid',fgColor:{rgb:'FFFFFF'},bgColor:{rgb:'FFFFFF'}},
           alignment:{horizontal:'center',vertical:'center'},
@@ -1005,7 +1005,7 @@ async function exportWorkbook(){
   const wsBase=XLSX.utils.json_to_sheet(base);
   wsBase['!autofilter']={ref:wsBase['!ref']};
   wsBase['!freeze']={xSplit:2,ySplit:1,topLeftCell:'C2',activePane:'bottomRight',state:'frozen'};
-  // Resalta en rojo el dato de coordinación también en Base maestra.
+  // Resalta en azul y negrita el dato de coordinación también en Base maestra.
   if(base.length){
     const coordHeader='Coordinador de academia';
     const headers=Object.keys(base[0]);
@@ -1015,7 +1015,7 @@ async function exportWorkbook(){
         const addr=XLSX.utils.encode_cell({r,c:coordCol});
         if(wsBase[addr] && String(wsBase[addr].v||'').toLowerCase()==='sí'){
           wsBase[addr].s={
-            font:{name:'Aptos',sz:10,bold:true,color:{rgb:'FF0000'}},
+            font:{name:'Aptos',sz:10,bold:true,color:{rgb:'0563C1'}},
             fill:{patternType:'solid',fgColor:{rgb:'FFFFFF'}},
             alignment:{horizontal:'center',vertical:'center'}
           };

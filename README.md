@@ -1,19 +1,17 @@
-# Perfil Académico Docente DIN · Versión 15
+# Perfil Académico Docente DIN · Versión 16
 
-V15 conserva la arquitectura y lógica estable. La actualización se concentra en presentación, impresión y corrección prioritaria de estilos Excel.
+V16 conserva la lógica estable de V15 y aplica refinamientos exclusivamente visuales/administrativos solicitados.
 
-## Cambios
-- Nuevo logotipo industrial inspirado en fábrica + engrane, con tratamiento más moderno y elaborado.
-- Perfil por programa más compacto: mayor ancho para Asignatura y menor ancho para controles.
-- Filas ligeramente más bajas sin reducir la fuente de las materias.
-- Guía de captura con distribución proporcional.
-- Cabecera, navegación y botones más compactos.
-- Administración con mejor alineación y densidad.
-- Configuración de tronco común más centrada y uniforme.
-- Última hoja de impresión/PDF deja de estirar artificialmente las tablas cuando contiene uno o dos programas.
-- Excel:
-  - ★ identifica Favorito.
-  - La **fuente roja** identifica una materia coordinada.
-  - Se fuerza el color rojo `#FF0000` directamente en la celda.
-  - Se activa explícitamente `cellStyles` al escribir el archivo.
-  - En Base maestra, el valor `Sí` de Coordinador de academia también queda en rojo.
+## Cambios V16
+- Se incorpora el logo de División Industrial aportado por el usuario:
+  - versión completa en acceso;
+  - emblema en encabezado.
+- Formato institucional y cuenta del usuario dejan de tener recuadro.
+- La clave azul de áreas queda integrada dentro del punto 4 de “Cómo capturar”.
+- La leyenda de estados se mueve junto a la navegación Anterior / Guardar y seguir.
+- La navegación del programa es más baja, usa fondo amarillo pastel y queda visualmente unida al encabezado del programa.
+- Área de conocimiento, Coordinación y Favorito ocupan menos ancho; Asignatura recibe mayor espacio.
+- Selecciones X/XX y área usan azul pastel en lugar de azul oscuro.
+- Administración y tronco común reciben ajustes de alineación/densidad.
+- La última hoja de impresión conserva altura natural.
+- Excel: materias coordinadas se muestran en **azul y negrita**; Favorito conserva ★ y no se usa fondo de color.

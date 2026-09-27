@@ -2217,3 +2217,276 @@ textarea:focus-visible,
     height:auto!important;
   }
 }
+
+
+/* =========================================================
+   V16 · refinamiento visual solicitado
+   ========================================================= */
+
+/* Logo oficial/propuesto de División Industrial */
+.division-logo-emblem{
+  width:82px!important;
+  height:70px!important;
+  object-fit:contain!important;
+  border-radius:14px!important;
+  background:#fff!important;
+  padding:3px!important;
+  box-shadow:0 4px 12px rgba(13,51,83,.10)!important;
+}
+.division-logo-full{
+  width:152px!important;
+  height:auto!important;
+  max-height:142px!important;
+  object-fit:contain!important;
+  border-radius:14px!important;
+  background:#fff!important;
+  padding:4px!important;
+}
+
+/* Formato y cuenta: sin recuadros */
+.hero-chip{
+  border:0!important;
+  background:transparent!important;
+  padding:0!important;
+  border-radius:0!important;
+  opacity:.94;
+}
+.hero-side .auth-status{
+  border:0!important;
+  background:transparent!important;
+  padding:0!important;
+  border-radius:0!important;
+  margin-top:6px!important;
+}
+.auth-status.gate{
+  background:#eef6fb!important;
+  border:1px solid #d0e1ef!important;
+  padding:8px 10px!important;
+  border-radius:10px!important;
+}
+
+/* Instrucciones: la cinta azul forma parte del punto 4 */
+.instruction-grid-six{
+  grid-template-columns:1fr 1fr .78fr 1.42fr .95fr .72fr!important;
+  align-items:stretch!important;
+}
+.area-instruction{
+  display:flex;
+  flex-direction:column;
+}
+.knowledge-key-inline{
+  margin-top:auto!important;
+  padding:6px 8px!important;
+  border-radius:7px!important;
+  font-size:9px!important;
+  line-height:1.2!important;
+  background:#174f78!important;
+  color:#fff!important;
+}
+.knowledge-key-inline b{color:#fff!important;display:inline!important;margin:0!important}
+
+/* Navegación de programa: menos alta, amarillo pastel y pegada al programa */
+.program-header-flow{
+  grid-template-columns:145px 1fr auto!important;
+  gap:9px!important;
+  padding:8px 11px!important;
+  margin-bottom:0!important;
+  border-bottom-left-radius:0!important;
+  border-bottom-right-radius:0!important;
+  background:linear-gradient(90deg,#fff8d8,#fff3b8)!important;
+  border-color:#e4cf82!important;
+  box-shadow:0 4px 12px rgba(103,82,13,.07)!important;
+}
+#programs .program{
+  margin-top:0!important;
+  border-top-left-radius:0!important;
+  border-top-right-radius:0!important;
+  border-top-color:#e4cf82!important;
+}
+.program-step-badge{
+  padding:7px 9px!important;
+  background:#fff!important;
+  border:1px solid #e4cf82!important;
+  color:#725711!important;
+}
+.program-name-flow{
+  color:#183d5c!important;
+  font-weight:760!important;
+  line-height:1.15!important;
+}
+.flow-buttons{
+  gap:6px!important;
+}
+.flow-buttons button{
+  padding:7px 11px!important;
+  min-height:32px!important;
+}
+.flow-buttons .prev-emphasis{
+  background:#fff!important;
+  color:#123f62!important;
+  border:1px solid #8ab0c8!important;
+  box-shadow:0 2px 7px rgba(29,79,108,.08)!important;
+}
+
+/* Leyenda pegada a la navegación */
+.nav-state-legend{
+  grid-column:1 / -1;
+  margin:0!important;
+  padding:5px 7px 0!important;
+  border-top:1px solid rgba(173,142,44,.20)!important;
+  gap:12px!important;
+  font-size:8.8px!important;
+  color:#596b76!important;
+}
+
+/* Perfil por programa: máxima eficiencia horizontal sin bajar fuente */
+.semesters-grid{min-width:960px!important}
+.semester-card{
+  padding-left:10px!important;
+  padding-right:10px!important;
+}
+.course-columns,.course{
+  grid-template-columns:
+    minmax(188px,1.82fr)
+    58px
+    67px
+    minmax(112px,.50fr)
+    52px
+    50px!important;
+  gap:2px!important;
+}
+.course-columns{
+  padding-left:6px!important;
+  padding-right:6px!important;
+}
+.course{
+  min-height:43px!important;
+  padding:3px 5px!important;
+}
+.course .name{
+  font-size:12px!important;
+  line-height:1.1!important;
+  max-height:2.3em!important;
+}
+.course-hours{
+  font-size:8.7px!important;
+}
+.area-buttons{
+  grid-template-columns:repeat(4,minmax(17px,1fr))!important;
+  gap:1.5px!important;
+}
+.mini.area{
+  min-height:24px!important;
+  padding:2px 1px!important;
+  border-radius:6px!important;
+}
+.coord-row-check{
+  width:22px!important;
+  height:22px!important;
+}
+.ideal-btn{
+  min-width:47px!important;
+  max-width:50px!important;
+  padding:3px 2px!important;
+  border-radius:7px!important;
+  font-size:8.7px!important;
+}
+
+/* Selecciones en azul pastel, más armónicas */
+.comp-buttons .mini.on,
+.area-buttons .mini.on{
+  background:#d8eaf6!important;
+  border-color:#84aec8!important;
+  color:#164f72!important;
+  box-shadow:inset 0 0 0 1px rgba(63,123,158,.05)!important;
+  font-weight:750!important;
+}
+.comp-buttons .mini.on:hover,
+.area-buttons .mini.on:hover{
+  background:#cfe4f2!important;
+}
+
+/* Revisada: casi blanca; estado se comunica con barra lateral */
+.course.reviewed{
+  background:#fcfefd!important;
+  box-shadow:inset 4px 0 0 #6eb394!important;
+}
+
+/* Administración: tres áreas se perciben como una franja coherente */
+.admin-quickbar{
+  background:linear-gradient(90deg,#f8fbfd,#f3f8fb)!important;
+  border-color:#ccdce6!important;
+  padding:9px 11px!important;
+}
+.admin-quickbar button{
+  min-height:34px!important;
+}
+.admin-quickbar .primary{
+  background:linear-gradient(135deg,#1572aa,#0d4d78)!important;
+  border:1px solid #0b4268!important;
+}
+.admin-adminline{
+  grid-template-columns:1.05fr 1fr!important;
+  gap:10px!important;
+}
+.capture-control-card,
+.admin-details{
+  padding:12px 14px!important;
+}
+.capture-control-grid{
+  gap:9px!important;
+}
+.control-panel-mini{
+  padding:9px 10px!important;
+}
+
+/* Tronco común: alinear contenidos y reducir sensación de vacío */
+.common-rule-editor{
+  max-width:1120px!important;
+  padding:14px 16px!important;
+}
+.common-program-checks{
+  gap:6px 8px!important;
+}
+.common-program-checks label{
+  min-height:38px!important;
+  grid-template-columns:22px 1fr!important;
+  padding:6px 8px!important;
+}
+.common-semester-checks label{
+  min-width:48px!important;
+  padding:5px 7px!important;
+}
+
+/* Última página de impresión: no estirar filas ni programas */
+.sheet.program-trio.compact-last{
+  display:block!important;
+}
+.program-trio.compact-last .print-program{
+  display:block!important;
+  flex:none!important;
+  height:auto!important;
+  min-height:0!important;
+}
+.program-trio.compact-last .currTable{
+  height:auto!important;
+  flex:none!important;
+}
+.program-trio.compact-last .currTable tr,
+.program-trio.compact-last .currTable th,
+.program-trio.compact-last .currTable td{
+  height:auto!important;
+}
+
+/* Diseño amplio pero sin desperdiciar horizontal */
+@media(max-width:1180px){
+  .course-columns,.course{
+    grid-template-columns:
+      minmax(180px,1.72fr)
+      56px
+      65px
+      minmax(108px,.48fr)
+      50px
+      48px!important;
+  }
+}
