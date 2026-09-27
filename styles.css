@@ -3800,3 +3800,91 @@ label.required-wrap-error{
     grid-column:1/-1;
   }
 }
+
+
+/* =========================================================
+   V26 · nombres de firma más legibles + Excel más protagonista
+   ========================================================= */
+
+/* Nombres en firmas: aproximadamente 4 pt más grandes,
+   sin modificar la altura reservada ni mover las tablas. */
+#printArea .signature-line{
+  line-height:1.02!important;
+  overflow:visible!important;
+}
+#printArea .signature-line::first-line{
+  font-size:11.6px!important;
+  font-weight:800!important;
+  line-height:1.02!important;
+  color:#172f40!important;
+}
+
+/* Mantener las etiquetas debajo compactas */
+#printArea .signature-line{
+  font-size:6.3px!important;
+}
+
+/* El pie conserva exactamente su zona reservada */
+#printArea .program-trio .sign{
+  bottom:.08in!important;
+  min-height:34px!important;
+  max-height:48px!important;
+}
+
+/* Exportar Excel: más llamativo y coherente con el verde de Excel */
+.excel-export-btn{
+  min-width:205px!important;
+  min-height:48px!important;
+  height:48px!important;
+  padding:7px 17px!important;
+  gap:10px!important;
+  background:linear-gradient(135deg,#21a366 0%,#217346 55%,#185c37 100%)!important;
+  border:1px solid #145b38!important;
+  color:#fff!important;
+  box-shadow:
+    0 4px 0 #0f4b2d,
+    0 9px 20px rgba(20,105,61,.24)!important;
+  font-weight:800!important;
+}
+.excel-export-btn:hover{
+  transform:translateY(-1px);
+  filter:brightness(1.04);
+}
+.excel-export-btn .excel-logo{
+  width:34px!important;
+  height:34px!important;
+  flex:0 0 34px!important;
+  border-radius:7px!important;
+}
+.excel-export-btn .excel-logo svg{
+  width:22px!important;
+  height:22px!important;
+}
+.excel-export-btn .excel-export-copy strong{
+  font-size:13px!important;
+  line-height:1.05!important;
+  letter-spacing:.01em;
+}
+.excel-export-btn .excel-export-copy small{
+  font-size:8.5px!important;
+  margin-top:2px!important;
+  opacity:.9!important;
+}
+
+@media print{
+  .signature-line{
+    line-height:1.02!important;
+    overflow:visible!important;
+  }
+  .signature-line::first-line{
+    font-size:11.6px!important;
+    font-weight:800!important;
+    line-height:1.02!important;
+    color:#172f40!important;
+  }
+  .program-trio .sign{
+    bottom:.08in!important;
+    min-height:34px!important;
+    max-height:48px!important;
+  }
+}
