@@ -4027,3 +4027,78 @@ label.required-wrap-error{
     white-space:normal!important;
   }
 }
+
+
+/* =========================================================
+   V28 · Datos del profesor con mayor presencia visual
+   ========================================================= */
+
+#perfil .profile-main-card h2,
+#perfil .teacher-data-card h2,
+#perfil .card h2{
+  font-size:17px!important;
+  line-height:1.15!important;
+}
+
+#perfil .profile-main-card p,
+#perfil .teacher-data-card p,
+#perfil .card .section-head p{
+  font-size:10.5px!important;
+  line-height:1.35!important;
+}
+
+#perfil .teacher-line label,
+#perfil .profile-main-card label,
+#perfil .teacher-data-card label{
+  font-size:9.5px!important;
+  font-weight:700!important;
+  line-height:1.15!important;
+}
+
+#perfil .teacher-line input,
+#perfil .teacher-line select,
+#perfil .profile-main-card input,
+#perfil .profile-main-card select,
+#perfil .teacher-data-card input,
+#perfil .teacher-data-card select{
+  min-height:38px!important;
+  height:38px!important;
+  padding:7px 10px!important;
+  font-size:11px!important;
+  font-weight:600!important;
+  line-height:1.2!important;
+}
+
+#perfil .teacher-line select,
+#perfil .profile-main-card select,
+#perfil .teacher-data-card select{
+  padding-right:32px!important;
+}
+
+#perfil .required-badge,
+#perfil .mandatory-badge{
+  font-size:8.8px!important;
+  padding:5px 9px!important;
+}
+
+#perfil .teacher-line + .save-row,
+#perfil .profile-main-card .save-row,
+#perfil .teacher-data-card .save-row{
+  margin-top:10px!important;
+}
+
+#perfil .save-row button,
+#perfil button[onclick*="saveProfile"],
+#perfil button[onclick*="saveTeacher"],
+#perfil button[onclick*="saveAll"]{
+  min-height:36px!important;
+  height:36px!important;
+  padding:6px 13px!important;
+  font-size:10.5px!important;
+  font-weight:800!important;
+}
+
+/* Mantener la distribución actual, solo crecer contenido */
+#perfil .teacher-line{
+  align-items:end!important;
+}

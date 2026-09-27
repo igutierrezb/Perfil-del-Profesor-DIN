@@ -1,17 +1,15 @@
-# Perfil Académico Docente DIN · Versión 27
+# Perfil Académico Docente DIN · Versión 28
 
-Actualización exclusivamente visual del botón de exportación.
+Ajuste exclusivamente visual en “Datos del profesor”.
 
-## Cambio
-- `Exportar a Excel` ahora utiliza un diseño inspirado en la identidad visual de Excel / Microsoft 365:
-  - verde Excel;
-  - ficha blanca para el icono;
-  - mayor tamaño y jerarquía tipográfica;
-  - subtítulo `Libro de Microsoft Excel · .xlsx`;
-  - relieve y estados hover/active;
-  - selector CSS de mayor especificidad para evitar que las reglas generales de Administración vuelvan a pintarlo de azul.
-
-No se modifica la función `exportExcel()` ni ninguna lógica del sistema.
+## Cambios
+- Título un poco más grande.
+- Texto de ayuda ligeramente mayor.
+- Etiquetas de Apellido paterno, Apellido materno, Nombres y Categoría más visibles.
+- Contenido de inputs y selector más grande y legible.
+- Campos ligeramente más altos.
+- Botón Guardar datos del profesor un poco más grande.
+- Se conserva exactamente la distribución y la lógica existente.
 
 ## Deploy
 `deploy-pages.yml`: NO necesita actualización.
