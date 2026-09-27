@@ -24,7 +24,7 @@ service cloud.firestore {
 
     match /profiles/{uid} {
       allow read: if admin() || (institutional() && request.auth.uid == uid);
-      allow create, update: if institutional() && request.auth.uid == uid;
+      allow create, update: if admin() || (institutional() && request.auth.uid == uid);
       allow delete: if admin();
     }
 

@@ -1,7 +1,7 @@
 
 import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.13.2/firebase-app.js';
 import { getAuth, GoogleAuthProvider, signInWithPopup, signOut, onAuthStateChanged, setPersistence, browserLocalPersistence } from 'https://www.gstatic.com/firebasejs/10.13.2/firebase-auth.js';
-import { getFirestore, doc, getDoc, setDoc, collection, getDocs, onSnapshot, serverTimestamp, addDoc } from 'https://www.gstatic.com/firebasejs/10.13.2/firebase-firestore.js';
+import { getFirestore, doc, getDoc, setDoc, deleteDoc, collection, getDocs, onSnapshot, serverTimestamp, addDoc } from 'https://www.gstatic.com/firebasejs/10.13.2/firebase-firestore.js';
 
 const $=id=>document.getElementById(id);
 const store=JSON.parse(localStorage.getItem('PAD_UTEQ')||'{}');
@@ -12,7 +12,7 @@ const DEFAULT_COMMON_RULES=[
 ];
 let answers=store.answers||{},programMeta=store.programMeta||{},customPrograms=store.customPrograms||[],programOverrides=store.programOverrides||{},disabledPrograms=store.disabledPrograms||[],programAcronyms=store.programAcronyms||{},commonRules=Array.isArray(store.commonRules)?store.commonRules:JSON.parse(JSON.stringify(DEFAULT_COMMON_RULES));
 let currentProgramIndex=Number.isInteger(store.currentProgramIndex)?store.currentProgramIndex:0;
-let newSemesterCount=5,auth=null,currentUser=null,authReady=false,db=null,cloudSettingsUnsub=null,remoteProfileLoaded=false,cloudAvailable=false,cloudSaveTimer=null,countdownTimer=null,lastSavedAt=store.lastSavedAt||null,editingCommonRuleId=null,editingProgramId=null;
+let newSemesterCount=5,auth=null,currentUser=null,authReady=false,db=null,cloudSettingsUnsub=null,cloudProfileMetaUnsub=null,remoteProfileLoaded=false,cloudAvailable=false,cloudSaveTimer=null,countdownTimer=null,lastSavedAt=store.lastSavedAt||null,editingCommonRuleId=null,editingProgramId=null,teacherAdminCache={};
 const allowedDomain=(window.PAD_ALLOWED_DOMAIN||'uteq.edu.mx').toLowerCase();
 const adminEmail=(window.PAD_ADMIN_EMAIL||'ivan.gutierrez@uteq.edu.mx').toLowerCase();
 
@@ -79,9 +79,9 @@ function submissionLockedForCurrentPeriod(){
   return !!store.submittedPeriod && store.submittedPeriod===cfg.periodo;
 }
 function editingAllowed(){
-  // La Administración controla la edición global.
-  // Un perfil formalizado puede volver a editarse cuando Administración habilita la edición.
-  return isAdmin() || (!cfg.editingLocked && !deadlinePassed());
+  // El administrador conserva acceso. Para el profesor se respetan tres cierres independientes:
+  // edición global, fecha límite y cierre individual al finalizar su PDF.
+  return isAdmin() || (!cfg.editingLocked && !deadlinePassed() && !submissionLockedForCurrentPeriod());
 }
 function formatDateTime(ts){
   if(!ts)return 'Sin fecha límite';
@@ -117,7 +117,9 @@ function startCountdown(){
 }
 function requireEditing(){
   if(editingAllowed())return true;
-  toast('La edición de perfiles está temporalmente desactivada.');
+  if(submissionLockedForCurrentPeriod()) toast('Este perfil ya fue finalizado. Si requiere corregirlo, solicite al JUCA habilitar su edición.');
+  else if(deadlinePassed()) toast('La fecha límite de captura ya concluyó.');
+  else toast('La edición de perfiles está temporalmente desactivada.');
   return false;
 }
 function applyEditState(){
@@ -136,9 +138,11 @@ function applyEditState(){
   if(banner){
     banner.classList.toggle('hidden',!locked);
     if(locked){
-      banner.textContent=deadlinePassed()
-        ?'⏱ Captura fuera de tiempo. Puede consultar e imprimir, pero la edición está cerrada.'
-        :'🔒 Edición desactivada por Administración. Puede consultar todo su perfil e imprimirlo normalmente.';
+      banner.textContent=submissionLockedForCurrentPeriod()
+        ?'🔒 Perfil finalizado. Puede consultarlo e imprimirlo nuevamente, pero la edición quedó bloqueada. Si requiere corregir algo, consúltelo con el JUCA.'
+        :deadlinePassed()
+          ?'⏱ Captura fuera de tiempo. Puede consultar e imprimir, pero la edición está cerrada.'
+          :'🔒 Edición desactivada por Administración. Puede consultar todo su perfil e imprimirlo normalmente.';
     }
   }
 }
@@ -256,6 +260,7 @@ function profileCloudPayload(){
     programMeta:JSON.parse(JSON.stringify(programMeta)),
     period:cfg.periodo,
     submittedPeriod:store.submittedPeriod||null,
+    finalizedAtMs:store.finalizedAtMs||null,
     updatedAt:serverTimestamp()
   };
 }
@@ -282,6 +287,7 @@ async function loadRemoteProfile(){
       if(d.answers)answers=d.answers;
       if(d.programMeta)programMeta=d.programMeta;
       if('submittedPeriod' in d)store.submittedPeriod=d.submittedPeriod||null;
+      if('finalizedAtMs' in d)store.finalizedAtMs=Number(d.finalizedAtMs)||null;
       store.answers=answers;store.programMeta=programMeta;
       localStorage.setItem('PAD_UTEQ',JSON.stringify({...store,cfg,customPrograms,programOverrides,disabledPrograms,programAcronyms,commonRules,currentProgramIndex,lastSavedAt}));
       loadProfileValuesOnly();
@@ -312,6 +318,19 @@ async function initCloud(){
     updateCloudStatus('Firestore pendiente de configurar','warn');
   }
   await loadRemoteProfile();
+  if(cloudProfileMetaUnsub)cloudProfileMetaUnsub();
+  cloudProfileMetaUnsub=onSnapshot(doc(db,'profiles',currentUser.uid),s=>{
+    if(!s.exists())return;
+    const d=s.data()||{};
+    const prior=store.submittedPeriod||null;
+    store.submittedPeriod=d.submittedPeriod||null;
+    store.finalizedAtMs=Number(d.finalizedAtMs)||null;
+    if(prior!==store.submittedPeriod){
+      localStorage.setItem('PAD_UTEQ',JSON.stringify({...store,cfg,answers,programMeta,customPrograms,programOverrides,disabledPrograms,programAcronyms,commonRules,currentProgramIndex,lastSavedAt}));
+      applyEditState();updateNavState();
+      toast(store.submittedPeriod===cfg.periodo?'Perfil finalizado. Edición bloqueada.':'Administración habilitó nuevamente la edición de su perfil.');
+    }
+  },e=>console.warn('No fue posible escuchar el estado del perfil',e));
 }
 async function loadTeachersForExport(){
   if(!db||!isAdmin())return [{name:fullName()||'(Profesor sin nombre)',category:store.profile?.categoria||'',answers,programMeta,email:currentUser?.email||''}];
@@ -321,7 +340,7 @@ async function loadTeachersForExport(){
     snap.forEach(ds=>{
       const d=ds.data(),p=d.profile||{};
       const name=[p.apPat,p.apMat,p.nombres].filter(Boolean).join(' ')||d.displayName||d.email||'(Sin nombre)';
-      rows.push({name,category:p.categoria||'',answers:d.answers||{},programMeta:d.programMeta||{},email:d.email||''});
+      rows.push({name,category:p.categoria||'',answers:d.answers||{},programMeta:d.programMeta||{},email:d.email||'',uid:ds.id,submittedPeriod:d.submittedPeriod||null,finalizedAtMs:Number(d.finalizedAtMs)||null});
     });
     return rows.length?rows:[{name:fullName()||'(Profesor sin nombre)',category:store.profile?.categoria||'',answers,programMeta,email:currentUser?.email||''}];
   }catch(e){
@@ -395,7 +414,7 @@ function initAuth(){
 
 window.go=function(id,force=false){
   if(id==='admin'&&!isAdmin()){toast('Administración disponible únicamente para ivan.gutierrez@uteq.edu.mx');return}
-  if(id==='captura'&&!force){const p=validateProfile();if(!p.ok){$('profileErrors').innerHTML=statusBox(p.errors,'Complete los datos obligatorios antes de continuar.');return}}
+  if(id==='captura'&&!force){const p=validateProfile({visual:true,focusFirst:true});if(!p.ok){$('profileErrors').innerHTML=statusBox(p.errors,'Complete los datos obligatorios antes de continuar.');return}}
   if(id==='revision'&&!force){
     const v=validateAll();
     if(!reviewAvailable()){showCaptureErrors(v.errors);return}
@@ -440,9 +459,47 @@ function loadProfile(){
   loadProfileValuesOnly();
 }
 function collectProfile(){let extra={};document.querySelectorAll('[data-g]').forEach(x=>extra[x.dataset.g]=x.value.trim());store.profile={apPat:$('apPat').value.trim(),apMat:$('apMat').value.trim(),nombres:$('nombres').value.trim(),categoria:$('categoria').value,extra};persist();return store.profile}
-function validateProfile(){const p=collectProfile(),e=p.extra||{},errs=[];if(!p.apPat)errs.push('Capture el apellido paterno.');if(!p.apMat)errs.push('Capture el apellido materno.');if(!p.nombres)errs.push('Capture los nombres.');if(!p.categoria)errs.push('Seleccione la categoría.');if(!e.f1a||!e.f1b)errs.push('Capture la primera línea de Formación profesional.');if(!e.d1a||!e.d1c)errs.push('Capture la primera línea de Experiencia docente.');if(!e.l1a||!e.l1b||!e.l1c)errs.push('Capture la primera línea de Experiencia laboral.');return{ok:!errs.length,errors:errs}}
-window.saveSection=function(){if(!requireEditing())return;collectProfile();writeAudit('Sección de perfil guardada');toast('Sección guardada.')}
-window.continueToCapture=function(){if(!requireEditing())return;const v=validateProfile();$('profileErrors').innerHTML=v.ok?'':statusBox(v.errors,'Complete los datos obligatorios antes de continuar.');if(!v.ok)return;renderCurrentProgram();window.go('captura',true)}
+function requiredProfileChecks(p,e){
+  return [
+    {el:$('apPat'),missing:!p.apPat,msg:'Capture el apellido paterno.'},
+    {el:$('apMat'),missing:!p.apMat,msg:'Capture el apellido materno.'},
+    {el:$('nombres'),missing:!p.nombres,msg:'Capture los nombres.'},
+    {el:$('categoria'),missing:!p.categoria,msg:'Seleccione la categoría.'},
+    {el:document.querySelector('[data-g="f1a"]'),missing:!e.f1a,msg:'Capture el grado / estudio de la primera línea de Formación profesional.'},
+    {el:document.querySelector('[data-g="f1b"]'),missing:!e.f1b,msg:'Capture la institución de la primera línea de Formación profesional.'},
+    {el:document.querySelector('[data-g="d1a"]'),missing:!e.d1a,msg:'Capture la institución de la primera línea de Experiencia docente.'},
+    {el:document.querySelector('[data-g="d1c"]'),missing:!e.d1c,msg:'Capture el periodo de la primera línea de Experiencia docente.'},
+    {el:document.querySelector('[data-g="l1a"]'),missing:!e.l1a,msg:'Capture la organización de la primera línea de Experiencia laboral.'},
+    {el:document.querySelector('[data-g="l1b"]'),missing:!e.l1b,msg:'Capture el cargo de la primera línea de Experiencia laboral.'},
+    {el:document.querySelector('[data-g="l1c"]'),missing:!e.l1c,msg:'Capture el periodo de la primera línea de Experiencia laboral.'}
+  ];
+}
+function clearRequiredHighlights(){
+  document.querySelectorAll('#perfil .required-field-error').forEach(el=>el.classList.remove('required-field-error'));
+  document.querySelectorAll('#perfil .required-wrap-error').forEach(el=>el.classList.remove('required-wrap-error'));
+}
+function highlightRequired(checks,focusFirst=false){
+  clearRequiredHighlights();
+  const missing=checks.filter(x=>x.missing&&x.el);
+  missing.forEach(x=>{
+    x.el.classList.add('required-field-error');
+    const wrap=x.el.closest('label,.form-row');
+    if(wrap)wrap.classList.add('required-wrap-error');
+  });
+  if(focusFirst&&missing.length){
+    const el=missing[0].el;
+    el.scrollIntoView({behavior:'smooth',block:'center'});
+    setTimeout(()=>{try{el.focus({preventScroll:true})}catch(_){el.focus()}},320);
+  }
+}
+function validateProfile(opts={}){
+  const p=collectProfile(),e=p.extra||{},checks=requiredProfileChecks(p,e);
+  const errors=checks.filter(x=>x.missing).map(x=>x.msg);
+  if(opts.visual)highlightRequired(checks,!!opts.focusFirst);
+  return{ok:!errors.length,errors,checks}
+}
+window.saveSection=function(){if(!requireEditing())return;collectProfile();writeAudit('Sección de perfil guardada');toast('Avances guardados.')}
+window.continueToCapture=function(){if(!requireEditing())return;const v=validateProfile({visual:true,focusFirst:true});$('profileErrors').innerHTML=v.ok?'':statusBox(v.errors,'Complete los datos obligatorios antes de continuar.');if(!v.ok)return;clearRequiredHighlights();renderCurrentProgram();window.go('captura',true)}
 
 function originCode(a){return(a.origins||[]).join('')}
 function normalizeOrigins(code){return String(code).split('').map(Number)}
@@ -592,7 +649,7 @@ function validateAll(){const p=validateProfile(),c=validateCapture();return{ok:p
 function reviewAvailable(){
   // Si Administración cerró la edición (o venció la fecha), el profesor puede
   // seguir consultando y generar/imprimir el estado actual de su perfil.
-  return validateAll().ok || cfg.editingLocked || deadlinePassed();
+  return validateAll().ok || cfg.editingLocked || deadlinePassed() || submissionLockedForCurrentPeriod();
 }
 function showCaptureErrors(errs){$('captureErrors').innerHTML=statusBox(errs,'No puede pasar a revisión todavía.');const p=overallStats().pendingUnique;if(p.length){currentProgramIndex=p[0].pi;renderCurrentProgram()}}
 window.validateAndReview=function(){
@@ -659,7 +716,23 @@ function buildPrint(){
   }
   $('printArea').innerHTML=html
 }
-window.printProfile=function(){
+async function finalizeCurrentProfile(){
+  store.submittedPeriod=cfg.periodo;
+  store.finalizedAtMs=Date.now();
+  persist();
+  if(db&&currentUser){
+    try{
+      await setDoc(doc(db,'profiles',currentUser.uid),profileCloudPayload(),{merge:true});
+      updateCloudStatus('Perfil finalizado y sincronizado','ok');
+    }catch(e){
+      console.warn('No fue posible confirmar el cierre en la nube',e);
+      updateCloudStatus('Cierre guardado local · nube pendiente','warn');
+    }
+  }
+  await writeAudit('Perfil finalizado para impresión/guardado PDF');
+  applyEditState();updateNavState();
+}
+window.printProfile=async function(){
   const v=validateAll();
   if(!reviewAvailable()){
     window.go('captura',true);
@@ -667,27 +740,29 @@ window.printProfile=function(){
     return;
   }
   buildPrint();
-  window.print();
 
-  // En modo solo lectura la impresión siempre permanece disponible y no se pregunta
-  // por cierre individual, porque la edición ya está controlada por Administración.
-  if(!editingAllowed() || isAdmin()) return;
+  // Si ya estaba finalizado, permite reimprimir sin volver a modificar el estado.
+  if(submissionLockedForCurrentPeriod() || isAdmin()){
+    window.print();
+    return;
+  }
 
-  setTimeout(()=>{
-    const lock=window.confirm(
-      '¿Deseas dar por finalizada tu captura?\n\nAceptar: se registrará la formalización del perfil. Administración puede volver a habilitar su edición.\n\nCancelar: podrás seguir editando.'
+  if(!v.ok){
+    const proceed=window.confirm(
+      'El perfil no cumple todavía todas las validaciones. Puede imprimir el estado actual, pero NO se marcará como concluido.\n\n¿Desea continuar con la impresión?'
     );
-    if(lock){
-      store.submittedPeriod=cfg.periodo;
-      persist();
-      scheduleCloudProfileSave();
-      writeAudit('Perfil formalizado después de imprimir/guardar PDF');
-      updateNavState();
-      toast('Perfil formalizado. Administración puede volver a habilitar su edición.');
-    }else{
-      toast('La edición permanece habilitada.');
-    }
-  },250);
+    if(proceed)window.print();
+    return;
+  }
+
+  const ok=window.confirm(
+    'Al continuar, el perfil se marcará como CONCLUIDO y la edición de este profesor se bloqueará automáticamente.\n\nPodrá seguir consultando e imprimiendo su perfil. Si requiere corregir algo, deberá solicitar al JUCA que habilite nuevamente su edición.\n\n¿Desea finalizar e imprimir / guardar PDF?'
+  );
+  if(!ok){toast('La captura permanece abierta.');return}
+
+  await finalizeCurrentProfile();
+  toast('Perfil concluido. La edición quedó bloqueada.');
+  window.print();
 }
 
 
@@ -726,6 +801,93 @@ window.saveAdmin=function(){
   saveGlobalSettings(previousPeriod===cfg.periodo?'Configuración institucional actualizada':`Periodo actualizado de ${previousPeriod} a ${cfg.periodo} sin borrar perfiles`);
   toast(previousPeriod===cfg.periodo?'Configuración guardada.':'Periodo actualizado. Los datos capturados se conservaron.');
 }
+
+function formatTeacherCompletion(d){
+  if(d.submittedPeriod!==cfg.periodo)return 'Sin concluir';
+  const ms=Number(d.finalizedAtMs)||0;
+  return ms?`Concluido · ${new Intl.DateTimeFormat('es-MX',{dateStyle:'medium',timeStyle:'short'}).format(new Date(ms))}`:'Concluido';
+}
+async function renderTeacherAdminList(){
+  const root=$('teacherAdminList'),summary=$('teacherAdminSummary');
+  if(!root||!summary||!isAdmin())return;
+  if(!db){root.innerHTML='<div class="teacher-empty">Firestore no está disponible en esta sesión.</div>';summary.textContent='Sin conexión';return}
+  root.innerHTML='<div class="teacher-empty">Cargando profesores…</div>';
+  try{
+    const snap=await getDocs(collection(db,'profiles'));
+    const rows=[];
+    teacherAdminCache={};
+    snap.forEach(ds=>{
+      const d=ds.data()||{},p=d.profile||{};
+      const name=[p.apPat,p.apMat,p.nombres].filter(Boolean).join(' ')||d.displayName||d.email||'(Sin nombre)';
+      const row={uid:ds.id,name,email:d.email||'',categoria:p.categoria||'',submittedPeriod:d.submittedPeriod||null,finalizedAtMs:Number(d.finalizedAtMs)||0,updatedAt:d.updatedAt};
+      rows.push(row);teacherAdminCache[row.uid]=row;
+    });
+    rows.sort((a,b)=>a.name.localeCompare(b.name,'es',{sensitivity:'base'}));
+    const done=rows.filter(x=>x.submittedPeriod===cfg.periodo).length;
+    summary.innerHTML=`<b>${rows.length}</b> profesor${rows.length===1?'':'es'} con información · <b>${done}</b> concluido${done===1?'':'s'} en ${cfg.periodo}`;
+    if(!rows.length){root.innerHTML='<div class="teacher-empty">Aún no hay perfiles de profesores guardados.</div>';return}
+    root.innerHTML=rows.map(r=>{
+      const doneNow=r.submittedPeriod===cfg.periodo;
+      return `<div class="teacher-admin-row ${doneNow?'finished':'open'}">
+        <div class="teacher-admin-main">
+          <b>${escapeHtml(r.name)}</b>
+          <span>${escapeHtml(r.email||'Sin correo registrado')}${r.categoria?` · ${escapeHtml(r.categoria)}`:''}</span>
+        </div>
+        <div class="teacher-admin-status ${doneNow?'finished':'open'}">
+          <strong>${doneNow?'Concluido':'En captura / sin concluir'}</strong>
+          <span>${doneNow?escapeHtml(formatTeacherCompletion(r)):'Edición disponible según los controles generales'}</span>
+        </div>
+        <div class="teacher-admin-actions">
+          ${doneNow?`<button class="teacher-reopen-btn" onclick="reopenTeacherProfile('${r.uid}')">Habilitar edición</button>`:''}
+          <button class="teacher-delete-btn" onclick="deleteTeacherProfile('${r.uid}')">Eliminar perfil</button>
+        </div>
+      </div>`;
+    }).join('');
+  }catch(e){
+    console.warn('No fue posible cargar profesores para Administración',e);
+    root.innerHTML='<div class="teacher-empty">No fue posible cargar la lista de profesores. Revise las reglas de Firestore.</div>';
+    summary.textContent='Lista no disponible';
+  }
+}
+function escapeHtml(value){
+  return String(value??'').replace(/[&<>"']/g,ch=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#039;'}[ch]));
+}
+window.reopenTeacherProfile=async function(uid){
+  if(!isAdmin()||!db)return;
+  const r=teacherAdminCache[uid]||{};
+  if(!confirm(`¿Habilitar nuevamente la edición para ${r.name||r.email||'este profesor'}?\\n\\nSolo este perfil se reabrirá; los demás permanecerán sin cambios.`))return;
+  try{
+    await setDoc(doc(db,'profiles',uid),{
+      submittedPeriod:null,
+      finalizedAtMs:null,
+      reopenedAt:serverTimestamp(),
+      reopenedBy:currentUser.email||''
+    },{merge:true});
+    await writeAudit(`Edición individual habilitada para ${r.email||uid}`);
+    toast('Edición habilitada únicamente para ese profesor.');
+    await renderTeacherAdminList();
+  }catch(e){
+    console.error(e);
+    alert('No fue posible habilitar la edición individual. Verifique que las reglas de Firestore actualizadas estén publicadas.');
+  }
+}
+window.deleteTeacherProfile=async function(uid){
+  if(!isAdmin()||!db)return;
+  const r=teacherAdminCache[uid]||{};
+  const who=r.name||r.email||'este profesor';
+  const ok=confirm(`¿Eliminar el perfil de ${who}?\\n\\nSe borrarán de la nube sus datos del perfil, respuestas por asignatura, materias favoritas y marcas de coordinación. Esta acción NO elimina su cuenta institucional y no se puede deshacer desde esta pantalla.`);
+  if(!ok)return;
+  try{
+    await deleteDoc(doc(db,'profiles',uid));
+    await writeAudit(`Perfil académico eliminado por Administración: ${r.email||uid}`);
+    toast('Perfil eliminado de la base de profesores.');
+    await renderTeacherAdminList();
+  }catch(e){
+    console.error(e);
+    alert('No fue posible eliminar el perfil. Verifique las reglas de Firestore.');
+  }
+}
+
 function renderAdmin(){
   $('jefe').value=cfg.jefe;$('codigo').value=cfg.codigo;$('revisionCal').value=cfg.revision;$('fechaRevision').value=cfg.fechaRevision;$('periodoAdmin').value=cfg.periodo;
   if($('captureDeadlineAdmin'))$('captureDeadlineAdmin').value=toLocalDateTimeValue(cfg.captureDeadline);updateCountdownUI();
@@ -733,7 +895,7 @@ function renderAdmin(){
   if(st){st.textContent=cfg.editingLocked?'Edición desactivada':'Edición activa';st.className='edit-mode-status '+(cfg.editingLocked?'locked':'open')}
   if(btn){btn.textContent=cfg.editingLocked?'Activar edición de perfiles':'Desactivar edición de perfiles';btn.className='edit-mode-btn '+(cfg.editingLocked?'activate':'deactivate')}
   if(!editingProgramId && !$('newProgramSemesters')?.children?.length)renderSemesterEditors();
-  renderProgramAdminList();renderCustomPrograms();renderRules();applyEditState()
+  renderProgramAdminList();renderCustomPrograms();renderRules();applyEditState();renderTeacherAdminList()
 }
 function renderSemesterEditors(values=null){
   let h='';
@@ -1329,6 +1491,8 @@ function setupAutoSave(){
   document.addEventListener('input',e=>{
     if(!editingAllowed())return;
     if(!e.target.matches('#perfil input,#perfil select,#perfil textarea'))return;
+    e.target.classList.remove('required-field-error');
+    const wrap=e.target.closest('label,.form-row');if(wrap)wrap.classList.remove('required-wrap-error');
     clearTimeout(timer);timer=setTimeout(()=>{collectProfile();updateNavState()},500);
   });
   document.addEventListener('change',e=>{

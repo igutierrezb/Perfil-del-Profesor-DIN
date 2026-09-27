@@ -2822,3 +2822,115 @@ textarea:focus-visible,
   .program-import-panel>div,.program-image-status{grid-column:1/-1}
 }
 @media(max-width:700px){.program-import-panel{grid-template-columns:1fr}}
+
+
+/* =========================================================
+   V20 · cierre individual, validación visible y gestión docente
+   ========================================================= */
+.required-field-error{
+  border-color:#c83f3f!important;
+  box-shadow:0 0 0 3px rgba(200,63,63,.12)!important;
+  background:#fff8f8!important;
+}
+.required-wrap-error .row-label,
+label.required-wrap-error{
+  color:#9e2f2f!important;
+  font-weight:750!important;
+}
+.final-print-btn{
+  min-width:250px;
+  font-weight:800!important;
+}
+.teacher-admin-card{padding:13px 15px!important}
+.teacher-admin-head{align-items:center!important;margin-bottom:7px!important}
+.teacher-admin-summary{
+  flex:0 0 auto;
+  padding:6px 9px;
+  border:1px solid #bfd4df;
+  border-radius:999px;
+  background:#eef6fa;
+  color:#315b72;
+  font-size:9px;
+  white-space:nowrap;
+}
+.teacher-delete-note{
+  margin:0 0 8px;
+  padding:6px 8px;
+  border-left:3px solid #d8a34e;
+  background:#fffaf1;
+  color:#765a27;
+  font-size:8.7px;
+  line-height:1.25;
+}
+.teacher-admin-list{display:flex;flex-direction:column;gap:6px}
+.teacher-admin-row{
+  display:grid;
+  grid-template-columns:minmax(220px,1.55fr) minmax(185px,.9fr) auto;
+  gap:9px;
+  align-items:center;
+  padding:8px 9px;
+  border:1px solid #d7e1e7;
+  border-radius:9px;
+  background:#fff;
+}
+.teacher-admin-row.finished{box-shadow:inset 4px 0 0 #65a989}
+.teacher-admin-row.open{box-shadow:inset 4px 0 0 #d4a956}
+.teacher-admin-main,.teacher-admin-status{display:flex;flex-direction:column;gap:2px;min-width:0}
+.teacher-admin-main b{font-size:10.5px;color:#1f435a;overflow-wrap:anywhere}
+.teacher-admin-main span,.teacher-admin-status span{font-size:8.5px;color:#6b7f8b;overflow-wrap:anywhere}
+.teacher-admin-status strong{font-size:9.3px;color:#35566a}
+.teacher-admin-status.finished strong{color:#2f7259}
+.teacher-admin-status.open strong{color:#87651f}
+.teacher-admin-actions{display:flex;gap:6px;align-items:center;justify-content:flex-end}
+.teacher-admin-actions button{
+  height:32px!important;
+  min-height:32px!important;
+  padding:6px 9px!important;
+  border-radius:8px!important;
+  white-space:nowrap;
+  font-size:9px!important;
+}
+.teacher-reopen-btn{
+  background:#eef6fb!important;
+  color:#245b78!important;
+  border:1px solid #bdd5e3!important;
+}
+.teacher-delete-btn{
+  background:#fff7f6!important;
+  color:#a33b35!important;
+  border:1px solid #e2b8b3!important;
+}
+.teacher-empty{
+  padding:12px;
+  border:1px dashed #cad8e0;
+  border-radius:9px;
+  color:#70818b;
+  text-align:center;
+  font-size:9px;
+}
+.program-admin-item{
+  grid-template-columns:minmax(260px,1fr) 118px 92px 132px 106px!important;
+  gap:6px!important;
+  align-items:center!important;
+}
+.program-admin-item>button{
+  height:32px!important;
+  min-height:32px!important;
+  padding:5px 7px!important;
+  width:100%!important;
+  white-space:normal!important;
+  line-height:1.05!important;
+}
+.program-admin-item .acronym-edit input{min-height:32px!important}
+@media(max-width:1100px){
+  .teacher-admin-row{grid-template-columns:1fr 1fr}
+  .teacher-admin-actions{grid-column:1/-1;justify-content:flex-end}
+  .program-admin-item{grid-template-columns:minmax(220px,1fr) 110px 86px 120px!important}
+  .program-admin-item>button:last-child{grid-column:auto!important}
+}
+@media(max-width:760px){
+  .teacher-admin-row{grid-template-columns:1fr}
+  .teacher-admin-actions{grid-column:auto;justify-content:stretch;flex-wrap:wrap}
+  .teacher-admin-actions button{flex:1 1 150px}
+  .teacher-admin-summary{white-space:normal}
+}

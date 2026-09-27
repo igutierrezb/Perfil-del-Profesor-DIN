@@ -168,7 +168,7 @@
     <div id="programs"></div>
     <div id="captureErrors"></div>
     <div class="actions">
-      <button onclick="saveAll(true)">Guardar avance</button>
+      <button onclick="saveAll(true)">Guardar avances</button>
     </div>
   </section>
 
@@ -183,7 +183,7 @@
     </div>
     <div class="actions no-print">
       <button onclick="go('captura')">← Volver a captura</button>
-      <button class="primary" onclick="printProfile()">Imprimir / Guardar PDF</button>
+      <button class="primary final-print-btn" onclick="printProfile()">Finalizar e imprimir / guardar PDF</button>
     </div>
     <div id="printArea"></div>
   </section>
@@ -251,6 +251,18 @@
     </details>
     </div>
 
+    <div class="card teacher-admin-card">
+      <div class="section-head teacher-admin-head">
+        <div>
+          <h2>Profesores y cierre de perfil</h2>
+          <p>Consulte quién ya concluyó, la fecha de cierre, habilite la edición de un solo profesor o elimine un perfil que ya no deba conservarse.</p>
+        </div>
+        <div id="teacherAdminSummary" class="teacher-admin-summary">Cargando…</div>
+      </div>
+      <div class="teacher-delete-note">Eliminar perfil borra la información académica guardada en esta plataforma; no elimina la cuenta institucional del profesor.</div>
+      <div id="teacherAdminList" class="teacher-admin-list"></div>
+    </div>
+
     <div class="card">
       <div class="section-head">
         <div><h2>Programas educativos activos</h2><p>Puede habilitar o deshabilitar cualquier programa. Los deshabilitados no aparecen en captura, impresión ni Excel.</p></div>
@@ -259,10 +271,31 @@
       <div id="commonRuleEditor" class="common-rule-editor hidden"></div>
     </div>
 
-    <div class="card">
+    <div id="programEditorCard" class="card program-editor-card">
       <div class="section-head">
-        <div><h2>Agregar programa educativo</h2><p>Capture nombre, salida lateral y materias. Escriba una materia por línea con el formato <b>Asignatura - horas</b>.</p></div>
+        <div>
+          <h2 id="programEditorTitle">Agregar programa educativo</h2>
+          <p id="programEditorHelp">Capture nombre, salida lateral y materias. Puede escribirlas manualmente o importar una imagen del mapa curricular.</p>
+        </div>
+        <span id="programEditorMode" class="editor-mode-badge">Nuevo</span>
       </div>
+
+      <div class="program-import-panel">
+        <div>
+          <b>Importar información desde imagen</b>
+          <span>Seleccione una captura o fotografía legible del mapa curricular. El resultado queda editable antes de guardar.</span>
+        </div>
+        <input id="programImageImport" type="file" accept="image/*">
+        <button type="button" onclick="importProgramFromImage()">Importar imagen</button>
+        <span id="programImageStatus" class="program-image-status"></span>
+      </div>
+
+      <details id="ocrReview" class="ocr-review hidden">
+        <summary>Revisar texto detectado</summary>
+        <textarea id="ocrRawText" placeholder="Aquí aparecerá el texto leído de la imagen. Puede corregirlo manualmente."></textarea>
+        <div class="admin-actions"><button type="button" onclick="applyOcrTextToProgram()">Aplicar texto corregido</button></div>
+      </details>
+
       <div class="admin-grid">
         <label>Nombre del programa educativo<input id="newProgramName"></label>
         <label>Salida lateral<input id="newProgramExit"></label>
@@ -270,7 +303,8 @@
       <div id="newProgramSemesters"></div>
       <div class="admin-actions">
         <button onclick="addSemesterEditor()">+ Agregar cuatrimestre</button>
-        <button class="primary" onclick="saveNewProgram()">Guardar nuevo programa educativo</button>
+        <button id="cancelProgramEditBtn" class="hidden" onclick="cancelProgramEdit()">Cancelar edición</button>
+        <button id="saveProgramEditorBtn" class="primary" onclick="saveProgramEditor()">Guardar nuevo programa educativo</button>
       </div>
       <div id="customProgramsList"></div>
     </div>
@@ -294,6 +328,7 @@
 <script src="firebase-config.js"></script>
 <script src="catalog.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/xlsx-js-style@1.2.0/dist/xlsx.bundle.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js"></script>
 <script type="module" src="app.js"></script>
 </body>
 </html>
