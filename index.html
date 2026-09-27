@@ -21,6 +21,11 @@
       <label>Periodo de vigencia</label>
       <input id="periodo" placeholder="SEP 2026 - AGO 2027">
       <div class="hero-chip">Formato institucional · EA-F-86</div>
+      <div id="authStatus" class="auth-status">Modo local</div>
+      <div class="auth-buttons">
+        <button id="btnLogin" class="ghost" onclick="signIn()">Ingresar con cuenta institucional</button>
+        <button id="btnLogout" class="ghost hidden" onclick="signOutApp()">Cerrar sesión</button>
+      </div>
     </div>
   </div>
 </header>
@@ -32,13 +37,23 @@
   <button data-view="admin" id="adminTab" class="admin-tab hidden"><span>⚙</span> Administración</button>
 </nav>
 
+<div id="authGate" class="auth-gate hidden">
+  <div class="auth-card">
+    <img src="icono-industria.svg" alt="">
+    <div>
+      <h3>Acceso institucional requerido</h3>
+      <p>Esta versión está preparada para autenticación con cuentas <b>@uteq.edu.mx</b>. Para activarla, complete <b>firebase-config.js</b>.</p>
+    </div>
+  </div>
+</div>
+
 <main>
   <section id="perfil" class="view active">
     <div class="welcome card">
       <div>
         <span class="section-kicker">Actualización de perfil</span>
         <h2>Información general del profesor</h2>
-        <p>Los datos obligatorios deben capturarse antes de continuar. La información se conserva en este navegador para futuras actualizaciones.</p>
+        <p>Los datos obligatorios deben capturarse antes de continuar. La información se conserva para futuras actualizaciones.</p>
       </div>
       <div class="welcome-badge">Paso 1 de 3</div>
     </div>
@@ -52,9 +67,9 @@
         <label>Apellido paterno *<input id="apPat"></label>
         <label>Apellido materno *<input id="apMat"></label>
         <label>Nombres *<input id="nombres"></label>
-        <label class="category-field">Categoría *<select id="categoria"></select></label>
+        <label>Categoría *<select id="categoria"></select></label>
       </div>
-      <div class="save-row"><button class="save-btn" onclick="saveSection('datos')">Guardar datos del profesor</button></div>
+      <div class="save-row"><button class="save-btn" onclick="saveSection()">Guardar datos del profesor</button></div>
     </div>
 
     <div class="card section-card">
@@ -63,7 +78,7 @@
         <span class="required-note">1ª línea obligatoria</span>
       </div>
       <div id="formacion"></div>
-      <div class="save-row"><button class="save-btn" onclick="saveSection('formacion')">Guardar formación profesional</button></div>
+      <div class="save-row"><button class="save-btn" onclick="saveSection()">Guardar formación profesional</button></div>
     </div>
 
     <div class="card section-card">
@@ -72,16 +87,16 @@
         <span class="required-note">1ª línea obligatoria</span>
       </div>
       <div id="docencia"></div>
-      <div class="save-row"><button class="save-btn" onclick="saveSection('docencia')">Guardar experiencia docente</button></div>
+      <div class="save-row"><button class="save-btn" onclick="saveSection()">Guardar experiencia docente</button></div>
     </div>
 
     <div class="card section-card">
       <div class="section-head">
-        <div><h2>3. Experiencia laboral</h2><p>Registre organización, cargo y periodo. La primera línea es obligatoria.</p></div>
+        <div><h2>3. Experiencia laboral</h2><p>Cada organización se captura en una sola línea: organización, cargo y periodo.</p></div>
         <span class="required-note">1ª línea obligatoria</span>
       </div>
       <div id="laboral"></div>
-      <div class="save-row"><button class="save-btn" onclick="saveSection('laboral')">Guardar experiencia laboral</button></div>
+      <div class="save-row"><button class="save-btn" onclick="saveSection()">Guardar experiencia laboral</button></div>
     </div>
 
     <div id="profileErrors"></div>
@@ -95,7 +110,7 @@
       <div class="toolbar-left">
         <span class="section-kicker">Paso 2 de 3</span>
         <h2>Perfil por programa educativo</h2>
-        <p>Las asignaturas aparecen <b>habilitadas</b> al iniciar. Para revisarlas, marque X/XX y su área de conocimiento, o deshabilítelas si no puede impartirlas.</p>
+        <p>Revise todas las asignaturas. Marque X/XX y su área de conocimiento, o deshabilítelas si no puede impartirlas.</p>
       </div>
       <div class="progress">
         <strong id="progressText"></strong>
@@ -104,27 +119,25 @@
       </div>
     </div>
 
-    <div class="instruction-band card">
+    <div class="instruction-band card danger-band">
       <div class="instruction-title">Cómo capturar cada asignatura</div>
       <div class="instruction-grid">
         <div><b>1. Asignatura</b><span>Revise cada materia del programa.</span></div>
-        <div><b>2. Habilitar</b><span>Encendido = puede valorarla. Apagado = se imprimirá en blanco.</span></div>
+        <div><b>2. Habilitar</b><span>Apagado = no puede impartirla y se imprimirá en blanco.</span></div>
         <div><b>3. Competencia</b><span><strong>X</strong> Medio · <strong>XX</strong> Alto</span></div>
-        <div><b>4. Área que da el conocimiento</b><span>Seleccione una opción: <strong>1 · 2 · 3 · 12 · 13 · 23 · 123</strong></span></div>
+        <div class="highlight-cell"><b>4. Área que da el conocimiento</b><span><strong>Seleccione una sola opción:</strong> 1 · 2 · 3 · 12 · 13 · 23 · 123</span></div>
         <div><b>5. Materia ideal</b><span>Marque ★ Ideal cuando sea una de sus materias preferentes.</span></div>
       </div>
       <div class="knowledge-key"><b>1</b> Formación académica · <b>2</b> Experiencia docente · <b>3</b> Experiencia laboral</div>
     </div>
 
-    <div class="card program-navigator">
-      <button class="nav-arrow" onclick="prevProgram()">←</button>
-      <div class="program-picker">
-        <label>Programa educativo
-          <select id="programSelect" onchange="selectProgram(+this.value)"></select>
-        </label>
-        <div id="programStep"></div>
+    <div class="card program-header-flow">
+      <div class="program-step-badge" id="programStep"></div>
+      <div class="program-name-flow" id="programFlowName"></div>
+      <div class="flow-buttons">
+        <button onclick="prevProgram()">← Anterior</button>
+        <button class="primary" onclick="saveAndNextProgram()">Guardar y seguir al siguiente programa →</button>
       </div>
-      <button class="nav-arrow" onclick="nextProgram()">→</button>
     </div>
 
     <div id="programs"></div>
@@ -156,13 +169,13 @@
       <div>
         <span class="section-kicker">Administración</span>
         <h2>Configuración y base maestra</h2>
-        <p>Acceso administrativo temporal. La protección definitiva se implementará con cuentas institucionales <b>@uteq.edu.mx</b>.</p>
+        <p>Solo disponible para <b>ivan.gutierrez@uteq.edu.mx</b> cuando la autenticación institucional esté configurada.</p>
       </div>
       <span class="admin-lock">🔒 Administración</span>
     </div>
 
-    <details class="card admin-details">
-      <summary>Configuración institucional de baja frecuencia</summary>
+    <details class="card admin-details" open>
+      <summary>Configuración institucional</summary>
       <div class="admin-grid">
         <label>Jefe de Unidad<input id="jefe"></label>
         <label>Periodo de vigencia predeterminado<input id="periodoAdmin"></label>
@@ -211,13 +224,12 @@
   <div>La información vertida en esta plataforma se administra bajo los mismos criterios señalados en el
     <a href="https://www.uteq.edu.mx/ConoceLaUTEQ/Default.aspx?gXr=217" target="_blank" rel="noopener">Aviso de Privacidad de la UTEQ</a>.
   </div>
-  <button class="admin-access" onclick="unlockAdmin()">Acceso administración</button>
 </footer>
 
 <div id="toast" class="toast"></div>
 
-<script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+<script src="firebase-config.js"></script>
 <script src="catalog.js"></script>
-<script src="app.js"></script>
+<script type="module" src="app.js"></script>
 </body>
 </html>
