@@ -7500,3 +7500,465 @@ body.printing-profile #printArea{
   padding-left:4px!important;
   padding-right:4px!important;
 }
+
+
+/* =========================================================
+   V46 · Planeación cuatrimestral
+   ========================================================= */
+
+.planning-hero{
+  display:grid;
+  grid-template-columns:1fr auto;
+  gap:16px;
+  align-items:center;
+}
+.planning-hero h2{margin:3px 0 5px}
+.planning-period-badge{
+  padding:7px 12px;
+  border:1px solid #b8ced8;
+  border-radius:999px;
+  background:#f3f8fa;
+  color:#20526a;
+  font-size:9px;
+  font-weight:800;
+  white-space:nowrap;
+}
+.planning-reference-banner{
+  display:flex;
+  gap:12px;
+  align-items:flex-start;
+  border-left:5px solid #2e7986!important;
+  background:linear-gradient(90deg,#eef8f8,#f8fbfc)!important;
+}
+.planning-reference-icon{
+  width:28px;height:28px;min-width:28px;
+  display:grid;place-items:center;
+  border-radius:50%;
+  background:#246d79;color:#fff;
+  font-weight:900;font-size:15px;
+}
+.planning-reference-banner strong{
+  display:block;
+  color:#174d5b;
+  font-size:13px;
+  margin-bottom:4px;
+}
+.planning-reference-banner p{
+  margin:0;
+  color:#415966;
+  font-size:10.5px;
+  line-height:1.45;
+}
+.planning-question{position:relative}
+.planning-question-head{
+  display:flex;
+  align-items:flex-start;
+  justify-content:space-between;
+  gap:12px;
+  margin-bottom:10px;
+}
+.planning-question-head>div{
+  display:flex;
+  gap:10px;
+  align-items:flex-start;
+}
+.planning-question-head h3{
+  margin:0 0 3px;
+  font-size:15px;
+  color:#123d59;
+}
+.planning-question-head p{
+  margin:0;
+  font-size:9.7px;
+  color:#5c6e78;
+}
+.planning-number{
+  width:28px;height:28px;min-width:28px;
+  border-radius:8px;
+  display:grid;place-items:center;
+  background:#1e5d7c;color:#fff;
+  font-size:13px;font-weight:900;
+}
+.planning-number.optional{background:#80919b}
+.planning-optional-badge{
+  padding:5px 8px;
+  border-radius:999px;
+  background:#eef2f4;
+  color:#65747c;
+  font-size:8px;
+  font-weight:800;
+}
+.planning-choice-row{
+  display:flex;
+  gap:8px;
+  flex-wrap:wrap;
+  margin:7px 0 10px;
+}
+.planning-choice-row label{
+  display:inline-flex;
+  align-items:center;
+  gap:6px;
+  min-height:34px;
+  padding:6px 10px;
+  border:1px solid #cad9e0;
+  border-radius:9px;
+  background:#fff;
+  color:#294b5e;
+  font-size:9.5px;
+  font-weight:700;
+}
+.planning-choice-row input{accent-color:#24795f}
+.planning-conditional.hidden{display:none!important}
+.planning-wide-label,
+.planning-two-cols label{
+  display:flex;
+  flex-direction:column;
+  gap:5px;
+  color:#294b5e;
+  font-size:9px;
+  font-weight:800;
+}
+.planning-wide-label input,
+.planning-two-cols input{
+  min-height:40px;
+  padding:8px 10px;
+  border:1px solid #c5d6df;
+  border-radius:8px;
+  font-size:11px;
+}
+.planning-two-cols{
+  display:grid;
+  grid-template-columns:1fr 1fr;
+  gap:10px;
+}
+.planning-schedule-help{
+  margin:10px 0 6px;
+  font-size:8.8px;
+  color:#647a86;
+}
+.planning-schedule-wrap{
+  overflow-x:auto;
+  border:1px solid #d3e0e6;
+  border-radius:10px;
+}
+.planning-schedule-table{
+  width:100%;
+  min-width:690px;
+  border-collapse:collapse;
+  table-layout:fixed;
+}
+.planning-schedule-table th,
+.planning-schedule-table td{
+  border:1px solid #dbe5e9;
+  padding:6px;
+  text-align:center;
+  font-size:9px;
+}
+.planning-schedule-table thead th{
+  background:#1d5875;
+  color:#fff;
+  font-weight:800;
+}
+.planning-schedule-table tbody th{
+  width:115px;
+  background:#f5f8f9;
+  color:#365463;
+  font-weight:800;
+}
+.planning-schedule-table .planning-late-row th,
+.planning-schedule-table .planning-late-row td{
+  background:#eceff1;
+  color:#647078;
+}
+.planning-slot-check{
+  width:28px;height:28px;
+  display:grid;place-items:center;
+  margin:auto;
+}
+.planning-slot-check input{
+  position:absolute;
+  opacity:0;
+  pointer-events:none;
+}
+.planning-slot-check span{
+  width:26px;height:26px;
+  display:grid;place-items:center;
+  border:1px solid #b8cbd4;
+  border-radius:7px;
+  background:#fff;
+  color:transparent;
+  font-weight:900;
+}
+.planning-slot-check input:checked + span{
+  background:#dff2e8;
+  border-color:#68ae86;
+  color:#207148;
+}
+.planning-examples{
+  padding:8px 10px;
+  border-left:4px solid #e1a44a;
+  background:#fff9ee;
+  color:#6c5b3b;
+  font-size:8.8px;
+  line-height:1.4;
+}
+.planning-management-list{
+  display:grid;
+  gap:7px;
+}
+.planning-management-row{
+  display:grid;
+  grid-template-columns:28px minmax(0,1fr) 78px;
+  gap:7px;
+  align-items:center;
+}
+.planning-management-row>span{
+  width:28px;height:28px;
+  display:grid;place-items:center;
+  border-radius:7px;
+  background:#eaf2f6;
+  color:#28556e;
+  font-size:9px;font-weight:900;
+}
+.planning-management-row input{
+  min-height:38px;
+  padding:7px 9px;
+  border:1px solid #c7d7df;
+  border-radius:8px;
+  font-size:10px;
+}
+.planning-management-row button,
+.planning-add-btn{
+  min-height:34px;
+  border-radius:8px;
+}
+.planning-add-btn{
+  margin-top:8px;
+  background:#edf7f3!important;
+  border-color:#9bc7b4!important;
+  color:#23694d!important;
+}
+.planning-comments{
+  width:100%;
+  resize:vertical;
+  min-height:95px;
+  padding:10px;
+  border:1px solid #c7d7df;
+  border-radius:9px;
+  font:inherit;
+  box-sizing:border-box;
+}
+.planning-actions{
+  display:flex;
+  justify-content:flex-end;
+  gap:8px;
+  flex-wrap:wrap;
+}
+.planning-question-error{
+  border:2px solid #ef6f42!important;
+  background:#fff8f4!important;
+  box-shadow:0 0 0 4px rgba(239,111,66,.10)!important;
+}
+.planning-admin-panel{
+  border-left:4px solid #2b7885!important;
+}
+.planning-admin-status{
+  display:inline-flex;
+  align-items:center;
+  padding:4px 7px;
+  border-radius:999px;
+  font-size:8px;
+  font-weight:800;
+  white-space:nowrap;
+}
+.planning-admin-status.enabled{background:#e4f4eb;color:#216844}
+.planning-admin-status.disabled{background:#edf1f3;color:#64727a}
+.planning-admin-reference{
+  margin:8px 0;
+  padding:7px 9px;
+  border-radius:8px;
+  background:#f1f7f8;
+  color:#49616c;
+  font-size:8.5px;
+  line-height:1.35;
+}
+.planning-toggle-btn{
+  width:100%;
+  min-height:38px;
+  font-weight:800;
+}
+.planning-toggle-btn.enable{
+  background:#e4f4eb!important;
+  color:#216844!important;
+  border-color:#8fc3a8!important;
+}
+.planning-toggle-btn.disable{
+  background:#fff1ef!important;
+  color:#963b32!important;
+  border-color:#dfa39b!important;
+}
+
+/* Página de planeación nunca forma parte de la impresión */
+@media print{
+  #planeacion,
+  #navPlanning{
+    display:none!important;
+  }
+}
+
+/* =========================================================
+   V46 · Asignatura: nunca más de 2 renglones.
+   Si alguna materia necesita más, la tarjeta usa una rejilla
+   de mayor ancho para Asignatura y compacta el resto.
+   ========================================================= */
+@media (min-width:1180px){
+  .semester-card.needs-wide-subjects .course-columns,
+  .semester-card.needs-wide-subjects .course{
+    grid-template-columns:
+      minmax(185px,245px)
+      48px
+      58px
+      146px
+      60px
+      56px!important;
+    column-gap:3px!important;
+  }
+  .semester-card.needs-wide-subjects .coord-fav-inline-note{
+    grid-template-columns:
+      minmax(185px,245px)
+      48px
+      58px
+      146px
+      60px
+      56px!important;
+    column-gap:3px!important;
+  }
+  .semester-card.needs-wide-subjects .course .name,
+  .semester-card.needs-wide-subjects .course-columns>span:first-child{
+    max-width:245px!important;
+  }
+  .semester-card.needs-wide-subjects .area-buttons{
+    grid-template-columns:repeat(7,19px)!important;
+    gap:1px!important;
+  }
+  .semester-card.needs-wide-subjects .area-buttons .mini{
+    width:19px!important;
+    min-width:19px!important;
+    max-width:19px!important;
+    padding:1px 0!important;
+    font-size:7px!important;
+  }
+  .semester-card.needs-wide-subjects .comp-buttons .mini{
+    width:25px!important;
+    min-width:25px!important;
+    max-width:25px!important;
+  }
+  .semester-card.needs-wide-subjects .coord-row-check,
+  .semester-card.needs-wide-subjects .ideal-btn{
+    width:26px!important;
+    height:26px!important;
+    min-width:26px!important;
+    min-height:26px!important;
+    max-width:26px!important;
+    max-height:26px!important;
+  }
+}
+
+@media (min-width:1000px) and (max-width:1179px){
+  .semester-card.needs-wide-subjects .course-columns,
+  .semester-card.needs-wide-subjects .course{
+    grid-template-columns:
+      minmax(145px,190px)
+      45px
+      55px
+      132px
+      54px
+      50px!important;
+    column-gap:2px!important;
+  }
+  .semester-card.needs-wide-subjects .coord-fav-inline-note{
+    grid-template-columns:
+      minmax(145px,190px)
+      45px
+      55px
+      132px
+      54px
+      50px!important;
+    column-gap:2px!important;
+  }
+  .semester-card.needs-wide-subjects .course .name,
+  .semester-card.needs-wide-subjects .course-columns>span:first-child{
+    max-width:190px!important;
+  }
+}
+
+/* =========================================================
+   V46 · PDF móvil horizontal real
+   ========================================================= */
+.mobile-pdf-capture{
+  overflow:visible!important;
+}
+.mobile-pdf-capture #printArea{
+  position:absolute!important;
+  left:-20000px!important;
+  top:0!important;
+  width:1296px!important;
+  max-width:none!important;
+  overflow:visible!important;
+  background:#fff!important;
+}
+.mobile-pdf-capture #printArea .sheet{
+  width:1296px!important;
+  min-width:1296px!important;
+  max-width:1296px!important;
+  margin:0!important;
+  border:0!important;
+  box-shadow:none!important;
+  box-sizing:border-box!important;
+}
+.mobile-pdf-capture #printArea .profile-first-sheet,
+.mobile-pdf-capture #printArea .program-trio{
+  min-height:741px!important;
+  height:741px!important;
+  max-height:741px!important;
+}
+
+/* =========================================================
+   V46 · responsive de planeación
+   ========================================================= */
+@media(max-width:780px){
+  .planning-hero{
+    grid-template-columns:1fr!important;
+  }
+  .planning-period-badge{justify-self:start}
+  .planning-question-head{
+    display:grid!important;
+    grid-template-columns:1fr!important;
+  }
+  .planning-question-head>div{min-width:0}
+  .planning-two-cols{
+    grid-template-columns:1fr!important;
+  }
+  .planning-choice-row{
+    display:grid!important;
+    grid-template-columns:1fr!important;
+  }
+  .planning-choice-row label{
+    min-height:44px!important;
+  }
+  .planning-management-row{
+    grid-template-columns:28px minmax(0,1fr)!important;
+  }
+  .planning-management-row button{
+    grid-column:2!important;
+    width:100%!important;
+  }
+  .planning-actions{
+    display:grid!important;
+    grid-template-columns:1fr!important;
+  }
+  .planning-actions button{
+    width:100%!important;
+    min-height:44px!important;
+  }
+}

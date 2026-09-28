@@ -1,0 +1,40 @@
+PERFIL PROFESOR DIN · V46
+
+NUEVA PÁGINA 4: PLANEACIÓN CUATRIMESTRAL
+- Visible sólo si Administración la habilita.
+- Si está habilitada, los puntos 1, 2 y 3 son obligatorios.
+- Cada punto permite seleccionar “No aplica”.
+- Punto 1: comisión + matriz de horarios de lunes a viernes, 07:00 a 16:00.
+  El bloque 15:00-16:00 aparece en gris.
+- Punto 2: comisiones de gestión académica, con botón para agregar campos.
+- Punto 3: participación en PIDET; si aplica, nombre del proyecto y persona coordinadora.
+- Punto 4: comentarios u observaciones opcionales.
+- Esta página NO se imprime ni forma parte del PDF.
+- La información queda visible para consulta del profesor.
+- Se muestra un aviso explícito indicando que se utiliza únicamente como
+  referencia para la elaboración de las planeaciones cuatrimestrales del periodo.
+
+ADMINISTRACIÓN
+- Nuevo control para habilitar/deshabilitar la página 4.
+- Al cambiar el periodo, la aplicación pregunta si desea habilitarla.
+- Deshabilitarla no borra información previa.
+- Los datos se guardan por periodo.
+
+EXCEL
+- El mismo archivo incorpora una hoja nueva:
+  “Planeación cuatrimestral”.
+- Incluye horario protegido, comisión, días, detalle de horarios,
+  comisiones de gestión, PIDET, comentarios y fecha de guardado.
+
+ASIGNATURAS
+- Cada nombre se mantiene en máximo 2 líneas.
+- Si alguna materia requiere más espacio, se amplía automáticamente la columna
+  Asignatura y se compactan Habilitar, Competencia, Área, Coordinador y Favorita.
+
+IMPRESIÓN MÓVIL
+- En móvil se genera un PDF Legal horizontal mediante jsPDF/html2canvas.
+- Escritorio conserva el flujo de impresión actual.
+- La página de Planeación cuatrimestral nunca se incorpora al PDF.
+
+deploy-pages.yml: NO necesita actualización.
+firestore.rules: NO necesita actualización.

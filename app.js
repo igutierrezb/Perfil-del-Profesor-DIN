@@ -5,16 +5,80 @@ import { getFirestore, doc, getDoc, setDoc, deleteDoc, collection, getDocs, onSn
 
 const $=id=>document.getElementById(id);
 const store=JSON.parse(localStorage.getItem('PAD_UTEQ')||'{}');
-const cfg=Object.assign({jefe:'Iván Gutiérrez Bautista',codigo:'EA-F-86',revision:'Rev.01',fechaRevision:'21-sep-2018',periodo:'SEP 2026 - AGO 2027',editingLocked:false,captureDeadline:null},store.cfg||{});
+const cfg=Object.assign({jefe:'Iván Gutiérrez Bautista',codigo:'EA-F-86',revision:'Rev.01',fechaRevision:'21-sep-2018',periodo:'SEP 2026 - AGO 2027',editingLocked:false,captureDeadline:null,planningEnabled:false},store.cfg||{});
 const DEFAULT_COMMON_RULES=[
   {id:'TC_IND',name:'Tronco común Industrial',programIds:['ind_plasticos','ind_procesos'],semesters:[0,1,2]},
   {id:'TC_MEC',name:'Tronco común Mecánica',programIds:['mec_ind','mec_moldes','mec_auto'],semesters:[0,1,2]}
 ];
-let answers=store.answers||{},programMeta=store.programMeta||{},customPrograms=store.customPrograms||[],programOverrides=store.programOverrides||{},disabledPrograms=store.disabledPrograms||[],programAcronyms=store.programAcronyms||{},commonRules=Array.isArray(store.commonRules)?store.commonRules:JSON.parse(JSON.stringify(DEFAULT_COMMON_RULES));
+let answers=store.answers||{},programMeta=store.programMeta||{},customPrograms=store.customPrograms||[],programOverrides=store.programOverrides||{},disabledPrograms=store.disabledPrograms||[],programAcronyms=store.programAcronyms||{},commonRules=Array.isArray(store.commonRules)?store.commonRules:JSON.parse(JSON.stringify(DEFAULT_COMMON_RULES)),planningByPeriod=(store.planningByPeriod&&typeof store.planningByPeriod==='object')?store.planningByPeriod:{};
 let currentProgramIndex=Number.isInteger(store.currentProgramIndex)?store.currentProgramIndex:0;
 let newSemesterCount=5,programEditorSemesters=[],auth=null,currentUser=null,authReady=false,db=null,cloudSettingsUnsub=null,cloudProfileMetaUnsub=null,remoteProfileLoaded=false,cloudAvailable=false,cloudSaveTimer=null,countdownTimer=null,lastSavedAt=store.lastSavedAt||null,editingCommonRuleId=null,editingProgramId=null,teacherAdminCache={};
 const allowedDomain=(window.PAD_ALLOWED_DOMAIN||'uteq.edu.mx').toLowerCase();
 const adminEmail=(window.PAD_ADMIN_EMAIL||'ivan.gutierrez@uteq.edu.mx').toLowerCase();
+
+const PLANNING_DAYS=[
+  {key:'lunes',label:'Lunes'},
+  {key:'martes',label:'Martes'},
+  {key:'miercoles',label:'Miércoles'},
+  {key:'jueves',label:'Jueves'},
+  {key:'viernes',label:'Viernes'}
+];
+const PLANNING_SLOTS=[
+  ['07:00','08:00'],['08:00','09:00'],['09:00','10:00'],['10:00','11:00'],
+  ['11:00','12:00'],['12:00','13:00'],['13:00','14:00'],['14:00','15:00'],['15:00','16:00']
+];
+
+function defaultPlanningRecord(){
+  return {
+    scheduleMode:'',
+    commissionName:'',
+    reservedSlots:[],
+    managementMode:'',
+    managementCommissions:[''],
+    pidetMode:'',
+    pidetName:'',
+    pidetCoordinator:'',
+    comments:'',
+    completedAtMs:null,
+    updatedAtMs:null
+  };
+}
+function currentPlanningRecord(create=true){
+  const period=cfg.periodo||'';
+  if(!planningByPeriod[period]&&create)planningByPeriod[period]=defaultPlanningRecord();
+  const raw=planningByPeriod[period]||defaultPlanningRecord();
+  if(!Array.isArray(raw.reservedSlots))raw.reservedSlots=[];
+  if(!Array.isArray(raw.managementCommissions)||!raw.managementCommissions.length)raw.managementCommissions=[''];
+  return raw;
+}
+function planningEnabled(){return !!cfg.planningEnabled}
+function planningEditingAllowed(){
+  return isAdmin() || (!deadlinePassed() && (individualEditOverride() || !cfg.editingLocked));
+}
+function planningSlotKey(day,start,end){return `${day}|${start}-${end}`}
+function planningSlotLabel(slotKey){
+  const [dayKey,hours='']=String(slotKey||'').split('|');
+  const day=PLANNING_DAYS.find(d=>d.key===dayKey)?.label||dayKey;
+  return `${day} ${hours}`;
+}
+function planningScheduleSummary(record){
+  const slots=Array.isArray(record?.reservedSlots)?record.reservedSlots:[];
+  if(record?.scheduleMode==='na')return 'No aplica';
+  if(record?.scheduleMode!=='yes')return '';
+  return PLANNING_DAYS.map(day=>{
+    const daySlots=slots
+      .filter(x=>String(x).startsWith(day.key+'|'))
+      .map(x=>String(x).split('|')[1])
+      .filter(Boolean);
+    return daySlots.length?`${day.label}: ${daySlots.join(', ')}`:'';
+  }).filter(Boolean).join(' | ');
+}
+function planningDaysSummary(record){
+  const slots=Array.isArray(record?.reservedSlots)?record.reservedSlots:[];
+  const days=PLANNING_DAYS.filter(day=>slots.some(x=>String(x).startsWith(day.key+'|'))).map(d=>d.label);
+  return days.join(', ');
+}
+
 
 function allPrograms(){
   const base=PROGRAMS.map(p=>{
@@ -152,6 +216,24 @@ function applyEditState(){
           :'🔒 Edición desactivada por Administración. Puede consultar todo su perfil e imprimirlo normalmente.';
     }
   }
+
+  const planningRoot=$('planeacion');
+  const planningLocked=!planningEditingAllowed();
+  if(planningRoot){
+    planningRoot.querySelectorAll('input,select,textarea,button').forEach(el=>{
+      if(el.closest('.planning-actions') && (el.textContent.includes('Volver') || el.textContent.includes('Revisión')))return;
+      el.disabled=planningLocked;
+    });
+  }
+  const planningBanner=$('planningLockedBanner');
+  if(planningBanner){
+    planningBanner.classList.toggle('hidden',!planningLocked);
+    if(planningLocked){
+      planningBanner.textContent=deadlinePassed()
+        ?'⏱ La captura de planeación está fuera de tiempo. La información permanece disponible para consulta.'
+        :'🔒 La edición de planeación está desactivada. La información permanece disponible para consulta.';
+    }
+  }
 }
 window.toggleEditingLock=async function(){
   if(!isAdmin()){toast('Solo el administrador puede cambiar este estado.');return}
@@ -210,7 +292,7 @@ function getAns(pid,s,c,name){
 function toast(msg){const t=$('toast');t.textContent=msg;t.classList.add('show');clearTimeout(toast.timer);toast.timer=setTimeout(()=>t.classList.remove('show'),2400)}
 function persist(){
   cfg.periodo=cfg.periodo||'SEP 2026 - AGO 2027';
-  store.cfg=cfg;store.answers=answers;store.programMeta=programMeta;store.customPrograms=customPrograms;store.programOverrides=programOverrides;store.disabledPrograms=disabledPrograms;store.programAcronyms=programAcronyms;store.commonRules=commonRules;store.currentProgramIndex=currentProgramIndex;store.lastSavedAt=Date.now();
+  store.cfg=cfg;store.answers=answers;store.programMeta=programMeta;store.customPrograms=customPrograms;store.programOverrides=programOverrides;store.disabledPrograms=disabledPrograms;store.programAcronyms=programAcronyms;store.commonRules=commonRules;store.planningByPeriod=planningByPeriod;store.currentProgramIndex=currentProgramIndex;store.lastSavedAt=Date.now();
   lastSavedAt=store.lastSavedAt;
   localStorage.setItem('PAD_UTEQ',JSON.stringify(store));
   updateLastSavedUI();
@@ -248,7 +330,7 @@ function applyGlobalSettings(data){
   if(Array.isArray(data.commonRules))commonRules=data.commonRules;
   currentProgramIndex=Math.min(currentProgramIndex,Math.max(0,programs().length-1));
   localStorage.setItem('PAD_UTEQ',JSON.stringify({...store,cfg,answers,programMeta,customPrograms,programOverrides,disabledPrograms,programAcronyms,commonRules,currentProgramIndex,lastSavedAt}));
-  updatePeriodBadges();renderCurrentProgram();renderAdmin();updateCountdownUI();applyEditState();updateNavState();
+  updatePeriodBadges();renderCurrentProgram();renderAdmin();updateCountdownUI();updatePlanningAvailability();renderPlanning();applyEditState();updateNavState();
 }
 async function saveGlobalSettings(action='Configuración global actualizada'){
   if(!db||!isAdmin())return;
@@ -278,6 +360,8 @@ function resetLocalTeacherData({keepProfile=false}={}){
   store.finalizedAtMs=null;
   store.individualEditEnabled=false;
   store.profileResetToken=null;
+  planningByPeriod={};
+  store.planningByPeriod=planningByPeriod;
   currentProgramIndex=0;
   lastSavedAt=null;
 
@@ -306,6 +390,7 @@ function profileCloudPayload(){
     finalizedAtMs:store.finalizedAtMs||null,
     individualEditEnabled:!!store.individualEditEnabled,
     profileResetToken:store.profileResetToken||null,
+    planningByPeriod:JSON.parse(JSON.stringify(planningByPeriod)),
     updatedAt:serverTimestamp()
   };
 }
@@ -335,10 +420,13 @@ async function loadRemoteProfile(){
       if('finalizedAtMs' in d)store.finalizedAtMs=Number(d.finalizedAtMs)||null;
       if('individualEditEnabled' in d)store.individualEditEnabled=!!d.individualEditEnabled;
       if('profileResetToken' in d)store.profileResetToken=d.profileResetToken||null;
-      store.answers=answers;store.programMeta=programMeta;
+      if(d.planningByPeriod&&typeof d.planningByPeriod==='object')planningByPeriod=d.planningByPeriod;
+      store.answers=answers;store.programMeta=programMeta;store.planningByPeriod=planningByPeriod;
       localStorage.setItem('PAD_UTEQ',JSON.stringify({...store,cfg,customPrograms,programOverrides,disabledPrograms,programAcronyms,commonRules,currentProgramIndex,lastSavedAt}));
       loadProfileValuesOnly();
       renderCurrentProgram();
+      renderPlanning();
+      updatePlanningAvailability();
       updateProgress();
     }
     if(!snap.exists()){
@@ -415,19 +503,19 @@ async function initCloud(){
   },e=>console.warn('No fue posible escuchar el estado del perfil',e));
 }
 async function loadTeachersForExport(){
-  if(!db||!isAdmin())return [{name:fullName()||'(Profesor sin nombre)',category:store.profile?.categoria||'',answers,programMeta,email:currentUser?.email||''}];
+  if(!db||!isAdmin())return [{name:fullName()||'(Profesor sin nombre)',category:store.profile?.categoria||'',answers,programMeta,planningByPeriod,email:currentUser?.email||''}];
   try{
     const snap=await getDocs(collection(db,'profiles'));
     const rows=[];
     snap.forEach(ds=>{
       const d=ds.data(),p=d.profile||{};
       const name=[p.apPat,p.apMat,p.nombres].filter(Boolean).join(' ')||d.displayName||d.email||'(Sin nombre)';
-      rows.push({name,category:p.categoria||'',answers:d.answers||{},programMeta:d.programMeta||{},email:d.email||'',uid:ds.id,submittedPeriod:d.submittedPeriod||null,finalizedAtMs:Number(d.finalizedAtMs)||null});
+      rows.push({name,category:p.categoria||'',answers:d.answers||{},programMeta:d.programMeta||{},planningByPeriod:d.planningByPeriod||{},email:d.email||'',uid:ds.id,submittedPeriod:d.submittedPeriod||null,finalizedAtMs:Number(d.finalizedAtMs)||null});
     });
-    return rows.length?rows:[{name:fullName()||'(Profesor sin nombre)',category:store.profile?.categoria||'',answers,programMeta,email:currentUser?.email||''}];
+    return rows.length?rows:[{name:fullName()||'(Profesor sin nombre)',category:store.profile?.categoria||'',answers,programMeta,planningByPeriod,email:currentUser?.email||''}];
   }catch(e){
     console.warn('No fue posible leer todos los perfiles',e);
-    return [{name:fullName()||'(Profesor sin nombre)',category:store.profile?.categoria||'',answers,programMeta,email:currentUser?.email||''}];
+    return [{name:fullName()||'(Profesor sin nombre)',category:store.profile?.categoria||'',answers,programMeta,planningByPeriod,email:currentUser?.email||''}];
   }
 }
 function teacherAnswer(t,pid,s,c,name){
@@ -594,8 +682,224 @@ function initAuth(){
   });
 }
 
+
+function updateStepLabels(){
+  const enabled=planningEnabled();
+  if($('profileStepBadge'))$('profileStepBadge').textContent=enabled?'Paso 1 de 4':'Paso 1 de 3';
+  if($('captureStepKicker'))$('captureStepKicker').textContent=enabled?'Paso 2 de 4':'Paso 2 de 3';
+  if($('reviewStepKicker'))$('reviewStepKicker').textContent=enabled?'Paso 3 de 4':'Paso 3 de 3';
+  if($('planningStepKicker'))$('planningStepKicker').textContent='Paso 4 de 4';
+}
+function updatePlanningAvailability(){
+  const enabled=planningEnabled();
+  const nav=$('navPlanning');
+  if(nav)nav.classList.toggle('hidden',!enabled);
+  if($('planningPeriodBadge'))$('planningPeriodBadge').textContent=`Periodo · ${cfg.periodo}`;
+  updateStepLabels();
+
+  const st=$('planningAdminStatus');
+  const btn=$('planningToggleBtn');
+  if(st){
+    st.textContent=enabled?'Habilitada · obligatoria':'Deshabilitada';
+    st.className=`planning-admin-status ${enabled?'enabled':'disabled'}`;
+  }
+  if(btn){
+    btn.textContent=enabled?'Deshabilitar página de planeación':'Habilitar página de planeación';
+    btn.className=`planning-toggle-btn ${enabled?'disable':'enable'}`;
+  }
+
+  if(!enabled && $('planeacion')?.classList.contains('active')){
+    window.go('perfil',true);
+  }
+}
+window.togglePlanningPage=async function(){
+  if(!isAdmin())return;
+  const next=!cfg.planningEnabled;
+  const ok=confirm(
+    next
+      ?'¿Habilitar la página de Planeación cuatrimestral?\n\nSi se habilita, sus tres apartados principales serán obligatorios para los profesores. La información NO se incluirá en el PDF del Perfil del Profesor.'
+      :'¿Deshabilitar la página de Planeación cuatrimestral?\n\nLa información ya capturada se conservará, pero la página dejará de ser obligatoria y no se mostrará a los profesores.'
+  );
+  if(!ok)return;
+  cfg.planningEnabled=next;
+  persist();
+  await saveGlobalSettings(next?'Página de planeación cuatrimestral habilitada':'Página de planeación cuatrimestral deshabilitada');
+  updatePlanningAvailability();
+  renderPlanning();
+  renderAdmin();
+  toast(next?'Planeación cuatrimestral habilitada.':'Planeación cuatrimestral deshabilitada.');
+}
+
+function renderPlanningScheduleGrid(record){
+  const selected=new Set(record.reservedSlots||[]);
+  return `<table class="planning-schedule-table">
+    <thead><tr><th>Horario</th>${PLANNING_DAYS.map(d=>`<th>${d.label}</th>`).join('')}</tr></thead>
+    <tbody>
+      ${PLANNING_SLOTS.map(([start,end],idx)=>`<tr class="${idx===PLANNING_SLOTS.length-1?'planning-late-row':''}">
+        <th>${start} - ${end}</th>
+        ${PLANNING_DAYS.map(day=>{
+          const k=planningSlotKey(day.key,start,end);
+          return `<td><label class="planning-slot-check" title="${day.label} ${start} - ${end}">
+            <input type="checkbox" data-planning-slot="${k}" ${selected.has(k)?'checked':''}>
+            <span>✓</span>
+          </label></td>`;
+        }).join('')}
+      </tr>`).join('')}
+    </tbody>
+  </table>`;
+}
+function renderPlanningManagementList(record){
+  const rows=(record.managementCommissions||['']).length?record.managementCommissions:[''];
+  return rows.map((value,i)=>`<div class="planning-management-row">
+    <span>${i+1}</span>
+    <input data-planning-management-index="${i}" value="${escapeHtml(value||'')}" placeholder="Ej. Enlace de calidad">
+    <button type="button" onclick="removePlanningCommission(${i})" ${rows.length===1?'disabled':''}>Eliminar</button>
+  </div>`).join('');
+}
+function renderPlanning(){
+  const root=$('planeacion');
+  if(!root)return;
+  const record=currentPlanningRecord(true);
+
+  root.querySelectorAll('input[name="planningScheduleMode"]').forEach(x=>x.checked=x.value===record.scheduleMode);
+  root.querySelectorAll('input[name="planningManagementMode"]').forEach(x=>x.checked=x.value===record.managementMode);
+  root.querySelectorAll('input[name="planningPiderMode"]').forEach(x=>x.checked=x.value===record.pidetMode);
+
+  if($('planningCommissionName'))$('planningCommissionName').value=record.commissionName||'';
+  if($('planningPiderName'))$('planningPiderName').value=record.pidetName||'';
+  if($('planningPiderCoordinator'))$('planningPiderCoordinator').value=record.pidetCoordinator||'';
+  if($('planningComments'))$('planningComments').value=record.comments||'';
+  if($('planningScheduleGrid'))$('planningScheduleGrid').innerHTML=renderPlanningScheduleGrid(record);
+  if($('planningManagementList'))$('planningManagementList').innerHTML=renderPlanningManagementList(record);
+
+  updatePlanningConditionalUI();
+  updatePlanningAvailability();
+  applyEditState();
+}
+function updatePlanningConditionalUI(){
+  const record=currentPlanningRecord(true);
+  if($('planningScheduleFields'))$('planningScheduleFields').classList.toggle('hidden',record.scheduleMode!=='yes');
+  if($('planningManagementFields'))$('planningManagementFields').classList.toggle('hidden',record.managementMode!=='yes');
+  if($('planningPiderFields'))$('planningPiderFields').classList.toggle('hidden',record.pidetMode!=='yes');
+}
+function collectPlanning(){
+  const record=currentPlanningRecord(true);
+  const scheduleMode=document.querySelector('input[name="planningScheduleMode"]:checked')?.value||'';
+  const managementMode=document.querySelector('input[name="planningManagementMode"]:checked')?.value||'';
+  const pidetMode=document.querySelector('input[name="planningPiderMode"]:checked')?.value||'';
+
+  record.scheduleMode=scheduleMode;
+  record.managementMode=managementMode;
+  record.pidetMode=pidetMode;
+  record.commissionName=$('planningCommissionName')?.value.trim()||'';
+  record.reservedSlots=[...document.querySelectorAll('[data-planning-slot]:checked')].map(x=>x.dataset.planningSlot);
+  record.managementCommissions=[...document.querySelectorAll('[data-planning-management-index]')]
+    .map(x=>x.value.trim());
+  if(!record.managementCommissions.length)record.managementCommissions=[''];
+  record.pidetName=$('planningPiderName')?.value.trim()||'';
+  record.pidetCoordinator=$('planningPiderCoordinator')?.value.trim()||'';
+  record.comments=$('planningComments')?.value.trim()||'';
+  record.updatedAtMs=Date.now();
+  planningByPeriod[cfg.periodo]=record;
+  store.planningByPeriod=planningByPeriod;
+  return record;
+}
+window.planningModeChanged=function(){
+  collectPlanning();
+  updatePlanningConditionalUI();
+  persist();
+  updateNavState();
+}
+window.addPlanningCommission=function(){
+  if(!planningEditingAllowed())return;
+  const record=collectPlanning();
+  record.managementCommissions.push('');
+  planningByPeriod[cfg.periodo]=record;
+  persist();
+  renderPlanning();
+  requestAnimationFrame(()=>{
+    const inputs=document.querySelectorAll('[data-planning-management-index]');
+    inputs[inputs.length-1]?.focus();
+  });
+}
+window.removePlanningCommission=function(index){
+  if(!planningEditingAllowed())return;
+  const record=collectPlanning();
+  if(record.managementCommissions.length<=1)return;
+  record.managementCommissions.splice(index,1);
+  planningByPeriod[cfg.periodo]=record;
+  persist();
+  renderPlanning();
+}
+function clearPlanningValidation(){
+  document.querySelectorAll('#planeacion .planning-question-error').forEach(x=>x.classList.remove('planning-question-error'));
+}
+function validatePlanning(opts={}){
+  if(!planningEnabled())return {ok:true,errors:[],firstCard:null};
+  const record=opts.collect===false?currentPlanningRecord(true):collectPlanning();
+  const errors=[];
+  let firstCard=null;
+  const mark=(cardId,msg)=>{
+    errors.push(msg);
+    if(!firstCard)firstCard=$(cardId);
+    if(opts.visual&&$(cardId))$(cardId).classList.add('planning-question-error');
+  };
+  if(opts.visual)clearPlanningValidation();
+
+  if(!['yes','na'].includes(record.scheduleMode)){
+    mark('planningScheduleCard','Indique si requiere reservar horario por alguna comisión o seleccione No aplica.');
+  }else if(record.scheduleMode==='yes'){
+    if(!record.commissionName)mark('planningScheduleCard','Capture el nombre de la comisión para la que requiere liberar horario.');
+    if(!(record.reservedSlots||[]).length)mark('planningScheduleCard','Seleccione al menos un bloque de día y horario que deba mantenerse libre.');
+  }
+
+  if(!['yes','na'].includes(record.managementMode)){
+    mark('planningManagementCard','Indique sus comisiones de gestión académica o seleccione No aplica.');
+  }else if(record.managementMode==='yes'){
+    const valid=(record.managementCommissions||[]).map(x=>String(x||'').trim()).filter(Boolean);
+    if(!valid.length)mark('planningManagementCard','Agregue al menos una comisión de gestión académica.');
+  }
+
+  if(!['yes','na'].includes(record.pidetMode)){
+    mark('planningPiderCard','Indique si participa en un proyecto PIDET o seleccione No aplica.');
+  }else if(record.pidetMode==='yes'){
+    if(!record.pidetName)mark('planningPiderCard','Capture el nombre del proyecto PIDET.');
+    if(!record.pidetCoordinator)mark('planningPiderCard','Capture quién coordina el proyecto PIDET.');
+  }
+
+  if(opts.visual&&firstCard){
+    requestAnimationFrame(()=>firstCard.scrollIntoView({behavior:'smooth',block:'center'}));
+  }
+  return {ok:!errors.length,errors,firstCard};
+}
+window.savePlanning=async function(show=false){
+  if(!planningEnabled()){toast('La página de planeación está deshabilitada.');return false}
+  if(!planningEditingAllowed()){toast('La edición de planeación está cerrada.');return false}
+  const v=validatePlanning({visual:true});
+  if(!v.ok){
+    $('planningErrors').innerHTML=statusBox(v.errors,'Complete la información obligatoria de planeación.');
+    return false;
+  }
+  const record=currentPlanningRecord(true);
+  record.completedAtMs=Date.now();
+  record.updatedAtMs=Date.now();
+  planningByPeriod[cfg.periodo]=record;
+  $('planningErrors').innerHTML='<div class="status-box ok"><b>Información de planeación completa.</b><br>Se conservará para consulta y para el concentrado administrativo.</div>';
+  persist();
+  await writeAudit('Planeación cuatrimestral guardada');
+  updateNavState();
+  if(show)toast('Información de planeación guardada.');
+  return true;
+}
+window.savePlanningAndReview=async function(){
+  const ok=await savePlanning(false);
+  if(!ok)return;
+  toast('Planeación guardada.');
+  window.go('revision',true);
+}
 window.go=function(id,force=false){
   if(id==='admin'&&!isAdmin()){toast('Administración disponible únicamente para ivan.gutierrez@uteq.edu.mx');return}
+  if(id==='planeacion'&&!planningEnabled()){toast('La página de planeación cuatrimestral está deshabilitada para este periodo.');return}
   if(id==='captura'&&!force){const p=validateProfile({visual:true,focusFirst:true});if(!p.ok){$('profileErrors').innerHTML=statusBox(p.errors,'Complete los datos obligatorios antes de continuar.');return}}
   if(id==='revision'&&!force){
     const v=validateAll();
@@ -603,7 +907,10 @@ window.go=function(id,force=false){
   }
   document.querySelectorAll('.view').forEach(x=>x.classList.remove('active'));$(id).classList.add('active');
   document.querySelectorAll('.main-nav button').forEach(b=>b.classList.toggle('active',b.dataset.view===id));
-  if(id==='revision')buildPrint();if(id==='admin')renderAdmin();scrollTo(0,0);
+  if(id==='revision')buildPrint();
+  if(id==='planeacion')renderPlanning();
+  if(id==='admin')renderAdmin();
+  scrollTo(0,0);
 }
 document.querySelectorAll('.main-nav button').forEach(b=>b.onclick=()=>window.go(b.dataset.view));
 
@@ -616,11 +923,16 @@ function updateNavState(){
   const pBtn=document.querySelector('.main-nav button[data-view="perfil"]');
   const cBtn=document.querySelector('.main-nav button[data-view="captura"]');
   const rBtn=document.querySelector('.main-nav button[data-view="revision"]');
+  const plBtn=document.querySelector('.main-nav button[data-view="planeacion"]');
   if(pBtn)pBtn.classList.toggle('complete',profileLooksComplete());
   if(cBtn)cBtn.classList.toggle('complete',validateCapture().ok);
   if(rBtn){
     rBtn.classList.toggle('complete',validateAll().ok);
     rBtn.classList.toggle('readable',reviewAvailable()&&!validateAll().ok);
+  }
+  if(plBtn){
+    plBtn.classList.toggle('complete',planningEnabled()&&validatePlanning({collect:false}).ok);
+    plBtn.classList.toggle('hidden',!planningEnabled());
   }
 }
 
@@ -985,6 +1297,18 @@ function captureGuideHtml(){
   </div>`;
 }
 
+function adjustSemesterColumnWidths(){
+  document.querySelectorAll('.semester-card').forEach(card=>{
+    card.classList.remove('needs-wide-subjects');
+    const names=[...card.querySelectorAll('.course .name')].filter(el=>!el.closest('.na-clean'));
+    const needsMore=names.some(el=>{
+      const cs=getComputedStyle(el);
+      const lh=parseFloat(cs.lineHeight)||parseFloat(cs.fontSize)*1.15||12;
+      return el.scrollHeight>(lh*2.12);
+    });
+    if(needsMore)card.classList.add('needs-wide-subjects');
+  });
+}
 function renderCurrentProgram(){
   const p=currentProgram();if(!p)return;
   $('programStep').textContent=`Programa ${currentProgramIndex+1} de ${programs().length}`;
@@ -1082,6 +1406,7 @@ function renderCurrentProgram(){
     flowBtn.textContent=lastProgram?'Continuar a revisión e impresión →':'Guardar y seguir →';
     flowBtn.onclick=()=>saveAndNextProgram();
   }
+  requestAnimationFrame(adjustSemesterColumnWidths);
   updateProgress();lockRevisionNav();updateNavState();applyEditState();
   refreshCaptureErrorState();
 }
@@ -1231,7 +1556,64 @@ async function finalizeCurrentProfile(){
   await writeAudit('Perfil finalizado para impresión/guardado PDF');
   applyEditState();updateNavState();
 }
-function openProfilePrintDialog(){
+function mobilePrintClient(){
+  const ua=navigator.userAgent||'';
+  return /iPhone|iPad|iPod|Android|Mobile/i.test(ua)
+    || (window.matchMedia&&window.matchMedia('(max-width: 780px)').matches);
+}
+async function createMobileLandscapePdf(){
+  if(!window.html2canvas||!window.jspdf?.jsPDF)return false;
+  const sheets=[...document.querySelectorAll('#printArea .sheet')];
+  if(!sheets.length)return false;
+
+  document.body.classList.add('mobile-pdf-capture');
+  try{
+    const {jsPDF}=window.jspdf;
+    const pageW=355.6; // Legal landscape: 14 in
+    const pageH=215.9; // 8.5 in
+    const margin=4;
+    const pdf=new jsPDF({orientation:'landscape',unit:'mm',format:[pageW,pageH],compress:true});
+
+    for(let i=0;i<sheets.length;i++){
+      const sheet=sheets[i];
+      if(i>0)pdf.addPage([pageW,pageH],'landscape');
+      const canvas=await window.html2canvas(sheet,{
+        scale:2,
+        useCORS:true,
+        backgroundColor:'#ffffff',
+        logging:false,
+        scrollX:0,
+        scrollY:0,
+        windowWidth:sheet.scrollWidth,
+        windowHeight:sheet.scrollHeight
+      });
+      const maxW=pageW-(margin*2),maxH=pageH-(margin*2);
+      const ratio=Math.min(maxW/canvas.width,maxH/canvas.height);
+      const w=canvas.width*ratio,h=canvas.height*ratio;
+      const x=(pageW-w)/2,y=(pageH-h)/2;
+      pdf.addImage(canvas.toDataURL('image/jpeg',0.94),'JPEG',x,y,w,h,undefined,'FAST');
+    }
+
+    const safePeriod=String(cfg.periodo||'Periodo').replace(/[^a-z0-9]+/gi,'_');
+    pdf.save(`Perfil_Profesor_DIN_${safePeriod}.pdf`);
+    return true;
+  }finally{
+    document.body.classList.remove('mobile-pdf-capture');
+  }
+}
+async function openProfilePrintDialog(){
+  if(mobilePrintClient()){
+    try{
+      const generated=await createMobileLandscapePdf();
+      if(generated){
+        toast('PDF horizontal generado.');
+        return;
+      }
+    }catch(e){
+      console.warn('PDF horizontal móvil no disponible; se usará impresión del navegador.',e);
+    }
+  }
+
   document.body.classList.add('printing-profile');
   const cleanup=()=>document.body.classList.remove('printing-profile');
   window.addEventListener('afterprint',cleanup,{once:true});
@@ -1243,6 +1625,16 @@ window.printProfile=async function(){
     window.go('captura',true);
     showCaptureErrors(v.errors);
     return;
+  }
+
+  if(planningEnabled()){
+    const pv=validatePlanning({visual:true});
+    if(!pv.ok){
+      $('planningErrors').innerHTML=statusBox(pv.errors,'Antes de finalizar, complete la Planeación cuatrimestral o seleccione No aplica donde corresponda.');
+      window.go('planeacion',true);
+      toast('Complete la Planeación cuatrimestral antes de finalizar.');
+      return;
+    }
   }
 
   // Si ya estaba finalizado, únicamente reconstruye e imprime.
@@ -1310,10 +1702,19 @@ window.saveAdmin=function(){
   cfg.revision=$('revisionCal').value.trim()||cfg.revision;
   cfg.fechaRevision=$('fechaRevision').value.trim()||cfg.fechaRevision;
   cfg.periodo=$('periodoAdmin').value.trim()||cfg.periodo;
-  // El periodo es solo metadato de vigencia: nunca limpia profile, answers ni programMeta.
-  updatePeriodBadges();persist();
+
+  if(previousPeriod!==cfg.periodo){
+    cfg.planningEnabled=confirm(
+      `El periodo cambió de "${previousPeriod}" a "${cfg.periodo}".\n\n`+
+      `¿Desea habilitar para este periodo la página 4 de Planeación cuatrimestral?\n\n`+
+      `Si la habilita, sus tres apartados principales serán obligatorios. La información no se imprimirá ni formará parte del PDF del Perfil del Profesor.`
+    );
+  }
+
+  // El cambio de periodo nunca borra profile, answers, programMeta ni planeaciones de periodos anteriores.
+  updatePeriodBadges();persist();updatePlanningAvailability();renderPlanning();
   saveGlobalSettings(previousPeriod===cfg.periodo?'Configuración institucional actualizada':`Periodo actualizado de ${previousPeriod} a ${cfg.periodo} sin borrar perfiles`);
-  toast(previousPeriod===cfg.periodo?'Configuración guardada.':'Periodo actualizado. Los datos capturados se conservaron.');
+  toast(previousPeriod===cfg.periodo?'Configuración guardada.':`Periodo actualizado. Planeación ${cfg.planningEnabled?'habilitada':'deshabilitada'} para el nuevo periodo.`);
 }
 
 function timestampToMs(value){
@@ -1485,6 +1886,7 @@ window.deleteTeacherProfile=async function(uid){
 
 function renderAdmin(){
   $('jefe').value=cfg.jefe;$('codigo').value=cfg.codigo;$('revisionCal').value=cfg.revision;$('fechaRevision').value=cfg.fechaRevision;$('periodoAdmin').value=cfg.periodo;
+  updatePlanningAvailability();
   if($('captureDeadlineAdmin'))$('captureDeadlineAdmin').value=toLocalDateTimeValue(cfg.captureDeadline);updateCountdownUI();
   const st=$('editModeStatus'),btn=$('editModeBtn');
   if(st){st.textContent=cfg.editingLocked?'Edición desactivada':'Edición activa';st.className='edit-mode-status '+(cfg.editingLocked?'locked':'open')}
@@ -2072,8 +2474,74 @@ async function exportWorkbook(){
   wsSummary['!freeze']={ySplit:1,topLeftCell:'A2',activePane:'bottomLeft',state:'frozen'};
   wsSummary['!cols']=[{wch:42},{wch:16},{wch:12},{wch:38},{wch:18},{wch:16},{wch:14},{wch:14},{wch:16},{wch:23}];
 
+
+  // --- Hoja adicional: Planeación cuatrimestral ---
+  const planningRows=teachers.map(t=>{
+    const rec=(t.planningByPeriod||{})[cfg.periodo]||{};
+    const management=(rec.managementMode==='na')
+      ?'No aplica'
+      :(rec.managementCommissions||[]).map(x=>String(x||'').trim()).filter(Boolean).join(' | ');
+    return {
+      Profesor:t.name,
+      Categoria:t.category||'',
+      Correo:t.email||'',
+      Periodo:cfg.periodo,
+      'Horario protegido':rec.scheduleMode==='na'?'No aplica':rec.scheduleMode==='yes'?'Sí':'Sin captura',
+      'Comisión para liberar horario':rec.scheduleMode==='yes'?(rec.commissionName||''):'',
+      'Días solicitados':rec.scheduleMode==='yes'?planningDaysSummary(rec):'',
+      'Detalle de horarios':rec.scheduleMode==='yes'?planningScheduleSummary(rec):'',
+      'Comisiones de gestión académica':management||'Sin captura',
+      'Participa en PIDET':rec.pidetMode==='na'?'No aplica':rec.pidetMode==='yes'?'Sí':'Sin captura',
+      'Proyecto PIDET':rec.pidetMode==='yes'?(rec.pidetName||''):'',
+      'Coordina PIDET':rec.pidetMode==='yes'?(rec.pidetCoordinator||''):'',
+      'Comentarios / observaciones':rec.comments||'',
+      'Planeación completa':rec.completedAtMs?'Sí':'',
+      'Fecha de guardado':rec.completedAtMs?formatLocalProfileDateTime(rec.completedAtMs):''
+    };
+  });
+  const wsPlanning=XLSX.utils.json_to_sheet(planningRows);
+  if(planningRows.length){
+    wsPlanning['!autofilter']={ref:wsPlanning['!ref']};
+    wsPlanning['!freeze']={ySplit:1,topLeftCell:'A2',activePane:'bottomLeft',state:'frozen'};
+    wsPlanning['!cols']=[
+      {wch:30},{wch:32},{wch:28},{wch:20},{wch:18},{wch:34},{wch:28},{wch:55},
+      {wch:52},{wch:20},{wch:36},{wch:30},{wch:48},{wch:18},{wch:24}
+    ];
+    const pHeaders=Object.keys(planningRows[0]);
+    pHeaders.forEach((_,c)=>{
+      const addr=XLSX.utils.encode_cell({r:0,c});
+      if(wsPlanning[addr])wsPlanning[addr].s={
+        font:{name:'Aptos',sz:10,bold:true,color:{rgb:'FFFFFF'}},
+        fill:{patternType:'solid',fgColor:{rgb:'185C6B'}},
+        alignment:{horizontal:'center',vertical:'center',wrapText:true},
+        border:{
+          top:{style:'thin',color:{rgb:'9FB6C2'}},
+          bottom:{style:'thin',color:{rgb:'9FB6C2'}},
+          left:{style:'thin',color:{rgb:'9FB6C2'}},
+          right:{style:'thin',color:{rgb:'9FB6C2'}}
+        }
+      };
+    });
+    for(let r=1;r<=planningRows.length;r++){
+      pHeaders.forEach((_,c)=>{
+        const addr=XLSX.utils.encode_cell({r,c});
+        if(wsPlanning[addr])wsPlanning[addr].s={
+          font:{name:'Aptos',sz:10,color:{rgb:'243746'}},
+          alignment:{vertical:'top',horizontal:c<4?'left':'left',wrapText:true},
+          border:{
+            top:{style:'thin',color:{rgb:'D8E1E6'}},
+            bottom:{style:'thin',color:{rgb:'D8E1E6'}},
+            left:{style:'thin',color:{rgb:'D8E1E6'}},
+            right:{style:'thin',color:{rgb:'D8E1E6'}}
+          }
+        };
+      });
+    }
+  }
+
   const wb=XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(wb,ws,'Concentrado perfiles');
+  XLSX.utils.book_append_sheet(wb,wsPlanning,'Planeación cuatrimestral');
   XLSX.utils.book_append_sheet(wb,wsBase,'Base maestra');
   XLSX.utils.book_append_sheet(wb,wsCat,'Catálogo');
   XLSX.utils.book_append_sheet(wb,wsSummary,'Resumen por asignatura');
@@ -2098,18 +2566,48 @@ function setupAutoSave(){
   });
 }
 
+
+function setupPlanningAutoSave(){
+  let timer=null;
+  document.addEventListener('input',e=>{
+    if(!planningEnabled()||!planningEditingAllowed())return;
+    if(!e.target.matches('#planeacion input,#planeacion textarea'))return;
+    clearTimeout(timer);
+    timer=setTimeout(()=>{
+      collectPlanning();
+      persist();
+      updateNavState();
+    },450);
+  });
+  document.addEventListener('change',e=>{
+    if(!planningEnabled()||!planningEditingAllowed())return;
+    if(!e.target.matches('#planeacion input,#planeacion textarea'))return;
+    collectPlanning();
+    persist();
+    updateNavState();
+  });
+}
 function init(){
   loadProfile();
   updatePeriodBadges();
   initAuth();
   renderCurrentProgram();
+  renderPlanning();
+  updatePlanningAvailability();
   renderAdmin();
   applyEditState();
   lockRevisionNav();
   setupAutoSave();
+  setupPlanningAutoSave();
   updateLastSavedUI();
   startCountdown();
   updateNavState();
+
+  let resizeTimer=null;
+  window.addEventListener('resize',()=>{
+    clearTimeout(resizeTimer);
+    resizeTimer=setTimeout(adjustSemesterColumnWidths,120);
+  });
 }
 init();
 

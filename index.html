@@ -74,7 +74,8 @@
   <button data-view="perfil" class="active"><span class="nav-num">1</span><span class="nav-ico" aria-hidden="true">▣</span> Datos del profesor</button>
   <button data-view="captura"><span class="nav-num">2</span><span class="nav-ico" aria-hidden="true">▤</span> Perfil por programa</button>
   <button data-view="revision" id="navRevision"><span class="nav-num">3</span><span class="nav-ico" aria-hidden="true">⌕</span> Revisión e impresión</button>
-  <button data-view="admin" id="adminTab" class="admin-tab hidden"><span class="nav-num">4</span><span class="nav-ico" aria-hidden="true">⚙</span> Administración</button>
+  <button data-view="planeacion" id="navPlanning" class="hidden"><span class="nav-num">4</span><span class="nav-ico" aria-hidden="true">▦</span> Planeación cuatrimestral</button>
+  <button data-view="admin" id="adminTab" class="admin-tab hidden"><span class="nav-num">5</span><span class="nav-ico" aria-hidden="true">⚙</span> Administración</button>
 </nav>
 
 <main>
@@ -85,7 +86,7 @@
         <h2>Información general del profesor</h2>
         <p>Los datos obligatorios deben capturarse antes de continuar. La información se conserva para futuras actualizaciones.</p>
       </div>
-      <div class="welcome-badge">Paso 1 de 3</div>
+      <div class="welcome-badge" id="profileStepBadge">Paso 1 de 3</div>
     </div>
 
     <div class="card section-card">
@@ -138,7 +139,7 @@
   <section id="captura" class="view">
     <div class="card profile-toolbar">
       <div class="toolbar-left">
-        <span class="section-kicker">Paso 2 de 3</span>
+        <span class="section-kicker" id="captureStepKicker">Paso 2 de 3</span>
         <h2>Perfil por programa educativo</h2>
         
       </div>
@@ -173,7 +174,7 @@
   <section id="revision" class="view">
     <div class="card review-head no-print">
       <div>
-        <span class="section-kicker">Paso 3 de 3</span>
+        <span class="section-kicker" id="reviewStepKicker">Paso 3 de 3</span>
         <h2>Revisión e impresión</h2>
         <p>La revisión solo se habilita cuando la captura está completa.</p>
       </div>
@@ -184,6 +185,133 @@
       <button class="primary final-print-btn" onclick="printProfile()">Finalizar e imprimir / guardar PDF</button>
     </div>
     <div id="printArea"></div>
+  </section>
+
+
+  <section id="planeacion" class="view">
+    <div class="card planning-hero">
+      <div>
+        <span class="section-kicker" id="planningStepKicker">Paso 4 de 4</span>
+        <h2>Planeación cuatrimestral</h2>
+        <p>Capture únicamente la información necesaria para apoyar la distribución de carga y actividades del periodo.</p>
+      </div>
+      <div id="planningPeriodBadge" class="planning-period-badge"></div>
+    </div>
+
+    <div class="card planning-reference-banner">
+      <div class="planning-reference-icon" aria-hidden="true">i</div>
+      <div>
+        <strong>Información de referencia para la planeación cuatrimestral</strong>
+        <p><b>Esta sección no forma parte del Perfil del Profesor y no se incluye en la impresión ni en el PDF.</b>
+        La información capturada se utiliza <b>únicamente como referencia para la elaboración de las planeaciones cuatrimestrales del periodo</b> y permanecerá disponible para su consulta cada vez que ingrese a la plataforma.</p>
+      </div>
+    </div>
+
+    <div id="planningLockedBanner" class="capture-lock-banner hidden"></div>
+
+    <div class="card planning-question" id="planningScheduleCard">
+      <div class="planning-question-head">
+        <div>
+          <span class="planning-number">1</span>
+          <div>
+            <h3>Horario que requiere mantenerse libre por comisión</h3>
+            <p>Indique si existe algún horario en el que no deban programarse clases para atender una comisión.</p>
+          </div>
+        </div>
+        <span class="required-note">Obligatorio · admite No aplica</span>
+      </div>
+
+      <div class="planning-choice-row">
+        <label><input type="radio" name="planningScheduleMode" value="yes" onchange="planningModeChanged()"> Sí, requiero reservar horario</label>
+        <label><input type="radio" name="planningScheduleMode" value="na" onchange="planningModeChanged()"> No aplica</label>
+      </div>
+
+      <div id="planningScheduleFields" class="planning-conditional">
+        <label class="planning-wide-label">Comisión que requiere atender
+          <input id="planningCommissionName" placeholder="Ej. Comisión de seguridad e higiene">
+        </label>
+        <div class="planning-schedule-help">Seleccione uno o varios bloques. Puede marcar distintos horarios en diferentes días.</div>
+        <div id="planningScheduleGrid" class="planning-schedule-wrap"></div>
+      </div>
+    </div>
+
+    <div class="card planning-question" id="planningManagementCard">
+      <div class="planning-question-head">
+        <div>
+          <span class="planning-number">2</span>
+          <div>
+            <h3>Comisiones de gestión académica actuales</h3>
+            <p>Registre únicamente comisiones de gestión académica que actualmente formen parte de su carga.</p>
+          </div>
+        </div>
+        <span class="required-note">Obligatorio · admite No aplica</span>
+      </div>
+
+      <div class="planning-examples">
+        Ejemplos: coordinación de estadías, coordinación de servicio social, enlace de tutoría, enlace de calidad,
+        responsable CACEI o coordinación de visitas industriales. <b>No incluya</b> preparación de clase, asesoría extra clase,
+        tutoría regular ni coordinación de academia.
+      </div>
+
+      <div class="planning-choice-row">
+        <label><input type="radio" name="planningManagementMode" value="yes" onchange="planningModeChanged()"> Sí, tengo comisión(es)</label>
+        <label><input type="radio" name="planningManagementMode" value="na" onchange="planningModeChanged()"> No aplica</label>
+      </div>
+
+      <div id="planningManagementFields" class="planning-conditional">
+        <div id="planningManagementList" class="planning-management-list"></div>
+        <button type="button" class="planning-add-btn" onclick="addPlanningCommission()">＋ Agregar comisión</button>
+      </div>
+    </div>
+
+    <div class="card planning-question" id="planningPiderCard">
+      <div class="planning-question-head">
+        <div>
+          <span class="planning-number">3</span>
+          <div>
+            <h3>Proyecto PIDET</h3>
+            <p>Indique si participa en algún proyecto avalado por la Universidad en Investigación, Innovación y Desarrollo Tecnológico (PIDET).</p>
+          </div>
+        </div>
+        <span class="required-note">Obligatorio · admite No aplica</span>
+      </div>
+
+      <div class="planning-choice-row">
+        <label><input type="radio" name="planningPiderMode" value="yes" onchange="planningModeChanged()"> Sí, participo en un proyecto</label>
+        <label><input type="radio" name="planningPiderMode" value="na" onchange="planningModeChanged()"> No aplica</label>
+      </div>
+
+      <div id="planningPiderFields" class="planning-conditional planning-two-cols">
+        <label>Nombre del proyecto
+          <input id="planningPiderName" placeholder="Nombre del proyecto PIDET">
+        </label>
+        <label>Persona que coordina
+          <input id="planningPiderCoordinator" placeholder="Nombre de quien coordina">
+        </label>
+      </div>
+    </div>
+
+    <div class="card planning-question" id="planningCommentsCard">
+      <div class="planning-question-head">
+        <div>
+          <span class="planning-number optional">4</span>
+          <div>
+            <h3>Comentarios u observaciones</h3>
+            <p>Espacio opcional para información adicional que considere útil para la planeación.</p>
+          </div>
+        </div>
+        <span class="planning-optional-badge">Opcional</span>
+      </div>
+      <textarea id="planningComments" class="planning-comments" rows="4" placeholder="Comentarios u observaciones (opcional)"></textarea>
+    </div>
+
+    <div id="planningErrors"></div>
+
+    <div class="actions planning-actions">
+      <button onclick="go('revision',true)">← Volver a Revisión e impresión</button>
+      <button onclick="savePlanning(true)">Guardar información de planeación</button>
+      <button class="primary" onclick="savePlanningAndReview()">Guardar y volver a Revisión e impresión →</button>
+    </div>
   </section>
 
   <section id="admin" class="view">
@@ -229,6 +357,17 @@
             <button onclick="clearDeadline()">Borrar límite</button>
             <button id="editModeBtn" class="edit-mode-btn" onclick="toggleEditingLock()"></button>
           </div>
+        </div>
+        <div class="control-panel-mini planning-admin-panel">
+          <div class="capture-inline-head">
+            <div>
+              <b>Planeación cuatrimestral</b>
+              <span>Si está habilitada, la página 4 será obligatoria. No forma parte del PDF del Perfil del Profesor.</span>
+            </div>
+            <span id="planningAdminStatus" class="planning-admin-status"></span>
+          </div>
+          <div class="planning-admin-reference">La información se utiliza únicamente como referencia para la elaboración de las planeaciones cuatrimestrales del periodo.</div>
+          <button id="planningToggleBtn" type="button" class="planning-toggle-btn" onclick="togglePlanningPage()"></button>
         </div>
       </div>
     </div>
@@ -319,6 +458,8 @@
 <script src="firebase-config.js"></script>
 <script src="catalog.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/xlsx-js-style@1.2.0/dist/xlsx.bundle.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/jspdf@2.5.1/dist/jspdf.umd.min.js"></script>
 <script type="module" src="app.js"></script>
 </body>
 </html>
