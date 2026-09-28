@@ -179,14 +179,17 @@ function submissionLockedForCurrentPeriod(){
 function individualEditOverride(){
   return !!store.individualEditEnabled;
 }
+function individualEditBlocked(){
+  return !!store.individualEditDisabled;
+}
 function editingAllowed(){
   // El administrador siempre conserva acceso.
-  // Un permiso individual puede reabrir SOLO ese perfil incluso si la edición global está cerrada.
-  // Sin permiso individual se respetan el bloqueo global, la fecha límite y el cierre por finalización.
-  return isAdmin() || (!deadlinePassed() && (
-    individualEditOverride() ||
-    (!cfg.editingLocked && !submissionLockedForCurrentPeriod())
-  ));
+  // Un permiso individual puede reabrir SOLO ese perfil.
+  // Un bloqueo individual impide editar aunque la captura general esté abierta.
+  if(isAdmin())return true;
+  if(deadlinePassed())return false;
+  if(individualEditBlocked())return false;
+  return individualEditOverride() || (!cfg.editingLocked && !submissionLockedForCurrentPeriod());
 }
 function formatDateTime(ts){
   if(!ts)return 'Sin fecha límite';
@@ -420,6 +423,7 @@ function profileCloudPayload(){
     submittedPeriod:store.submittedPeriod||null,
     finalizedAtMs:store.finalizedAtMs||null,
     individualEditEnabled:!!store.individualEditEnabled,
+    individualEditDisabled:!!store.individualEditDisabled,
     profileResetToken:store.profileResetToken||null,
     planningByPeriod:JSON.parse(JSON.stringify(planningByPeriod)),
     updatedAt:serverTimestamp()
@@ -450,6 +454,7 @@ async function loadRemoteProfile(){
       if('submittedPeriod' in d)store.submittedPeriod=d.submittedPeriod||null;
       if('finalizedAtMs' in d)store.finalizedAtMs=Number(d.finalizedAtMs)||null;
       if('individualEditEnabled' in d)store.individualEditEnabled=!!d.individualEditEnabled;
+      if('individualEditDisabled' in d)store.individualEditDisabled=!!d.individualEditDisabled;
       if('profileResetToken' in d)store.profileResetToken=d.profileResetToken||null;
       if(d.planningByPeriod&&typeof d.planningByPeriod==='object')planningByPeriod=d.planningByPeriod;
       store.answers=answers;store.programMeta=programMeta;store.planningByPeriod=planningByPeriod;
@@ -498,10 +503,12 @@ async function initCloud(){
     const d=s.data()||{};
     const priorPeriod=store.submittedPeriod||null;
     const priorOverride=!!store.individualEditEnabled;
+    const priorDisabled=!!store.individualEditDisabled;
     const priorResetToken=store.profileResetToken||null;
     store.submittedPeriod=d.submittedPeriod||null;
     store.finalizedAtMs=Number(d.finalizedAtMs)||null;
     store.individualEditEnabled=!!d.individualEditEnabled;
+    store.individualEditDisabled=!!d.individualEditDisabled;
     store.profileResetToken=d.profileResetToken||null;
 
     if(store.profileResetToken&&priorResetToken!==store.profileResetToken&&!isAdmin()){
@@ -524,12 +531,14 @@ async function initCloud(){
       return;
     }
 
-    if(priorPeriod!==store.submittedPeriod || priorOverride!==store.individualEditEnabled){
+    if(priorPeriod!==store.submittedPeriod || priorOverride!==store.individualEditEnabled || priorDisabled!==store.individualEditDisabled){
       localStorage.setItem('PAD_UTEQ',JSON.stringify({...store,cfg,answers,programMeta,customPrograms,programOverrides,disabledPrograms,programAcronyms,commonRules,currentProgramIndex,lastSavedAt}));
       applyEditState();updateNavState();
-      toast(store.individualEditEnabled
-        ?'Administración habilitó la edición únicamente para su perfil.'
-        :(store.submittedPeriod===cfg.periodo?'Perfil finalizado. Edición bloqueada.':'La habilitación individual de edición terminó.'));
+      toast(store.individualEditDisabled
+        ?'Administración deshabilitó temporalmente la edición de su perfil.'
+        :store.individualEditEnabled
+          ?'Administración habilitó la edición únicamente para su perfil.'
+          :(store.submittedPeriod===cfg.periodo?'Perfil finalizado. Edición bloqueada.':'El perfil vuelve a respetar los controles generales.'));
     }
   },e=>console.warn('No fue posible escuchar el estado del perfil',e));
 }
@@ -783,7 +792,7 @@ function renderCommissionList(record){
     <div class="commission-entry-top">
       <span class="commission-entry-number">${i+1}</span>
       <label class="commission-name-field">Nombre de la comisión
-        <input data-commission-name="${i}" value="${escapeHtml(c.name||'')}" placeholder="Ej. Enlace de calidad">
+        <input data-commission-name="${i}" value="${escapeHtml(c.name||'')}" placeholder="Ej. Enlace de calidad, Enlace de tutoría, Coordinación de visitas..." onfocus="this.dataset.ph=this.placeholder;this.placeholder=''" onblur="if(!this.value)this.placeholder=this.dataset.ph||'Ej. Enlace de calidad, Enlace de tutoría, Coordinación de visitas...'">
       </label>
       <label class="commission-hours-field">Horas autorizadas
         <input data-commission-hours="${i}" type="number" min="0" step="0.5" value="${escapeHtml(String(c.authorizedHours||''))}" placeholder="Ej. 3">
@@ -1806,7 +1815,7 @@ async function renderTeacherAdminList(){
     snap.forEach(ds=>{
       const d=ds.data()||{},p=d.profile||{};
       const name=[p.apPat,p.apMat,p.nombres].filter(Boolean).join(' ')||d.displayName||d.email||'(Sin nombre)';
-      const row={uid:ds.id,name,email:d.email||'',categoria:p.categoria||'',submittedPeriod:d.submittedPeriod||null,finalizedAtMs:Number(d.finalizedAtMs)||0,individualEditEnabled:!!d.individualEditEnabled,updatedAt:d.updatedAt,profileResetToken:d.profileResetToken||null};
+      const row={uid:ds.id,name,email:d.email||'',categoria:p.categoria||'',submittedPeriod:d.submittedPeriod||null,finalizedAtMs:Number(d.finalizedAtMs)||0,individualEditEnabled:!!d.individualEditEnabled,individualEditDisabled:!!d.individualEditDisabled,updatedAt:d.updatedAt,profileResetToken:d.profileResetToken||null};
       rows.push(row);teacherAdminCache[row.uid]=row;
     });
     rows.sort((a,b)=>a.name.localeCompare(b.name,'es',{sensitivity:'base'}));
@@ -1816,16 +1825,23 @@ async function renderTeacherAdminList(){
     root.innerHTML=rows.map(r=>{
       const doneNow=r.submittedPeriod===cfg.periodo;
       const override=!!r.individualEditEnabled;
-      const statusTitle=override?'Edición individual habilitada':(doneNow?'Concluido':'En captura / sin concluir');
+      const individuallyDisabled=!!r.individualEditDisabled;
+      const statusTitle=individuallyDisabled
+        ?'Edición individual deshabilitada'
+        :override
+          ?'Edición individual habilitada'
+          :(doneNow?'Concluido':'En captura / sin concluir');
       const lastCompletion=doneNow?formatTeacherCompletion(r):'';
       const lastEdit=formatTeacherUpdatedAt(r.updatedAt);
-      const statusText=override
-        ?(doneNow
-          ?`Última edición: ${lastEdit} · Última finalización: ${lastCompletion} · Edición individual habilitada`
-          :`Última edición: ${lastEdit} · Edición individual habilitada`)
-        :(doneNow
-          ?`Última edición: ${lastEdit} · Finalizó y envió: ${lastCompletion}`
-          :`Última edición: ${lastEdit}`);
+      const statusText=individuallyDisabled
+        ?`Última edición: ${lastEdit} · Edición deshabilitada por Administración`
+        :override
+          ?(doneNow
+            ?`Última edición: ${lastEdit} · Última finalización: ${lastCompletion} · Edición individual habilitada`
+            :`Última edición: ${lastEdit} · Edición individual habilitada`)
+          :(doneNow
+            ?`Última edición: ${lastEdit} · Finalizó y envió: ${lastCompletion}`
+            :`Última edición: ${lastEdit}`);
       return `<div class="teacher-admin-row ${override?'individual-open':doneNow?'finished':'open'}">
         <div class="teacher-admin-main">
           <b>${escapeHtml(r.name)}</b>
@@ -1836,7 +1852,11 @@ async function renderTeacherAdminList(){
           <span>${escapeHtml(statusText)}</span>
         </div>
         <div class="teacher-admin-actions">
-          ${doneNow||override?`<button class="teacher-reopen-btn ${override?'active':''}" onclick="toggleTeacherEditOverride('${r.uid}',${override?'false':'true'})">${override?'Deshabilitar edición':'Habilitar edición'}</button>`:''}
+          ${(()=>{
+            const enableNext=individuallyDisabled || (doneNow && !override);
+            const label=enableNext?'Habilitar edición':'Deshabilitar edición';
+            return `<button class="teacher-reopen-btn ${enableNext?'':'active'}" onclick="setTeacherEditAccess('${r.uid}',${enableNext?'true':'false'})">${label}</button>`;
+          })()}
           <button class="teacher-reset-program-btn" onclick="resetTeacherProgramProfile('${r.uid}')">Eliminar asignaturas capturadas</button>
           <button class="teacher-delete-btn" onclick="deleteTeacherProfile('${r.uid}')">Eliminar perfil completo</button>
         </div>
@@ -1851,29 +1871,32 @@ async function renderTeacherAdminList(){
 function escapeHtml(value){
   return String(value??'').replace(/[&<>"']/g,ch=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#039;'}[ch]));
 }
-window.toggleTeacherEditOverride=async function(uid,enable){
+window.setTeacherEditAccess=async function(uid,enable){
   if(!isAdmin()||!db)return;
   const r=teacherAdminCache[uid]||{};
   const who=r.name||r.email||'este profesor';
   const question=enable
-    ?`¿Habilitar la edición únicamente para ${who}?\n\nEste permiso individual funcionará incluso si la edición general está desactivada.`
-    :`¿Deshabilitar nuevamente la edición de ${who}?\n\nEl perfil volverá a respetar su cierre por finalización y los controles generales.`;
+    ?`¿Habilitar la edición para ${who}?\n\nEl profesor podrá continuar editando su perfil mientras no haya vencido la fecha límite.`
+    :`¿Deshabilitar la edición para ${who}?\n\nEl profesor podrá consultar su información, pero no podrá modificarla hasta que Administración vuelva a habilitarla.`;
   if(!confirm(question))return;
   try{
     await setDoc(doc(db,'profiles',uid),{
       individualEditEnabled:!!enable,
+      individualEditDisabled:!enable,
       reopenedAt:enable?serverTimestamp():null,
       reopenedBy:enable?(currentUser.email||''):null,
       individualEditUpdatedAt:serverTimestamp()
     },{merge:true});
     await writeAudit(`${enable?'Edición individual habilitada':'Edición individual deshabilitada'} para ${r.email||uid}`);
-    toast(enable?'Edición habilitada únicamente para ese profesor.':'Edición individual deshabilitada.');
+    toast(enable?'Edición habilitada para ese profesor.':'Edición deshabilitada para ese profesor.');
     await renderTeacherAdminList();
   }catch(e){
     console.error('Error de edición individual',e);
-    alert(`No fue posible ${enable?'habilitar':'deshabilitar'} la edición individual.\n\nCódigo: ${e?.code||'sin código'}\n\nVerifique que firestore.rules V21 esté publicado.`);
+    alert(`No fue posible ${enable?'habilitar':'deshabilitar'} la edición individual.\n\nCódigo: ${e?.code||'sin código'}\n\nVerifique que las reglas de Firestore vigentes permitan la administración de perfiles.`);
   }
 }
+window.toggleTeacherEditOverride=function(uid,enable){return window.setTeacherEditAccess(uid,enable)}
+
 window.reopenTeacherProfile=function(uid){return window.toggleTeacherEditOverride(uid,true)}
 window.resetTeacherProgramProfile=async function(uid){
   if(!isAdmin()||!db)return;
@@ -1896,6 +1919,7 @@ window.resetTeacherProgramProfile=async function(uid){
       submittedPeriod:null,
       finalizedAtMs:null,
       individualEditEnabled:true,
+      individualEditDisabled:false,
       profileResetToken:resetToken,
       programProfileResetAt:serverTimestamp(),
       programProfileResetBy:currentUser?.email||'',
@@ -1937,6 +1961,7 @@ window.deleteTeacherProfile=async function(uid){
 function renderAdmin(){
   $('jefe').value=cfg.jefe;$('codigo').value=cfg.codigo;$('revisionCal').value=cfg.revision;$('fechaRevision').value=cfg.fechaRevision;$('periodoAdmin').value=cfg.periodo;
   updatePlanningAvailability();
+  renderExcelExportOptions();
   if($('captureDeadlineAdmin'))$('captureDeadlineAdmin').value=toLocalDateTimeValue(cfg.captureDeadline);updateCountdownUI();
   const st=$('editModeStatus'),btn=$('editModeBtn');
   if(st){st.textContent=cfg.editingLocked?'Edición desactivada':'Edición activa';st.className='edit-mode-status '+(cfg.editingLocked?'locked':'open')}
@@ -2307,6 +2332,44 @@ function excelCategoryAbbreviation(category){
   return raw;
 }
 
+
+const EXCEL_SHEET_OPTIONS=[
+  {id:'concentrado',label:'Concentrado perfiles'},
+  {id:'comisiones',label:'Comisiones'},
+  {id:'base',label:'Base maestra'},
+  {id:'catalogo',label:'Catálogo'},
+  {id:'resumen',label:'Resumen por asignatura'}
+];
+function renderExcelExportOptions(){
+  const sheets=$('excelSheetOptions'),quarters=$('excelQuarterOptions');
+  if(sheets){
+    sheets.innerHTML=EXCEL_SHEET_OPTIONS.map(x=>`<label class="excel-check-chip"><input type="checkbox" data-excel-sheet="${x.id}" checked> <span>${x.label}</span></label>`).join('');
+  }
+  if(quarters){
+    const maxQ=Math.max(1,...allPrograms().map(p=>p.semesters?.length||0));
+    quarters.innerHTML=`<label class="excel-check-chip all"><input id="excelQuarterAll" type="checkbox" checked onchange="toggleAllExcelQuarters(this.checked)"> <span>Todos</span></label>`+
+      Array.from({length:maxQ},(_,i)=>`<label class="excel-check-chip"><input type="checkbox" data-excel-quarter="${i+1}" checked onchange="syncExcelQuarterAll()"> <span>${i+1}.°</span></label>`).join('');
+  }
+}
+window.toggleAllExcelQuarters=function(checked){
+  document.querySelectorAll('[data-excel-quarter]').forEach(x=>x.checked=checked);
+}
+window.syncExcelQuarterAll=function(){
+  const items=[...document.querySelectorAll('[data-excel-quarter]')];
+  const all=$('excelQuarterAll');
+  if(all)all.checked=items.length>0&&items.every(x=>x.checked);
+}
+function selectedExcelSheets(){
+  const items=[...document.querySelectorAll('[data-excel-sheet]:checked')].map(x=>x.dataset.excelSheet);
+  return new Set(items.length?items:EXCEL_SHEET_OPTIONS.map(x=>x.id));
+}
+function selectedExcelQuarters(){
+  const items=[...document.querySelectorAll('[data-excel-quarter]:checked')].map(x=>Number(x.dataset.excelQuarter)).filter(Number.isFinite);
+  if(items.length)return new Set(items);
+  const maxQ=Math.max(1,...allPrograms().map(p=>p.semesters?.length||0));
+  return new Set(Array.from({length:maxQ},(_,i)=>i+1));
+}
+
 async function exportWorkbook(){
   const XLSX=window.XLSX;
   if(!XLSX || !XLSX.utils){
@@ -2318,6 +2381,9 @@ async function exportWorkbook(){
   const ps=programs();
 
   const teachers=await loadTeachersForExport();
+  const exportSheets=selectedExcelSheets();
+  const exportQuarters=selectedExcelQuarters();
+  const includeQuarter=(semesterIndex)=>exportQuarters.has(semesterIndex+1);
 
   // --- Hoja 1: concentrado horizontal similar al archivo operativo ---
   const headerRows=6;
@@ -2336,7 +2402,7 @@ async function exportWorkbook(){
   const programRanges=[];
   ps.forEach((pr,pi)=>{
     const startCol=col;
-    pr.semesters.forEach((sem,s)=>sem.forEach((name,c)=>{
+    pr.semesters.forEach((sem,s)=>{ if(!includeQuarter(s))return; sem.forEach((name,c)=>{
       aoa[1][col]=subjectCase(name);
       aoa[2][col]=subjectHours(pr.id,s,c)||'';
       aoa[3][col]=weeklyHours(pr.id,s,c)||'';
@@ -2351,7 +2417,7 @@ async function exportWorkbook(){
         aoa[headerRows+ti][col]=level?`${level}${fav?' ★':''}`:'';
       });
       col++;
-    }));
+    });});
     const endCol=col-1;
     if(endCol>=startCol){
       merges.push({s:{r:0,c:startCol},e:{r:0,c:endCol}});
@@ -2468,7 +2534,7 @@ async function exportWorkbook(){
   for(let r=headerRows;r<aoa.length;r++){
     const t=teachers[r-headerRows];
     let matrixCol=2;
-    ps.forEach(pr=>pr.semesters.forEach((sem,s)=>sem.forEach((name,c)=>{
+    ps.forEach(pr=>pr.semesters.forEach((sem,s)=>{ if(!includeQuarter(s))return; sem.forEach((name,c)=>{
       const addr=XLSX.utils.encode_cell({r,c:matrixCol});
       const cell=ws[addr];
       const value=String(cell?.v ?? aoa[r]?.[matrixCol] ?? '');
@@ -2493,12 +2559,12 @@ async function exportWorkbook(){
         };
       }
       matrixCol++;
-    })));
+    });}));
   }
 
   // --- Hoja 2: Base maestra cruda (se conserva por compatibilidad) ---
   const base=[];
-  teachers.forEach(t=>ps.forEach(pr=>pr.semesters.forEach((sem,s)=>sem.forEach((name,c)=>{
+  teachers.forEach(t=>ps.forEach(pr=>pr.semesters.forEach((sem,s)=>{ if(!includeQuarter(s))return; sem.forEach((name,c)=>{
     const a=teacherAnswer(t,pr.id,s,c,name);
     base.push({
       Profesor:t.name,
@@ -2518,7 +2584,7 @@ async function exportWorkbook(){
       'Materia favorita':a.ideal?'Sí':'',
       'Coordinador de academia':teacherCoordinator(t,pr.id,s,c)?'Sí':''
     });
-  }))));
+  });})));
 
   const wsBase=XLSX.utils.json_to_sheet(base);
   wsBase['!autofilter']={ref:wsBase['!ref']};
@@ -2548,7 +2614,7 @@ async function exportWorkbook(){
   ];
 
   // --- Hoja 3: Catálogo ---
-  const catalog=ps.flatMap(pr=>pr.semesters.flatMap((sem,s)=>sem.map((name,c)=>({
+  const catalog=ps.flatMap(pr=>pr.semesters.flatMap((sem,s)=>includeQuarter(s)?sem.map((name,c)=>({
     Programa:pr.name,
     'Acrónimo PE':programAcronym(pr),
     'Salida lateral':pr.exit,
@@ -2556,14 +2622,14 @@ async function exportWorkbook(){
     Asignatura:subjectCase(name),
     'Horas al cuatrimestre':subjectHours(pr.id,s,c)||'',
     'Horas a la semana':weeklyHours(pr.id,s,c)||''
-  }))));
+  })):[]));
   const wsCat=XLSX.utils.json_to_sheet(catalog);
   wsCat['!cols']=[{wch:42},{wch:13},{wch:42},{wch:12},{wch:36},{wch:18},{wch:16}];
 
 
   // --- Hoja 4: Resumen por asignatura ---
   const summary=[];
-  ps.forEach(pr=>pr.semesters.forEach((sem,s)=>sem.forEach((name,c)=>{
+  ps.forEach(pr=>pr.semesters.forEach((sem,s)=>{ if(!includeQuarter(s))return; sem.forEach((name,c)=>{
     let x=0,xx=0,fav=0,coord=0;
     teachers.forEach(t=>{
       const a=teacherAnswer(t,pr.id,s,c,name);
@@ -2584,7 +2650,7 @@ async function exportWorkbook(){
       'Marcada favorita':fav,
       'Coordinadores de academia':coord
     });
-  })));
+  });}));
   const wsSummary=XLSX.utils.json_to_sheet(summary);
   wsSummary['!autofilter']={ref:wsSummary['!ref']};
   wsSummary['!freeze']={ySplit:1,topLeftCell:'A2',activePane:'bottomLeft',state:'frozen'};
@@ -2660,11 +2726,12 @@ async function exportWorkbook(){
   }
 
   const wb=XLSX.utils.book_new();
-  XLSX.utils.book_append_sheet(wb,ws,'Concentrado perfiles');
-  XLSX.utils.book_append_sheet(wb,wsPlanning,'Comisiones');
-  XLSX.utils.book_append_sheet(wb,wsBase,'Base maestra');
-  XLSX.utils.book_append_sheet(wb,wsCat,'Catálogo');
-  XLSX.utils.book_append_sheet(wb,wsSummary,'Resumen por asignatura');
+  if(exportSheets.has('concentrado'))XLSX.utils.book_append_sheet(wb,ws,'Concentrado perfiles');
+  if(exportSheets.has('comisiones'))XLSX.utils.book_append_sheet(wb,wsPlanning,'Comisiones');
+  if(exportSheets.has('base'))XLSX.utils.book_append_sheet(wb,wsBase,'Base maestra');
+  if(exportSheets.has('catalogo'))XLSX.utils.book_append_sheet(wb,wsCat,'Catálogo');
+  if(exportSheets.has('resumen'))XLSX.utils.book_append_sheet(wb,wsSummary,'Resumen por asignatura');
+  if(!wb.SheetNames.length)throw new Error('Seleccione al menos una hoja para exportar.');
 
   XLSX.writeFile(wb,`Concentrado_Perfiles_DIN_${cfg.periodo.replace(/[^a-z0-9]+/gi,'_')}.xlsx`,{cellStyles:true,bookSST:true});
 }

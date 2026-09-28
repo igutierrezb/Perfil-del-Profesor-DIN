@@ -8627,3 +8627,159 @@ body.printing-profile #printArea{
     grid-template-columns:1fr!important;
   }
 }
+
+
+/* =========================================================
+   V51 · Comisiones: observaciones debajo de pregunta 2
+   ========================================================= */
+.commission-main-grid{
+  grid-template-columns:1.08fr .92fr!important;
+  gap:10px!important;
+  align-items:start!important;
+}
+.commission-left-column,
+.commission-right-column{
+  display:grid!important;
+  gap:10px!important;
+  min-width:0!important;
+}
+.commission-left-column .commission-question,
+.commission-right-column .commission-question{
+  margin-top:0!important;
+}
+.commission-right-column .commission-observations{
+  min-height:0!important;
+}
+.commission-right-column .planning-comments{
+  min-height:86px!important;
+}
+@media(max-width:1100px){
+  .commission-main-grid{grid-template-columns:1fr!important;}
+}
+
+/* Botones/opciones siempre en una línea */
+.commission-choice{
+  flex-wrap:nowrap!important;
+}
+.commission-choice .choice-card{
+  white-space:nowrap!important;
+  min-width:68px!important;
+}
+.commission-schedule-question{
+  flex-wrap:nowrap!important;
+}
+.commission-schedule-question .mini-choice{
+  white-space:nowrap!important;
+}
+
+/* =========================================================
+   V51 · Administración: cuatro módulos horizontales
+   ========================================================= */
+.admin-core-grid{
+  grid-template-columns:1fr .95fr 1.12fr 1.08fr!important;
+  gap:9px!important;
+}
+.admin-core-card{
+  min-height:255px!important;
+}
+.excel-admin-card{
+  border-top:4px solid #217346!important;
+  background:linear-gradient(180deg,#fbfffc 0%,#f5fbf7 100%)!important;
+}
+.excel-admin-badge{
+  padding:4px 8px!important;
+  border-radius:999px!important;
+  background:#e1f3e8!important;
+  color:#1b6a40!important;
+  font-size:8px!important;
+  font-weight:900!important;
+}
+.excel-admin-group{
+  margin-bottom:8px!important;
+}
+.excel-admin-group>b{
+  display:block!important;
+  margin-bottom:5px!important;
+  font-size:8.5px!important;
+  color:#315949!important;
+}
+.excel-option-grid{
+  display:grid!important;
+  grid-template-columns:1fr 1fr!important;
+  gap:4px!important;
+}
+.excel-quarter-grid{
+  display:flex!important;
+  flex-wrap:wrap!important;
+  gap:4px!important;
+}
+.excel-check-chip{
+  display:flex!important;
+  align-items:center!important;
+  gap:5px!important;
+  min-height:27px!important;
+  padding:4px 6px!important;
+  border:1px solid #c7ddd0!important;
+  border-radius:7px!important;
+  background:#fff!important;
+  color:#355f4b!important;
+  font-size:7.8px!important;
+  font-weight:700!important;
+  box-sizing:border-box!important;
+}
+.excel-check-chip input{
+  width:13px!important;
+  height:13px!important;
+  min-height:13px!important;
+  accent-color:#217346!important;
+}
+.excel-check-chip.all{
+  background:#eaf6ef!important;
+  border-color:#9cc9ae!important;
+}
+.excel-export-card-btn{
+  width:100%!important;
+  min-height:44px!important;
+  margin-top:auto!important;
+  display:flex!important;
+  align-items:center!important;
+  justify-content:center!important;
+  gap:8px!important;
+  border-color:#175f39!important;
+  background:linear-gradient(180deg,#237b49,#1c663d)!important;
+  color:#fff!important;
+}
+.excel-export-card-btn .excel-export-copy strong{
+  font-size:11px!important;
+}
+.excel-export-card-btn .excel-export-copy small{
+  color:#d9f0e2!important;
+  font-size:7.5px!important;
+}
+@media(max-width:1350px){
+  .admin-core-grid{
+    grid-template-columns:1fr 1fr!important;
+  }
+}
+@media(max-width:800px){
+  .admin-core-grid{
+    grid-template-columns:1fr!important;
+  }
+}
+
+/* Lista de profesores: botón de edición siempre disponible */
+.teacher-admin-actions{
+  align-items:center!important;
+}
+.teacher-reopen-btn{
+  white-space:nowrap!important;
+}
+
+/* =========================================================
+   V51 · horarios legibles como "7 a 8", "8 a 9", etc.
+   ========================================================= */
+.compact-slot span{
+  font-size:7.5px!important;
+  white-space:nowrap!important;
+  letter-spacing:0!important;
+}

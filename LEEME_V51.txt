@@ -1,0 +1,38 @@
+PERFIL PROFESOR DIN · V51
+
+Cambios puntuales:
+
+1. Comisiones
+- Observaciones (pregunta 3) queda debajo de la pregunta 2, en la columna derecha.
+- Preguntas 1 y 2 se mantienen lado a lado.
+- Los botones Sí / No aplica y Sí / No de horarios se mantienen en una sola línea.
+- Campo Nombre de la comisión muestra ejemplos:
+  Enlace de calidad, Enlace de tutoría, Coordinación de visitas...
+  El ejemplo desaparece al entrar al campo.
+- Horarios permiten selección múltiple y se muestran como:
+  7 a 8, 8 a 9, 9 a 10 ... 15 a 16.
+
+2. Profesores y cierre de perfil
+- Habilitar/Deshabilitar edición aparece también para profesores que están
+  “En captura / sin concluir”.
+- Deshabilitar edición bloquea individualmente el perfil aunque la edición
+  general esté abierta.
+- Habilitar edición vuelve a dar acceso individual.
+- Consulta e impresión permanecen disponibles.
+
+3. Administración
+- Se agrega un cuarto módulo alineado con:
+  Control de captura | Comisiones | Configuración institucional | Exportación Excel.
+- El botón Excel se integra al módulo verde.
+
+4. Exportación Excel
+- Permite seleccionar qué hojas incluir:
+  Concentrado perfiles, Comisiones, Base maestra, Catálogo y Resumen por asignatura.
+- Permite seleccionar Todos los cuatrimestres o cuatrimestres específicos.
+- Los filtros de cuatrimestre se aplican a las hojas académicas.
+- Se mantienen las abreviaturas de categoría y el formato visual de tabla
+  incorporados en V50.
+
+deploy-pages.yml: NO necesita actualización.
+firestore.rules: NO necesita actualización, siempre que las reglas vigentes
+ya permitan al administrador modificar perfiles individuales, como en la versión actual.

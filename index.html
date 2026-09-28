@@ -147,6 +147,7 @@
       <div id="commissionsLockedBanner" class="capture-lock-banner hidden"></div>
 
       <div class="commission-main-grid">
+  <div class="commission-left-column">
 <article id="planningCommissionsCard" class="commission-question">
         <div class="commission-question-head">
           <span class="planning-number">1</span>
@@ -169,8 +170,9 @@
           <button type="button" class="planning-add-btn commission-add-btn" onclick="addPlanningCommission()">＋ Guardar y agregar nueva comisión</button>
         </div>
       </article>
-
-      <article id="planningProjectCard" class="commission-question">
+  </div>
+  <div class="commission-right-column">
+<article id="planningProjectCard" class="commission-question">
         <div class="commission-question-head">
           <span class="planning-number">2</span>
           <div>
@@ -202,8 +204,6 @@
           Los proyectos de cuerpos académicos deben contar con un oficio de PIDET que solicite la descarga horaria correspondiente.
         </div>
       </article>
-
-      </div>
 <article id="planningCommentsCard" class="commission-question commission-observations">
         <div class="commission-question-head">
           <span class="planning-number optional">3</span>
@@ -214,8 +214,10 @@
         </div>
         <textarea id="planningComments" class="planning-comments" rows="4" placeholder="Escribe aquí si hay alguna consideración académica que tomar en cuenta; por ejemplo, evitar asignar clase con un grupo específico por alguna situación particular entre profesor y grupo."></textarea>
       </article>
+  </div>
+</div>
 
-      <div id="planningErrors"></div>
+<div id="planningErrors"></div>
       <div class="save-row commissions-save-row">
         <button class="save-btn" onclick="savePlanning(true)">Guardar comisiones y observaciones</button>
       </div>
@@ -288,16 +290,6 @@
     <div class="admin-quickbar card">
       <button onclick="document.getElementById('captureControlCard').scrollIntoView({behavior:'smooth',block:'start'})">⚙ Control de captura</button>
       <button onclick="document.getElementById('institutionalConfig').scrollIntoView({behavior:'smooth',block:'start'})">▤ Configuración institucional</button>
-      <button class="primary excel-export-btn" onclick="exportExcel()" aria-label="Exportar Excel">
-        <span class="excel-logo" aria-hidden="true">
-          <svg viewBox="0 0 24 24" width="18" height="18">
-            <rect x="3" y="3" width="12" height="18" rx="2" fill="#217346"/>
-            <path d="M15 6h6v12h-6" fill="#185C37"/>
-            <path d="M7 8.5l2 3-2.2 4h2l1.2-2.5 1.3 2.5h2l-2.3-4 2-3h-2l-1 2-1-2z" fill="#fff"/>
-          </svg>
-        </span>
-        <span class="excel-export-copy"><strong>Exportar a Excel</strong><small>Libro de Microsoft Excel · .xlsx</small></span>
-      </button>
     </div>
 
     <div class="admin-core-grid">
@@ -358,6 +350,34 @@
           <button class="primary institutional-save-btn" onclick="saveAdmin()">✓ Guardar configuración</button>
         </div>
       </section>
+
+<section id="excelExportCard" class="card admin-core-card excel-admin-card">
+  <div class="admin-core-head">
+    <div>
+      <h2>Exportación Excel</h2>
+      <p>Seleccione las hojas y cuatrimestres que desea incluir.</p>
+    </div>
+    <span class="excel-admin-badge">Excel</span>
+  </div>
+  <div class="excel-admin-group">
+    <b>Hojas del libro</b>
+    <div id="excelSheetOptions" class="excel-option-grid"></div>
+  </div>
+  <div class="excel-admin-group">
+    <b>Cuatrimestres</b>
+    <div id="excelQuarterOptions" class="excel-quarter-grid"></div>
+  </div>
+  <button class="excel-export-btn excel-export-card-btn" onclick="exportExcel()" aria-label="Exportar Excel">
+    <span class="excel-logo" aria-hidden="true">
+      <svg viewBox="0 0 24 24" width="20" height="20">
+        <rect x="3" y="3" width="12" height="18" rx="2" fill="#217346"/>
+        <path d="M15 6h6v12h-6" fill="#185C37"/>
+        <path d="M7 8.5l2 3-2.2 4h2l1.2-2.5 1.3 2.5h2l-2.3-4 2-3h-2l-1 2-1-2z" fill="#fff"/>
+      </svg>
+    </span>
+    <span class="excel-export-copy"><strong>Exportar Excel</strong><small>Generar libro seleccionado</small></span>
+  </button>
+</section>
 </div>
 
 </div>
