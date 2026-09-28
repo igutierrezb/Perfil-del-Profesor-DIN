@@ -1,0 +1,29 @@
+PERFIL PROFESOR DIN · V41
+
+Cambios:
+1. Impresión:
+   - “Área de competencia” pasa a tres líneas:
+     Área
+     de
+     comp.
+   - Sólo se modifica el formato impreso.
+
+2. Perfil por programa:
+   - Se corrige la causa real del espacio desperdiciado:
+     las columnas estaban compactas, pero la rejilla usaba justify-content:start;
+     por eso el espacio sobrante quedaba acumulado a la derecha.
+   - Ahora la columna Asignatura conserva un ancho máximo reducido y el espacio
+     sobrante se distribuye entre las columnas.
+   - La página vuelve a un ancho máximo de trabajo más contenido y centrado.
+   - Los dos cuatrimestres conservan una distribución más equilibrada.
+
+3. Coordinador / Favorita:
+   - se amplían sus columnas para evitar empalmes;
+   - toda la celda del encabezado se pinta en rojo;
+   - la nota superior queda en dos líneas sin separación vertical:
+     ✓ Si ya la coordinaste
+     ★ Si es favorita
+   - cada descripción permanece en una sola línea.
+
+deploy-pages.yml: NO necesita actualización.
+firestore.rules: NO necesita actualización.
