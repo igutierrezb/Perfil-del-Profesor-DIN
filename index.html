@@ -425,6 +425,42 @@
       </div>
     </div>
 
+
+    <div class="card transversal-admin-card">
+      <div class="section-head transversal-admin-head">
+        <div>
+          <h2>Asignaturas transversales</h2>
+          <p>Vincule materias con el mismo nombre para que su captura sea idéntica en los programas seleccionados.</p>
+        </div>
+        <span class="transversal-admin-badge">↔ Sincronización</span>
+      </div>
+
+      <div class="transversal-config-grid">
+        <label>1. Programa de origen
+          <select id="transversalSourceProgram" onchange="renderTransversalSubjectOptions()"></select>
+        </label>
+        <label>2. Asignatura
+          <select id="transversalSourceSubject" onchange="renderTransversalTargets()"></select>
+        </label>
+      </div>
+
+      <div class="transversal-help">
+        Seleccione una asignatura y después marque en qué otros programas desea hacerla transversal.
+        Sólo se mostrarán programas donde exista una materia con el <b>mismo nombre</b>.
+      </div>
+
+      <div id="transversalTargets" class="transversal-targets"></div>
+
+      <div class="transversal-actions">
+        <button type="button" class="transversal-save-btn" onclick="saveTransversalRule()">Guardar transversalidad</button>
+      </div>
+
+      <div class="transversal-configured">
+        <h3>Asignaturas transversales configuradas</h3>
+        <div id="transversalRulesList"></div>
+      </div>
+    </div>
+
     <div id="programEditorCard" class="card program-editor-card">
       <div class="section-head">
         <div>

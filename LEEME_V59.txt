@@ -1,0 +1,48 @@
+PERFIL PROFESOR DIN · V59 · TRANSVERSALIDAD
+
+Cambios puntuales implementados sin modificar otras funciones:
+
+1. Asignaturas transversales
+- Nuevo módulo en Administración.
+- Se selecciona programa de origen y una asignatura.
+- Sólo aparecen otros programas donde existe una materia con el mismo nombre.
+- Administración decide en cuáles programas sincronizarla.
+- Al modificar una materia transversal se replica:
+  * habilitada/deshabilitada;
+  * competencia X/XX;
+  * área de conocimiento;
+  * favorita;
+  * coordinador previo.
+- La sincronización se aplica a las respuestas futuras; crear o eliminar una regla no borra respuestas ya capturadas.
+- Cada materia transversal muestra una pequeña insignia ↔ Transversal.
+
+2. Actualizar avance
+- El botón conserva su función.
+- Ahora tiene mayor contraste y aparece inmediatamente a la izquierda del resumen de profesores.
+
+3. Datos faltantes
+- En Perfil por programa, si falta competencia o área de conocimiento:
+  * la pantalla abre el programa correcto;
+  * lleva a la fila exacta;
+  * resalta específicamente los botones de Competencia o Área que faltan.
+- Si falta un dato del apartado Datos del profesor:
+  * abre esa pantalla;
+  * lleva al campo exacto;
+  * resalta el campo requerido.
+
+Persistencia:
+- transversalRules se guarda dentro de settings/app, igual que commonRules.
+- No requiere una nueva colección.
+
+NO MODIFICADO:
+- autenticación;
+- impresión;
+- Excel;
+- blindaje de persistencia;
+- Comisiones;
+- reglas existentes de tronco común;
+- cálculo de avance;
+- eliminación administrativa.
+
+deploy-pages.yml: NO necesita actualización.
+firestore.rules: NO necesita actualización.

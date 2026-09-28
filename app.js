@@ -10,7 +10,7 @@ const DEFAULT_COMMON_RULES=[
   {id:'TC_IND',name:'Tronco común Industrial',programIds:['ind_plasticos','ind_procesos'],semesters:[0,1,2]},
   {id:'TC_MEC',name:'Tronco común Mecánica',programIds:['mec_ind','mec_moldes','mec_auto'],semesters:[0,1,2]}
 ];
-let answers=store.answers||{},programMeta=store.programMeta||{},customPrograms=store.customPrograms||[],programOverrides=store.programOverrides||{},disabledPrograms=store.disabledPrograms||[],programAcronyms=store.programAcronyms||{},commonRules=Array.isArray(store.commonRules)?store.commonRules:JSON.parse(JSON.stringify(DEFAULT_COMMON_RULES)),planningByPeriod=(store.planningByPeriod&&typeof store.planningByPeriod==='object')?store.planningByPeriod:{};
+let answers=store.answers||{},programMeta=store.programMeta||{},customPrograms=store.customPrograms||[],programOverrides=store.programOverrides||{},disabledPrograms=store.disabledPrograms||[],programAcronyms=store.programAcronyms||{},commonRules=Array.isArray(store.commonRules)?store.commonRules:JSON.parse(JSON.stringify(DEFAULT_COMMON_RULES)),transversalRules=Array.isArray(store.transversalRules)?store.transversalRules:[],planningByPeriod=(store.planningByPeriod&&typeof store.planningByPeriod==='object')?store.planningByPeriod:{};
 let currentProgramIndex=Number.isInteger(store.currentProgramIndex)?store.currentProgramIndex:0;
 let newSemesterCount=5,programEditorSemesters=[],auth=null,currentUser=null,authReady=false,db=null,cloudSettingsUnsub=null,cloudProfileMetaUnsub=null,remoteProfileLoaded=false,cloudAvailable=false,cloudSaveTimer=null,cloudRetryTimer=null,countdownTimer=null,lastSavedAt=store.lastSavedAt||null,editingCommonRuleId=null,editingProgramId=null,teacherAdminCache={};
 let cloudSyncInFlight=false;
@@ -456,7 +456,8 @@ function globalSettingsPayload(){
     customPrograms:JSON.parse(JSON.stringify(customPrograms)),
     programOverrides:JSON.parse(JSON.stringify(programOverrides)),
     programAcronyms:{...programAcronyms},
-    commonRules:JSON.parse(JSON.stringify(commonRules))
+    commonRules:JSON.parse(JSON.stringify(commonRules)),
+    transversalRules:JSON.parse(JSON.stringify(transversalRules))
   };
 }
 function applyGlobalSettings(data){
@@ -467,8 +468,9 @@ function applyGlobalSettings(data){
   if(data.programOverrides&&typeof data.programOverrides==='object')programOverrides=data.programOverrides;
   if(data.programAcronyms&&typeof data.programAcronyms==='object')programAcronyms=data.programAcronyms;
   if(Array.isArray(data.commonRules))commonRules=data.commonRules;
+  if(Array.isArray(data.transversalRules))transversalRules=data.transversalRules;
   currentProgramIndex=Math.min(currentProgramIndex,Math.max(0,programs().length-1));
-  localStorage.setItem('PAD_UTEQ',JSON.stringify({...store,cfg,answers,programMeta,customPrograms,programOverrides,disabledPrograms,programAcronyms,commonRules,currentProgramIndex,lastSavedAt}));
+  localStorage.setItem('PAD_UTEQ',JSON.stringify({...store,cfg,answers,programMeta,customPrograms,programOverrides,disabledPrograms,programAcronyms,commonRules,transversalRules,currentProgramIndex,lastSavedAt}));
   updatePeriodBadges();renderCurrentProgram();renderAdmin();updateCountdownUI();updatePlanningAvailability();renderPlanning();applyEditState();updateNavState();
 }
 async function saveGlobalSettings(action='Configuración global actualizada'){
@@ -506,7 +508,7 @@ function resetLocalTeacherData({keepProfile=false}={}){
 
   localStorage.setItem('PAD_UTEQ',JSON.stringify({
     ...store,cfg,answers,programMeta,customPrograms,programOverrides,
-    disabledPrograms,programAcronyms,commonRules,currentProgramIndex,lastSavedAt
+    disabledPrograms,programAcronyms,commonRules,transversalRules,currentProgramIndex,lastSavedAt
   }));
 
   buildProfileRows();
@@ -1373,10 +1375,10 @@ function originTooltip(code){
   return labels[String(code)]||String(code);
 }
 function normalizeOrigins(code){return String(code).split('').map(Number)}
-window.setEnabled=function(pid,s,c,name,on){if(!requireEditing())return;if(isEnglish(name))return;const r=getAns(pid,s,c,name);r.status=on?(r.status==='off'?'pending':r.status):'off';if(!on){r.origins=[];r.ideal=false}answers[key(pid,s,c)]=r;replicateCommon(pid,s,c,r);persist();renderCurrentProgram()}
-window.setCompetence=function(pid,s,c,name,level){if(!requireEditing())return;const r=getAns(pid,s,c,name);if(['off','na'].includes(r.status))return;r.status=level;r.origins=[];answers[key(pid,s,c)]=r;replicateCommon(pid,s,c,r);persist();renderCurrentProgram()}
-window.setOriginCode=function(pid,s,c,name,code){if(!requireEditing())return;const r=getAns(pid,s,c,name);if(!['X','XX'].includes(r.status))return;r.origins=normalizeOrigins(code);answers[key(pid,s,c)]=r;replicateCommon(pid,s,c,r);persist();renderCurrentProgram()}
-window.toggleIdeal=function(pid,s,c,name){if(!requireEditing())return;const r=getAns(pid,s,c,name);if(!['X','XX'].includes(r.status)||(r.origins||[]).length===0){toast('Primero seleccione competencia y área de conocimiento.');return}r.ideal=!r.ideal;answers[key(pid,s,c)]=r;replicateCommon(pid,s,c,r);persist();renderCurrentProgram()}
+window.setEnabled=function(pid,s,c,name,on){if(!requireEditing())return;if(isEnglish(name))return;const r=getAns(pid,s,c,name);r.status=on?(r.status==='off'?'pending':r.status):'off';if(!on){r.origins=[];r.ideal=false}answers[key(pid,s,c)]=r;replicateCommon(pid,s,c,r);replicateTransversalAnswer(pid,s,c,name,r);persist();renderCurrentProgram()}
+window.setCompetence=function(pid,s,c,name,level){if(!requireEditing())return;const r=getAns(pid,s,c,name);if(['off','na'].includes(r.status))return;r.status=level;r.origins=[];answers[key(pid,s,c)]=r;replicateCommon(pid,s,c,r);replicateTransversalAnswer(pid,s,c,name,r);persist();renderCurrentProgram()}
+window.setOriginCode=function(pid,s,c,name,code){if(!requireEditing())return;const r=getAns(pid,s,c,name);if(!['X','XX'].includes(r.status))return;r.origins=normalizeOrigins(code);answers[key(pid,s,c)]=r;replicateCommon(pid,s,c,r);replicateTransversalAnswer(pid,s,c,name,r);persist();renderCurrentProgram()}
+window.toggleIdeal=function(pid,s,c,name){if(!requireEditing())return;const r=getAns(pid,s,c,name);if(!['X','XX'].includes(r.status)||(r.origins||[]).length===0){toast('Primero seleccione competencia y área de conocimiento.');return}r.ideal=!r.ideal;answers[key(pid,s,c)]=r;replicateCommon(pid,s,c,r);replicateTransversalAnswer(pid,s,c,name,r);persist();renderCurrentProgram()}
 function replicateCommon(pid,s,c,r){
   const source=allPrograms().find(x=>x.id===pid);
   const sourceName=source?.semesters?.[s]?.[c];
@@ -1394,6 +1396,83 @@ function replicateCommon(pid,s,c,r){
     synced++;
   });
   return synced;
+}
+
+function findCourseLocationsByName(programId,normalizedName){
+  const pr=allPrograms().find(x=>x.id===programId);
+  if(!pr)return [];
+  const found=[];
+  pr.semesters.forEach((sem,s)=>sem.forEach((name,c)=>{
+    if(normalizeSubjectName(name)===normalizedName)found.push({pid:programId,s,c,name});
+  }));
+  return found;
+}
+function transversalRuleForCourse(pid,name){
+  const normalized=normalizeSubjectName(name||'');
+  if(!normalized)return [];
+  return transversalRules.filter(rule=>{
+    if(rule.subjectNormalized!==normalized)return false;
+    const ids=[rule.sourceProgramId,...(rule.targetProgramIds||[])];
+    return ids.includes(pid);
+  });
+}
+function transversalLocations(rule){
+  const ids=[rule.sourceProgramId,...(rule.targetProgramIds||[])];
+  const seen=new Set(),out=[];
+  ids.forEach(pid=>{
+    findCourseLocationsByName(pid,rule.subjectNormalized).forEach(loc=>{
+      const k=`${loc.pid}|${loc.s}|${loc.c}`;
+      if(!seen.has(k)){seen.add(k);out.push(loc)}
+    });
+  });
+  return out;
+}
+function setCoordinatorValue(pid,s,c,checked){
+  programMeta[pid]=programMeta[pid]||{};
+  let arr=programMeta[pid].coordinators||[];
+  const id=`${s}|${c}`;
+  arr=checked?[...new Set([...arr,id])]:arr.filter(x=>x!==id);
+  programMeta[pid].coordinators=arr;
+}
+function replicateTransversalAnswer(pid,s,c,name,r){
+  const rules=transversalRuleForCourse(pid,name);
+  let synced=0;
+  rules.forEach(rule=>{
+    transversalLocations(rule).forEach(loc=>{
+      if(loc.pid===pid&&loc.s===s&&loc.c===c)return;
+      answers[key(loc.pid,loc.s,loc.c)]={
+        status:r.status,
+        origins:[...(r.origins||[])],
+        ideal:!!r.ideal
+      };
+      synced++;
+    });
+  });
+  return synced;
+}
+function replicateTransversalCoordinator(pid,s,c,name,checked){
+  const rules=transversalRuleForCourse(pid,name);
+  let synced=0;
+  rules.forEach(rule=>{
+    transversalLocations(rule).forEach(loc=>{
+      if(loc.pid===pid&&loc.s===s&&loc.c===c)return;
+      setCoordinatorValue(loc.pid,loc.s,loc.c,checked);
+      synced++;
+    });
+  });
+  return synced;
+}
+function courseTransversalBadge(pid,name){
+  const rules=transversalRuleForCourse(pid,name);
+  if(!rules.length)return '';
+  const related=new Set();
+  rules.forEach(rule=>[rule.sourceProgramId,...(rule.targetProgramIds||[])].forEach(id=>{
+    if(id!==pid){
+      const pr=allPrograms().find(x=>x.id===id);
+      if(pr)related.add(programAcronym(pr));
+    }
+  }));
+  return `<span class="transversal-course-badge" title="Esta asignatura está sincronizada con ${escapeHtml([...related].join(', '))}">↔ Transversal</span>`;
 }
 
 function programStats(p){let total=0,done=0,missing=0;p.semesters.forEach((sem,s)=>sem.forEach((name,c)=>{if(isEnglish(name))return;total++;const a=getAns(p.id,s,c,name);if(a.status!=='pending')done++;else missing++}));return{total,done,missing}}
@@ -1449,7 +1528,7 @@ function captureIssuePanel(issues){
   return `<div class="capture-error-panel">
     <div class="capture-error-title"><span class="capture-error-icon">!</span><div><b>No puede pasar a revisión todavía</b><span>Complete los campos señalados. La alerta desaparecerá automáticamente cuando quede corregido.</span></div></div>
     <div class="capture-error-groups">
-      ${groups.map(g=>`<button type="button" class="capture-error-group" onclick="goToCaptureIssue(${g.pi},${g.s},${g.items[0].c})">
+      ${groups.map(g=>`<button type="button" class="capture-error-group" onclick="goToCaptureIssue(${g.pi},${g.s},${g.items[0].c},'${g.items[0].type}')">
         <strong>${escapeHtml(g.programName)}</strong>
         <span>${g.s+1}.° cuatrimestre · ${g.items.length} pendiente${g.items.length===1?'':'s'}</span>
         <small>${g.items.slice(0,3).map(x=>escapeHtml(subjectCase(x.name))).join(' · ')}${g.items.length>3?' · …':''}</small>
@@ -1457,14 +1536,25 @@ function captureIssuePanel(issues){
     </div>
   </div>`;
 }
-window.goToCaptureIssue=function(pi,s,c){
+function focusExactCaptureIssue(issue){
+  if(!issue)return;
+  document.querySelectorAll('.exact-missing-focus').forEach(el=>el.classList.remove('exact-missing-focus'));
+  const row=document.querySelector(`[data-course-loc="${issue.pi}|${issue.s}|${issue.c}"]`);
+  if(!row)return;
+  const exact=issue.type==='area'
+    ?row.querySelector('.area-buttons')
+    :issue.type==='competence'
+      ?row.querySelector('.comp-buttons')
+      :row;
+  row.scrollIntoView({behavior:'smooth',block:'center'});
+  (exact||row).classList.add('exact-missing-focus');
+  setTimeout(()=>{(exact||row).classList.remove('exact-missing-focus')},4500);
+}
+window.goToCaptureIssue=function(pi,s,c,type='competence'){
   currentProgramIndex=pi;
   persist();
   renderCurrentProgram();
-  requestAnimationFrame(()=>{
-    const row=document.querySelector(`[data-course-loc="${pi}|${s}|${c}"]`);
-    if(row)row.scrollIntoView({behavior:'smooth',block:'center'});
-  });
+  requestAnimationFrame(()=>focusExactCaptureIssue({pi,s,c,type}));
 }
 function refreshCaptureErrorState(){
   if(!captureErrorModeActive)return;
@@ -1504,10 +1594,13 @@ window.toggleCoordinatorMode=function(pid,on){
 }
 window.toggleCoordinator=function(pid,id,checked){
   if(!requireEditing())return;
-  programMeta[pid]=programMeta[pid]||{};
-  let arr=programMeta[pid].coordinators||[];
-  arr=checked?[...new Set([...arr,id])]:arr.filter(x=>x!==id);
-  programMeta[pid].coordinators=arr;persist();
+  const [s,c]=String(id).split('|').map(Number);
+  const pr=allPrograms().find(x=>x.id===pid);
+  const name=pr?.semesters?.[s]?.[c]||'';
+  setCoordinatorValue(pid,s,c,checked);
+  replicateTransversalCoordinator(pid,s,c,name,checked);
+  persist();
+  renderCurrentProgram();
 }
 function renderCoordinator(p){ return ''; }
 
@@ -1542,11 +1635,7 @@ function showCurrentProgramBlock(issues){
   }));
   $('captureErrors').innerHTML=captureIssuePanel(mapped);
   renderCurrentProgram();
-  requestAnimationFrame(()=>{
-    const first=mapped[0];
-    const row=document.querySelector(`[data-course-loc="${first.pi}|${first.s}|${first.c}"]`);
-    if(row)row.scrollIntoView({behavior:'smooth',block:'center'});
-  });
+  requestAnimationFrame(()=>focusExactCaptureIssue(mapped[0]));
   toast('Complete primero las materias habilitadas de este programa.');
 }
 function canLeaveCurrentProgram(){
@@ -1671,7 +1760,7 @@ function renderCurrentProgram(){
       const loc=`${currentProgramIndex}|${s}|${c}`;
 
       h+=`<div class="course ${pending?'pending':''} ${a.status==='off'?'off':''} ${reviewed&&a.status!=='off'?'reviewed':''} ${na?'na na-clean':''} ${needsAttention?'needs-attention':''}" data-course-loc="${loc}">
-        <div class="name">${subjectCase(name)}${subjectHours(p.id,s,c)?` <small class="course-hours">(${subjectHours(p.id,s,c)} h)</small>`:''}${na?' · NO APLICA':''}</div>`;
+        <div class="name">${subjectCase(name)}${subjectHours(p.id,s,c)?` <small class="course-hours">(${subjectHours(p.id,s,c)} h)</small>`:''}${na?' · NO APLICA':''}${!na?courseTransversalBadge(p.id,name):''}</div>`;
 
       if(na){
         h+=`<div class="control-placeholder"></div><div class="control-placeholder"></div><div class="control-placeholder"></div><div class="control-placeholder"></div><div class="control-placeholder"></div>`;
@@ -1767,17 +1856,25 @@ function reviewAvailable(){
 }
 function showCaptureErrors(errs){
   captureErrorModeActive=true;
+  const profileCheck=validateProfile();
   const issues=captureIssues();
+
+  if(!profileCheck.ok){
+    document.querySelectorAll('.view').forEach(x=>x.classList.remove('active'));
+    $('perfil')?.classList.add('active');
+    document.querySelectorAll('.main-nav button').forEach(b=>b.classList.toggle('active',b.dataset.view==='perfil'));
+    const v=validateProfile({visual:true,focusFirst:true});
+    if($('profileErrors'))$('profileErrors').innerHTML=statusBox(v.errors,'Complete el dato obligatorio señalado.');
+    toast('Señalamos exactamente el dato que falta completar.');
+    return;
+  }
+
   if(issues.length){
     currentProgramIndex=issues[0].pi;
     persist();
     renderCurrentProgram();
     $('captureErrors').innerHTML=captureIssuePanel(issues);
-    requestAnimationFrame(()=>{
-      const first=issues[0];
-      const row=document.querySelector(`[data-course-loc="${first.pi}|${first.s}|${first.c}"]`);
-      if(row)row.scrollIntoView({behavior:'smooth',block:'center'});
-    });
+    requestAnimationFrame(()=>focusExactCaptureIssue(issues[0]));
   }else{
     $('captureErrors').innerHTML=statusBox(errs,'No puede pasar a revisión todavía.');
   }
@@ -2366,6 +2463,140 @@ window.deleteTeacherProfile=async function(uid){
   }
 }
 
+
+function transversalSubjectOptionsForProgram(pid){
+  const pr=allPrograms().find(x=>x.id===pid);
+  if(!pr)return [];
+  const seen=new Set(),items=[];
+  pr.semesters.forEach((sem,s)=>sem.forEach((name,c)=>{
+    if(isEnglish(name))return;
+    const norm=normalizeSubjectName(name);
+    if(!norm||seen.has(norm))return;
+    seen.add(norm);
+    items.push({s,c,name,normalized:norm});
+  }));
+  return items;
+}
+function renderTransversalAdmin(){
+  const source=$('transversalSourceProgram');
+  if(!source)return;
+  const active=allPrograms();
+  const previous=source.value;
+  source.innerHTML=active.map(p=>`<option value="${p.id}">${escapeHtml(programAcronym(p))} · ${escapeHtml(p.name)} — ${escapeHtml(p.exit)}</option>`).join('');
+  if(previous&&active.some(p=>p.id===previous))source.value=previous;
+  renderTransversalSubjectOptions();
+  renderTransversalRulesList();
+}
+window.renderTransversalSubjectOptions=function(){
+  const source=$('transversalSourceProgram'),subject=$('transversalSourceSubject');
+  if(!source||!subject)return;
+  const previous=subject.value;
+  const items=transversalSubjectOptionsForProgram(source.value);
+  subject.innerHTML=items.map(x=>`<option value="${encodeURIComponent(x.normalized)}">${escapeHtml(subjectCase(x.name))}</option>`).join('');
+  if(previous&&items.some(x=>encodeURIComponent(x.normalized)===previous))subject.value=previous;
+  renderTransversalTargets();
+}
+window.renderTransversalTargets=function(){
+  const source=$('transversalSourceProgram'),subject=$('transversalSourceSubject'),root=$('transversalTargets');
+  if(!source||!subject||!root)return;
+  const pid=source.value;
+  const normalized=decodeURIComponent(subject.value||'');
+  if(!pid||!normalized){
+    root.innerHTML='<div class="transversal-empty">Seleccione programa y asignatura.</div>';
+    return;
+  }
+
+  const existing=transversalRules.find(r=>r.sourceProgramId===pid&&r.subjectNormalized===normalized)
+    || transversalRules.find(r=>r.subjectNormalized===normalized&&[r.sourceProgramId,...(r.targetProgramIds||[])].includes(pid));
+
+  const targetIds=new Set(existing?.targetProgramIds||[]);
+  if(existing?.sourceProgramId&&existing.sourceProgramId!==pid)targetIds.add(existing.sourceProgramId);
+
+  const candidates=allPrograms().filter(p=>p.id!==pid).map(p=>{
+    const locations=findCourseLocationsByName(p.id,normalized);
+    return {p,locations};
+  }).filter(x=>x.locations.length);
+
+  if(!candidates.length){
+    root.innerHTML='<div class="transversal-empty">No se encontraron otras materias con el mismo nombre en los programas educativos.</div>';
+    return;
+  }
+
+  root.innerHTML=`<div class="transversal-target-title">3. Programas donde se sincronizará esta asignatura</div>
+    <div class="transversal-target-grid">
+      ${candidates.map(({p,locations})=>`<label class="transversal-target-card">
+        <input type="checkbox" data-transversal-target="${p.id}" ${targetIds.has(p.id)?'checked':''}>
+        <span class="transversal-target-check">✓</span>
+        <span class="transversal-target-copy">
+          <b>${escapeHtml(programAcronym(p))} · ${escapeHtml(p.name)}</b>
+          <small>${escapeHtml(p.exit)} · ${locations.map(x=>`${x.s+1}.° cuatrimestre`).join(', ')}</small>
+        </span>
+      </label>`).join('')}
+    </div>`;
+}
+window.saveTransversalRule=function(){
+  if(!isAdmin())return;
+  const source=$('transversalSourceProgram'),subject=$('transversalSourceSubject');
+  const sourceProgramId=source?.value||'';
+  const subjectNormalized=decodeURIComponent(subject?.value||'');
+  const targetProgramIds=[...document.querySelectorAll('[data-transversal-target]:checked')].map(x=>x.dataset.transversalTarget);
+  if(!sourceProgramId||!subjectNormalized){toast('Seleccione programa y asignatura.');return}
+  if(!targetProgramIds.length){toast('Seleccione al menos un programa relacionado.');return}
+
+  const sourceItem=transversalSubjectOptionsForProgram(sourceProgramId).find(x=>x.normalized===subjectNormalized);
+  const label=sourceItem?.name||subjectNormalized;
+
+  // Una misma asignatura normalizada usa una sola regla transversal para evitar cadenas ambiguas.
+  transversalRules=transversalRules.filter(r=>r.subjectNormalized!==subjectNormalized);
+  transversalRules.push({
+    id:`TR_${Date.now()}`,
+    subjectName:label,
+    subjectNormalized,
+    sourceProgramId,
+    targetProgramIds:[...new Set(targetProgramIds)]
+  });
+
+  store.transversalRules=transversalRules;
+  persist();
+  saveGlobalSettings('Asignatura transversal configurada');
+  renderTransversalAdmin();
+  renderCurrentProgram();
+  toast('Transversalidad guardada. Las próximas selecciones se sincronizarán entre los programas vinculados.');
+}
+window.deleteTransversalRule=function(id){
+  if(!isAdmin())return;
+  const rule=transversalRules.find(r=>r.id===id);
+  if(!rule)return;
+  if(!confirm(`¿Quitar la transversalidad de "${rule.subjectName||'esta asignatura'}"?\n\nLas respuestas ya capturadas no se borrarán.`))return;
+  transversalRules=transversalRules.filter(r=>r.id!==id);
+  store.transversalRules=transversalRules;
+  persist();
+  saveGlobalSettings('Asignatura transversal eliminada');
+  renderTransversalAdmin();
+  renderCurrentProgram();
+  toast('Transversalidad eliminada.');
+}
+function renderTransversalRulesList(){
+  const root=$('transversalRulesList');
+  if(!root)return;
+  if(!transversalRules.length){
+    root.innerHTML='<div class="transversal-empty">No hay asignaturas transversales configuradas.</div>';
+    return;
+  }
+  root.innerHTML=transversalRules.map(rule=>{
+    const source=allPrograms().find(x=>x.id===rule.sourceProgramId);
+    const targets=(rule.targetProgramIds||[]).map(id=>allPrograms().find(x=>x.id===id)).filter(Boolean);
+    return `<div class="transversal-rule-row">
+      <div class="transversal-rule-name">
+        <strong>${escapeHtml(subjectCase(rule.subjectName||rule.subjectNormalized))}</strong>
+        <span>Origen: ${escapeHtml(source?programAcronym(source):rule.sourceProgramId)}</span>
+      </div>
+      <div class="transversal-rule-targets">${targets.map(p=>`<span>${escapeHtml(programAcronym(p))}</span>`).join('')}</div>
+      <button type="button" onclick="deleteTransversalRule('${rule.id}')">Quitar</button>
+    </div>`;
+  }).join('');
+}
+
 function renderAdmin(){
   $('jefe').value=cfg.jefe;$('codigo').value=cfg.codigo;$('revisionCal').value=cfg.revision;$('fechaRevision').value=cfg.fechaRevision;$('periodoAdmin').value=cfg.periodo;
   updatePlanningAvailability();
@@ -2375,7 +2606,7 @@ function renderAdmin(){
   if(st){st.textContent=cfg.editingLocked?'Edición desactivada':'Edición activa';st.className='edit-mode-status '+(cfg.editingLocked?'locked':'open')}
   if(btn){btn.textContent=cfg.editingLocked?'Activar edición de perfiles':'Desactivar edición de perfiles';btn.className='edit-mode-btn '+(cfg.editingLocked?'activate':'deactivate')}
   if(!editingProgramId && !$('newProgramSemesters')?.children?.length)renderSemesterEditors();
-  renderProgramAdminList();renderCustomPrograms();renderRules();applyEditState();renderTeacherAdminList()
+  renderProgramAdminList();renderCustomPrograms();renderRules();renderTransversalAdmin();applyEditState();renderTeacherAdminList()
 }
 function normalizeEditorSemesterValues(values){
   if(!Array.isArray(values))return [];
