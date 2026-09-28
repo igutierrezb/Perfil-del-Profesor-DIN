@@ -32,15 +32,18 @@ jobs:
           FIREBASE_AUTH_DOMAIN: ${{ secrets.FIREBASE_AUTH_DOMAIN }}
           FIREBASE_PROJECT_ID: ${{ secrets.FIREBASE_PROJECT_ID }}
           FIREBASE_APP_ID: ${{ secrets.FIREBASE_APP_ID }}
+          GOOGLE_CLIENT_ID: ${{ secrets.GOOGLE_CLIENT_ID }}
         run: |
           set -euo pipefail
           test -n "$FIREBASE_API_KEY"
-          test -n "$FIREBASE_AUTH_DOMAIN"
           test -n "$FIREBASE_PROJECT_ID"
           test -n "$FIREBASE_APP_ID"
+          test -n "$GOOGLE_CLIENT_ID"
 
+          rm -rf dist
           mkdir -p dist
-          cp index.html styles.css app.js catalog.js logo-uteq.png logo-uteq-blue.png logo-uteq-wordmark.svg icono-industria.svg favicon.svg favicon-division.png logo-division-industrial-full.png logo-division-industrial-emblem.png logo-din-horizontal.png icon-din.png favicon.ico favicon-16x16.png favicon-32x32.png apple-touch-icon.png icon-192.png icon-512.png manifest.webmanifest README.md ARQUITECTURA.md dist/
+          # Copia todos los archivos estáticos del repositorio y evita publicar metadatos Git.
+          find . -maxdepth 1 -type f ! -name 'firebase-config.js' -exec cp {} dist/ \;
 
           cat > dist/firebase-config.js <<EOF
           window.FIREBASE_CONFIG = {
@@ -50,6 +53,7 @@ jobs:
             appId: "$FIREBASE_APP_ID"
           };
 
+          window.PAD_GOOGLE_CLIENT_ID = "$GOOGLE_CLIENT_ID";
           window.PAD_ALLOWED_DOMAIN = "uteq.edu.mx";
           window.PAD_ADMIN_EMAIL = "ivan.gutierrez@uteq.edu.mx";
           EOF
