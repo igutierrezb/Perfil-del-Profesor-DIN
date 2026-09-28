@@ -1324,7 +1324,10 @@ function renderCommissionList(record){
       <span>¿Requiere un bloque específico de horas en la semana?</span>
       <label class="mini-choice yes"><input type="radio" name="commissionSchedule_${i}" value="yes" ${c.scheduleRequired==='yes'?'checked':''} onchange="commissionScheduleChanged(${i},'yes')"> Sí</label>
       <label class="mini-choice no"><input type="radio" name="commissionSchedule_${i}" value="no" ${c.scheduleRequired!=='yes'?'checked':''} onchange="commissionScheduleChanged(${i},'no')"> No</label>
-      <button type="button" class="commission-inline-add-btn" onclick="addPlanningCommission()">＋ Guardar y agregar nueva comisión</button>
+      <div class="commission-inline-actions">
+        <button type="button" class="commission-inline-save-btn" onclick="savePlanningCommission(${i})">✓ Guardar</button>
+        <button type="button" class="commission-inline-add-btn" onclick="addPlanningCommission()">＋ Agregar nueva comisión</button>
+      </div>
     </div>
     ${renderCommissionScheduleGrid(c,i)}
   </div>`).join('');
@@ -1393,6 +1396,15 @@ window.commissionScheduleChanged=function(index,value){
   planningByPeriod[cfg.periodo]=record;
   persist();
   renderPlanning();
+}
+window.savePlanningCommission=function(index){
+  if(!planningEnabled()){toast('El apartado de Comisiones está deshabilitado.');return false}
+  if(!planningEditingAllowed()){toast('La edición está cerrada.');return false}
+  const record=collectPlanning();
+  planningByPeriod[cfg.periodo]=record;
+  persist();
+  toast(`Comisión ${Number(index)+1} guardada.`);
+  return true;
 }
 window.addPlanningCommission=function(){
   if(!planningEditingAllowed())return;
@@ -1858,7 +1870,7 @@ function courseTransversalBadge(pid,s,c,name){
     const pr=allPrograms().find(x=>x.id===loc.pid);
     return pr?`${programAcronym(pr)} · ${loc.s+1}.°`:loc.pid;
   }))];
-  return `<span class="transversal-course-badge" title="Respuesta vinculada con: ${escapeHtml(labels.join(', '))}">↔ Vinculada</span>`;
+  return `<span class="transversal-course-badge" title="Respuesta vinculada con: ${escapeHtml(labels.join(', '))}">↔ Transversal</span>`;
 }
 
 function programStats(p){let total=0,done=0,missing=0;p.semesters.forEach((sem,s)=>sem.forEach((name,c)=>{if(isEnglish(name))return;total++;const a=getAns(p.id,s,c,name);if(a.status!=='pending')done++;else missing++}));return{total,done,missing}}
@@ -3549,7 +3561,7 @@ async function exportWorkbook(){
   const headerRows=6;
   const aoa=Array.from({length:headerRows+teachers.length},()=>[]);
   aoa[0][0]='PROGRAMA EDUCATIVO';
-  aoa[0][1]='Leyenda: ★ = Favorita (negrita) · fuente roja y negrita = Coordinó la asignatura';
+  aoa[0][1]='Leyenda: ✔ = Coordinó la asignatura · ★ = Favorita · las marcas se muestran en negrita';
   aoa[1][0]='ASIGNATURA';
   aoa[2][0]='HORAS AL CUATRIMESTRE';
   aoa[3][0]='HORAS A LA SEMANA';
@@ -3574,7 +3586,7 @@ async function exportWorkbook(){
         const coord=teacherCoordinator(t,pr.id,s,c);
         aoa[headerRows+ti][0]=t.name;
         aoa[headerRows+ti][1]=excelCategoryAbbreviation(t.category);
-        aoa[headerRows+ti][col]=level?`${level}${fav?' ★':''}`:'';
+        aoa[headerRows+ti][col]=level?`${level}${coord?' ✔':''}${fav?' ★':''}`:'';
       });
       col++;
     });});
@@ -3689,8 +3701,9 @@ async function exportWorkbook(){
 
 
   // Marcas administrativas del concentrado:
-  // ★ = Favorito; FUENTE ROJA EN NEGRITA = Coordinó la asignatura.
-  // No se utilizan fondos especiales.
+  // ✔ = Coordinó la asignatura; ★ = Favorita.
+  // Si existe cualquiera de las marcas, el contenido va en negrita.
+  // No se utilizan fondos especiales ni fuente roja.
   for(let r=headerRows;r<aoa.length;r++){
     const t=teachers[r-headerRows];
     let matrixCol=2;
@@ -3706,7 +3719,7 @@ async function exportWorkbook(){
             name:'Aptos',
             sz:10,
             bold:favorite || coordinated,
-            color:{rgb:coordinated?'C62828':'243746'}
+            color:{rgb:'243746'}
           },
           fill:{patternType:'solid',fgColor:{rgb:'FFFFFF'},bgColor:{rgb:'FFFFFF'}},
           alignment:{horizontal:'center',vertical:'center'},
@@ -3741,15 +3754,15 @@ async function exportWorkbook(){
       'Estado interno':a.status,
       'Nivel competencia':['X','XX'].includes(a.status)?a.status:'',
       'Área conocimiento':(a.origins||[]).sort().join(''),
-      'Materia favorita':a.ideal?'Sí':'',
-      'Coordinador de academia':teacherCoordinator(t,pr.id,s,c)?'Sí':''
+      'Materia favorita':a.ideal?'★':'',
+      'Coordinador de academia':teacherCoordinator(t,pr.id,s,c)?'✔':''
     });
   });})));
 
   const wsBase=XLSX.utils.json_to_sheet(base);
   wsBase['!autofilter']={ref:wsBase['!ref']};
   wsBase['!freeze']={xSplit:2,ySplit:1,topLeftCell:'C2',activePane:'bottomRight',state:'frozen'};
-  // Resalta en rojo y negrita el dato de coordinación también en Base maestra.
+  // Coordinación en Base maestra: ✔ en negrita, sin fuente roja.
   if(base.length){
     const coordHeader='Coordinador de academia';
     const headers=Object.keys(base[0]);
@@ -3757,9 +3770,28 @@ async function exportWorkbook(){
     if(coordCol>=0){
       for(let r=1;r<=base.length;r++){
         const addr=XLSX.utils.encode_cell({r,c:coordCol});
-        if(wsBase[addr] && String(wsBase[addr].v||'').toLowerCase()==='sí'){
+        if(wsBase[addr] && String(wsBase[addr].v||'')==='✔'){
           wsBase[addr].s={
-            font:{name:'Aptos',sz:10,bold:true,color:{rgb:'C62828'}},
+            font:{name:'Aptos',sz:10,bold:true,color:{rgb:'243746'}},
+            fill:{patternType:'solid',fgColor:{rgb:'FFFFFF'}},
+            alignment:{horizontal:'center',vertical:'center'}
+          };
+        }
+      }
+    }
+  }
+
+
+  // Favorita en Base maestra: ★ en negrita.
+  if(base.length){
+    const headers=Object.keys(base[0]);
+    const favCol=headers.indexOf('Materia favorita');
+    if(favCol>=0){
+      for(let r=1;r<=base.length;r++){
+        const addr=XLSX.utils.encode_cell({r,c:favCol});
+        if(wsBase[addr] && String(wsBase[addr].v||'')==='★'){
+          wsBase[addr].s={
+            font:{name:'Aptos',sz:10,bold:true,color:{rgb:'243746'}},
             fill:{patternType:'solid',fgColor:{rgb:'FFFFFF'}},
             alignment:{horizontal:'center',vertical:'center'}
           };
