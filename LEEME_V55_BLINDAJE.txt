@@ -1,0 +1,33 @@
+PERFIL PROFESOR DIN · V55 · BLINDAJE
+
+Implementado sin rediseñar ni reestructurar las funciones existentes:
+- respaldo local independiente por UID;
+- localUpdatedAt / clientUpdatedAt / cloudUpdatedAt / syncPending;
+- comparación copia local vs Firestore al iniciar;
+- nunca sustituye una copia local más reciente por una nube antigua;
+- si Firestore no responde, continúa el guardado local;
+- reintento automático de sincronización al volver Internet;
+- cierre de sesión intenta sincronizar y conserva respaldo por UID;
+- una eliminación administrativa no resucita una copia local antigua;
+- finalización guarda, intenta sincronizar, registra hora, bloquea y después imprime;
+- si falla Firestore al finalizar, no se pierde el perfil y la sincronización queda pendiente;
+- modal institucional de finalización con:
+  orientación horizontal, un solo juego, firma del profesor, firma del JUCA y sello;
+- aviso permanente de Perfil finalizado en modo consulta/impresión.
+
+No se modificaron:
+- autenticación;
+- Excel;
+- estructura/calibración de impresión;
+- captura por programa;
+- administración;
+- cambio de periodo;
+- eliminación administrativa.
+
+Decisión de seguridad:
+No se endurecieron firestore.rules para bloquear por submittedPeriod porque eso puede romper
+la reapertura individual por JUCA. Se documenta como mejora futura y no se implementa sin
+una prueba específica de reglas.
+
+deploy-pages.yml: NO necesita actualización.
+firestore.rules: NO necesita actualización.

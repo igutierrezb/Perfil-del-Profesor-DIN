@@ -12,7 +12,8 @@ const DEFAULT_COMMON_RULES=[
 ];
 let answers=store.answers||{},programMeta=store.programMeta||{},customPrograms=store.customPrograms||[],programOverrides=store.programOverrides||{},disabledPrograms=store.disabledPrograms||[],programAcronyms=store.programAcronyms||{},commonRules=Array.isArray(store.commonRules)?store.commonRules:JSON.parse(JSON.stringify(DEFAULT_COMMON_RULES)),planningByPeriod=(store.planningByPeriod&&typeof store.planningByPeriod==='object')?store.planningByPeriod:{};
 let currentProgramIndex=Number.isInteger(store.currentProgramIndex)?store.currentProgramIndex:0;
-let newSemesterCount=5,programEditorSemesters=[],auth=null,currentUser=null,authReady=false,db=null,cloudSettingsUnsub=null,cloudProfileMetaUnsub=null,remoteProfileLoaded=false,cloudAvailable=false,cloudSaveTimer=null,countdownTimer=null,lastSavedAt=store.lastSavedAt||null,editingCommonRuleId=null,editingProgramId=null,teacherAdminCache={};
+let newSemesterCount=5,programEditorSemesters=[],auth=null,currentUser=null,authReady=false,db=null,cloudSettingsUnsub=null,cloudProfileMetaUnsub=null,remoteProfileLoaded=false,cloudAvailable=false,cloudSaveTimer=null,cloudRetryTimer=null,countdownTimer=null,lastSavedAt=store.lastSavedAt||null,editingCommonRuleId=null,editingProgramId=null,teacherAdminCache={};
+let cloudSyncInFlight=false;
 const allowedDomain=(window.PAD_ALLOWED_DOMAIN||'uteq.edu.mx').toLowerCase();
 const adminEmail=(window.PAD_ADMIN_EMAIL||'ivan.gutierrez@uteq.edu.mx').toLowerCase();
 const googleClientId=String(window.PAD_GOOGLE_CLIENT_ID||'').trim();
@@ -254,11 +255,20 @@ function applyEditState(){
   if(banner){
     banner.classList.toggle('hidden',!locked);
     if(locked){
-      banner.textContent=submissionLockedForCurrentPeriod()
-        ?'🔒 Perfil finalizado. Puede consultarlo e imprimirlo nuevamente, pero la edición quedó bloqueada. Si requiere corregir algo, consúltelo con el JUCA.'
-        :deadlinePassed()
+      if(submissionLockedForCurrentPeriod()){
+        banner.classList.add('finalized-profile-banner');
+        banner.innerHTML=`<strong>🔒 Perfil finalizado</strong>
+          <ul>
+            <li>La edición está <b>bloqueada para el periodo actual</b>.</li>
+            <li>Puede consultar e imprimir nuevamente su información cuando lo requiera.</li>
+            <li>Si necesita realizar alguna corrección, solicite al <b>JUCA</b> la habilitación temporal de edición.</li>
+          </ul>`;
+      }else{
+        banner.classList.remove('finalized-profile-banner');
+        banner.textContent=deadlinePassed()
           ?'⏱ Captura fuera de tiempo. Puede consultar e imprimir, pero la edición está cerrada.'
           :'🔒 Edición desactivada por Administración. Puede consultar todo su perfil e imprimirlo normalmente.';
+      }
     }
   }
 
@@ -332,13 +342,70 @@ function getAns(pid,s,c,name){
   return answers[k]
 }
 function toast(msg){const t=$('toast');t.textContent=msg;t.classList.add('show');clearTimeout(toast.timer);toast.timer=setTimeout(()=>t.classList.remove('show'),2400)}
-function persist(){
+function profileBackupKey(uid=currentUser?.uid){
+  return uid?`PAD_UTEQ_PROFILE_${uid}`:'';
+}
+function profileBackupSnapshot(){
+  return {
+    profile:JSON.parse(JSON.stringify(store.profile||{})),
+    answers:JSON.parse(JSON.stringify(answers||{})),
+    programMeta:JSON.parse(JSON.stringify(programMeta||{})),
+    planningByPeriod:JSON.parse(JSON.stringify(planningByPeriod||{})),
+    submittedPeriod:store.submittedPeriod||null,
+    finalizedAtMs:Number(store.finalizedAtMs)||null,
+    currentProgramIndex:Number.isInteger(currentProgramIndex)?currentProgramIndex:0,
+    localUpdatedAt:Number(store.localUpdatedAt)||Number(store.lastSavedAt)||Date.now(),
+    savedAt:Date.now()
+  };
+}
+function saveUserBackup(){
+  const key=profileBackupKey();
+  if(!key)return;
+  try{localStorage.setItem(key,JSON.stringify(profileBackupSnapshot()))}
+  catch(e){console.warn('No fue posible actualizar el respaldo local por usuario',e)}
+}
+function readUserBackup(){
+  const key=profileBackupKey();
+  if(!key)return null;
+  try{
+    const raw=localStorage.getItem(key);
+    return raw?JSON.parse(raw):null;
+  }catch(e){
+    console.warn('No fue posible leer el respaldo local por usuario',e);
+    return null;
+  }
+}
+function clearUserBackup(uid){
+  const key=profileBackupKey(uid);
+  if(key)localStorage.removeItem(key);
+}
+function persist(options={}){
+  const {touch=true,schedule=true}=options;
   cfg.periodo=cfg.periodo||'SEP 2026 - AGO 2027';
-  store.cfg=cfg;store.answers=answers;store.programMeta=programMeta;store.customPrograms=customPrograms;store.programOverrides=programOverrides;store.disabledPrograms=disabledPrograms;store.programAcronyms=programAcronyms;store.commonRules=commonRules;store.planningByPeriod=planningByPeriod;store.currentProgramIndex=currentProgramIndex;store.lastSavedAt=Date.now();
+  const now=Date.now();
+  store.cfg=cfg;
+  store.answers=answers;
+  store.programMeta=programMeta;
+  store.customPrograms=customPrograms;
+  store.programOverrides=programOverrides;
+  store.disabledPrograms=disabledPrograms;
+  store.programAcronyms=programAcronyms;
+  store.commonRules=commonRules;
+  store.planningByPeriod=planningByPeriod;
+  store.currentProgramIndex=currentProgramIndex;
+  store.lastSavedAt=now;
+  if(touch)store.localUpdatedAt=now;
+  if(touch)store.syncPending=true;
   lastSavedAt=store.lastSavedAt;
-  localStorage.setItem('PAD_UTEQ',JSON.stringify(store));
+  try{
+    localStorage.setItem('PAD_UTEQ',JSON.stringify(store));
+    saveUserBackup();
+  }catch(e){
+    console.error('No fue posible guardar localmente el perfil',e);
+    updateCloudStatus('Error de almacenamiento local','warn');
+  }
   updateLastSavedUI();
-  scheduleCloudProfileSave();
+  if(schedule)scheduleCloudProfileSave();
 }
 function statusBox(errors,title){return `<div class="status-box bad"><b>${title}</b><ul>${errors.map(x=>`<li>${x}</li>`).join('')}</ul></div>`}
 function updatePeriodBadges(){ $('periodBadgeGate').textContent=`Periodo de vigencia · ${cfg.periodo}`; $('periodBadgeInline').textContent=`Periodo de vigencia · ${cfg.periodo}`; }
@@ -434,56 +501,144 @@ function profileCloudPayload(){
     individualEditDisabled:!!store.individualEditDisabled,
     profileResetToken:store.profileResetToken||null,
     planningByPeriod:JSON.parse(JSON.stringify(planningByPeriod)),
+    clientUpdatedAt:Number(store.localUpdatedAt)||Date.now(),
     updatedAt:serverTimestamp()
   };
+}
+function scheduleCloudRetry(delay=5000){
+  clearTimeout(cloudRetryTimer);
+  if(!currentUser||!store.syncPending)return;
+  cloudRetryTimer=setTimeout(()=>{
+    if(navigator.onLine!==false)syncProfileToCloud({reason:'reintento automático'});
+    else scheduleCloudRetry(Math.min(delay*2,30000));
+  },delay);
+}
+async function syncProfileToCloud({reason='guardado automático'}={}){
+  if(!db||!currentUser||!remoteProfileLoaded||cloudSyncInFlight)return false;
+  cloudSyncInFlight=true;
+  const version=Number(store.localUpdatedAt)||Date.now();
+  try{
+    await setDoc(doc(db,'profiles',currentUser.uid),profileCloudPayload(),{merge:true});
+    if((Number(store.localUpdatedAt)||0)<=version){
+      store.cloudUpdatedAt=version;
+      store.syncPending=false;
+      try{
+        localStorage.setItem('PAD_UTEQ',JSON.stringify(store));
+        saveUserBackup();
+      }catch(_){}
+    }
+    updateCloudStatus('Sincronizado','ok');
+    clearTimeout(cloudRetryTimer);
+    return true;
+  }catch(e){
+    console.warn(`Guardado en nube no disponible (${reason})`,e);
+    store.syncPending=true;
+    try{localStorage.setItem('PAD_UTEQ',JSON.stringify(store));saveUserBackup()}catch(_){}
+    updateCloudStatus('Guardado local · nube pendiente','warn');
+    scheduleCloudRetry();
+    return false;
+  }finally{
+    cloudSyncInFlight=false;
+  }
 }
 function scheduleCloudProfileSave(){
   if(!db||!currentUser||!remoteProfileLoaded)return;
   clearTimeout(cloudSaveTimer);
-  cloudSaveTimer=setTimeout(async()=>{
-    try{
-      await setDoc(doc(db,'profiles',currentUser.uid),profileCloudPayload(),{merge:true});
-      updateCloudStatus('Sincronizado','ok');
-    }catch(e){
-      console.warn('Guardado en nube no disponible',e);
-      updateCloudStatus('Guardado local · nube pendiente','warn');
-    }
-  },700);
+  cloudSaveTimer=setTimeout(()=>syncProfileToCloud({reason:'guardado progresivo'}),700);
+}
+function applyProfileContent(data){
+  if(data.profile)store.profile=JSON.parse(JSON.stringify(data.profile));
+  if(data.answers)answers=JSON.parse(JSON.stringify(data.answers));
+  if(data.programMeta)programMeta=JSON.parse(JSON.stringify(data.programMeta));
+  if(data.planningByPeriod&&typeof data.planningByPeriod==='object'){
+    planningByPeriod=JSON.parse(JSON.stringify(data.planningByPeriod));
+  }
+  store.answers=answers;
+  store.programMeta=programMeta;
+  store.planningByPeriod=planningByPeriod;
+}
+function renderLoadedProfile(){
+  localStorage.setItem('PAD_UTEQ',JSON.stringify({
+    ...store,cfg,customPrograms,programOverrides,disabledPrograms,
+    programAcronyms,commonRules,currentProgramIndex,lastSavedAt
+  }));
+  saveUserBackup();
+  loadProfileValuesOnly();
+  renderCurrentProgram();
+  renderPlanning();
+  updatePlanningAvailability();
+  updateProgress();
+  applyEditState();
+  updateNavState();
 }
 async function loadRemoteProfile(){
   if(!db||!currentUser)return;
   try{
     const snap=await getDoc(doc(db,'profiles',currentUser.uid));
     if(snap.exists()){
-      const d=snap.data();
-      if(d.profile)store.profile=d.profile;
-      if(d.answers)answers=d.answers;
-      if(d.programMeta)programMeta=d.programMeta;
-      if('submittedPeriod' in d)store.submittedPeriod=d.submittedPeriod||null;
-      if('finalizedAtMs' in d)store.finalizedAtMs=Number(d.finalizedAtMs)||null;
+      const d=snap.data()||{};
+      const backup=readUserBackup();
+      const remoteUpdatedAt=Number(d.clientUpdatedAt)||timestampToMs(d.updatedAt)||0;
+      const localUpdatedAt=Number(backup?.localUpdatedAt)||0;
+      const localIsNewer=!!backup && localUpdatedAt>remoteUpdatedAt;
+
       if('individualEditEnabled' in d)store.individualEditEnabled=!!d.individualEditEnabled;
       if('individualEditDisabled' in d)store.individualEditDisabled=!!d.individualEditDisabled;
       if('profileResetToken' in d)store.profileResetToken=d.profileResetToken||null;
-      if(d.planningByPeriod&&typeof d.planningByPeriod==='object')planningByPeriod=d.planningByPeriod;
-      store.answers=answers;store.programMeta=programMeta;store.planningByPeriod=planningByPeriod;
-      localStorage.setItem('PAD_UTEQ',JSON.stringify({...store,cfg,customPrograms,programOverrides,disabledPrograms,programAcronyms,commonRules,currentProgramIndex,lastSavedAt}));
-      loadProfileValuesOnly();
-      renderCurrentProgram();
-      renderPlanning();
-      updatePlanningAvailability();
-      updateProgress();
-      if(store.submittedPeriod===cfg.periodo){toast('Perfil finalizado. Puede consultar e imprimir su información. Si requiere editar algo, consulte a su JUCA.');}
 
-    }
-    if(!snap.exists()){
+      if(localIsNewer){
+        applyProfileContent(backup);
+        currentProgramIndex=Number.isInteger(backup.currentProgramIndex)?backup.currentProgramIndex:currentProgramIndex;
+        const localFinal=Number(backup.finalizedAtMs)||0;
+        const remoteFinal=Number(d.finalizedAtMs)||0;
+        if(localFinal>remoteFinal){
+          store.submittedPeriod=backup.submittedPeriod||d.submittedPeriod||null;
+          store.finalizedAtMs=localFinal;
+        }else{
+          store.submittedPeriod=d.submittedPeriod||null;
+          store.finalizedAtMs=remoteFinal||null;
+        }
+        store.localUpdatedAt=localUpdatedAt;
+        store.syncPending=true;
+        renderLoadedProfile();
+        remoteProfileLoaded=true;
+        updateCloudStatus('Recuperando cambios locales…','warn');
+        await syncProfileToCloud({reason:'recuperación de una copia local más reciente'});
+      }else{
+        applyProfileContent(d);
+        if('submittedPeriod' in d)store.submittedPeriod=d.submittedPeriod||null;
+        if('finalizedAtMs' in d)store.finalizedAtMs=Number(d.finalizedAtMs)||null;
+        store.localUpdatedAt=remoteUpdatedAt||Date.now();
+        store.cloudUpdatedAt=remoteUpdatedAt||store.localUpdatedAt;
+        store.syncPending=false;
+        renderLoadedProfile();
+        remoteProfileLoaded=true;
+        updateCloudStatus('Sincronizado','ok');
+      }
+
+      if(store.submittedPeriod===cfg.periodo){
+        toast('Perfil finalizado. Puede consultarlo e imprimirlo nuevamente. Si requiere editar algo, consulte a su JUCA.');
+      }
+    }else{
+      clearUserBackup(currentUser.uid);
       resetLocalTeacherData({keepProfile:false});
+      remoteProfileLoaded=true;
+      updateCloudStatus('Perfil nuevo · sincronización activa','ok');
     }
-    remoteProfileLoaded=true;
-    updateCloudStatus('Sincronización activa','ok');
   }catch(e){
     remoteProfileLoaded=true;
     console.warn('Perfil remoto no disponible',e);
-    updateCloudStatus('Modo local','warn');
+    const backup=readUserBackup();
+    if(backup){
+      applyProfileContent(backup);
+      store.submittedPeriod=backup.submittedPeriod||store.submittedPeriod||null;
+      store.finalizedAtMs=Number(backup.finalizedAtMs)||store.finalizedAtMs||null;
+      store.localUpdatedAt=Number(backup.localUpdatedAt)||Number(store.localUpdatedAt)||Date.now();
+      store.syncPending=true;
+      renderLoadedProfile();
+    }
+    updateCloudStatus('Modo local · sincronización pendiente','warn');
+    scheduleCloudRetry();
   }
 }
 async function initCloud(){
@@ -505,6 +660,7 @@ async function initCloud(){
   cloudProfileMetaUnsub=onSnapshot(doc(db,'profiles',currentUser.uid),s=>{
     if(!s.exists()){
       if(remoteProfileLoaded&&!isAdmin()){
+        clearUserBackup(currentUser?.uid);
         resetLocalTeacherData({keepProfile:false});
         toast('Administración eliminó este perfil. La captura iniciará desde cero.');
       }
@@ -719,12 +875,9 @@ window.signIn=async function(){
 }
 window.signOutApp=async function(){
   try{
+    saveUserBackup();
     if(db&&currentUser&&remoteProfileLoaded){
-      try{
-        await setDoc(doc(db,'profiles',currentUser.uid),profileCloudPayload(),{merge:true});
-      }catch(e){
-        console.warn('No fue posible hacer el guardado final antes de cerrar sesión',e);
-      }
+      await syncProfileToCloud({reason:'guardado final antes de cerrar sesión'});
     }
     if(auth)await signOut(auth);
   }finally{
@@ -1646,20 +1799,30 @@ function buildPrint(collectCurrent=true){
   $('printArea').innerHTML=html
 }
 async function finalizeCurrentProfile(){
+  collectProfile();
+  persist();
+  const preSyncOk=await syncProfileToCloud({reason:'sincronización previa a finalización'});
+
   store.submittedPeriod=cfg.periodo;
   store.finalizedAtMs=Date.now();
   persist();
-  if(db&&currentUser){
-    try{
-      await setDoc(doc(db,'profiles',currentUser.uid),profileCloudPayload(),{merge:true});
-      updateCloudStatus('Perfil finalizado y sincronizado','ok');
-    }catch(e){
-      console.warn('No fue posible confirmar el cierre en la nube',e);
-      updateCloudStatus('Cierre guardado local · nube pendiente','warn');
-    }
-  }
-  await writeAudit('Perfil finalizado para impresión/guardado PDF');
+
+  const finalSyncOk=await syncProfileToCloud({reason:'confirmación de finalización'});
+  store.finalizationCloudConfirmed=!!finalSyncOk;
+  store.syncPending=!finalSyncOk;
+  try{localStorage.setItem('PAD_UTEQ',JSON.stringify(store));saveUserBackup()}catch(_){}
+
+  updateCloudStatus(
+    finalSyncOk?'Perfil finalizado y sincronizado':'Perfil finalizado localmente · nube pendiente',
+    finalSyncOk?'ok':'warn'
+  );
+  await writeAudit(
+    finalSyncOk
+      ?'Perfil finalizado y sincronizado para impresión/guardado PDF'
+      :'Perfil finalizado localmente; sincronización pendiente'
+  );
   applyEditState();updateNavState();
+  return {preSyncOk,finalSyncOk};
 }
 function mobilePrintClient(){
   const ua=navigator.userAgent||'';
@@ -1724,6 +1887,23 @@ async function openProfilePrintDialog(){
   window.addEventListener('afterprint',cleanup,{once:true});
   requestAnimationFrame(()=>setTimeout(()=>window.print(),80));
 }
+
+let finalizeDialogResolver=null;
+function showFinalizeDialog(){
+  const modal=$('finalizeProfileModal');
+  if(!modal)return Promise.resolve(window.confirm('¿Finalizar e imprimir / guardar PDF? La edición quedará bloqueada para el periodo actual.'));
+  modal.classList.remove('hidden');
+  document.body.classList.add('modal-open');
+  return new Promise(resolve=>{finalizeDialogResolver=resolve});
+}
+window.resolveFinalizeDialog=function(value){
+  const modal=$('finalizeProfileModal');
+  if(modal)modal.classList.add('hidden');
+  document.body.classList.remove('modal-open');
+  const resolver=finalizeDialogResolver;
+  finalizeDialogResolver=null;
+  if(resolver)resolver(!!value);
+}
 window.printProfile=async function(){
   const v=validateAll();
   if(!reviewAvailable()){
@@ -1735,7 +1915,10 @@ window.printProfile=async function(){
   if(planningEnabled()){
     const pv=validatePlanning({visual:true});
     if(!pv.ok){
-      if($('planningErrors'))$('planningErrors').innerHTML=statusBox(pv.errors,'Antes de finalizar, complete el apartado de Comisiones o seleccione No aplica donde corresponda.');
+      if($('planningErrors'))$('planningErrors').innerHTML=statusBox(
+        pv.errors,
+        'Antes de finalizar, complete el apartado de Comisiones o seleccione No aplica donde corresponda.'
+      );
       window.go('perfil',true);
       requestAnimationFrame(()=>$('commissionsBlock')?.scrollIntoView({behavior:'smooth',block:'start'}));
       toast('Complete el apartado de Comisiones antes de finalizar.');
@@ -1743,15 +1926,9 @@ window.printProfile=async function(){
     }
   }
 
-  if(!submissionLockedForCurrentPeriod()){
-    const ok=confirm('¿Finalizar e imprimir / guardar PDF?\n\nAl finalizar, la edición quedará bloqueada para este periodo. Podrá consultar e imprimir nuevamente su información, pero si requiere hacer alguna corrección deberá solicitar a su JUCA que habilite la edición de su perfil.');
-    if(!ok)return;
-  }
-
-  // Si ya estaba finalizado, únicamente reconstruye e imprime.
   if(submissionLockedForCurrentPeriod() || isAdmin()){
     buildPrint();
-    openProfilePrintDialog();
+    await openProfilePrintDialog();
     return;
   }
 
@@ -1761,27 +1938,27 @@ window.printProfile=async function(){
     );
     if(proceed){
       buildPrint();
-      openProfilePrintDialog();
+      await openProfilePrintDialog();
     }
     return;
   }
 
-  const ok=window.confirm(
-    'Al continuar, el perfil se marcará como CONCLUIDO y la edición de este profesor se bloqueará automáticamente.\n\nPodrá seguir consultando e imprimiendo su perfil. Si requiere corregir algo, deberá solicitar al JUCA que habilite nuevamente su edición.\n\n¿Desea finalizar e imprimir / guardar PDF?'
-  );
-  if(!ok){toast('La captura permanece abierta.');return}
+  const ok=await showFinalizeDialog();
+  if(!ok){
+    toast('La captura permanece abierta.');
+    return;
+  }
 
-  // La hora se registra exactamente al aceptar esta confirmación.
-  await finalizeCurrentProfile();
-
-  // El formato se construye DESPUÉS del cierre para que incluya
-  // la fecha y hora recién registradas.
+  const result=await finalizeCurrentProfile();
   buildPrint();
 
-  toast('Perfil concluido. La edición quedó bloqueada.');
-  openProfilePrintDialog();
+  toast(
+    result.finalSyncOk
+      ?'Perfil concluido y sincronizado. La edición quedó bloqueada.'
+      :'Perfil concluido. La edición quedó bloqueada; la sincronización con la nube se reintentará automáticamente.'
+  );
+  await openProfilePrintDialog();
 }
-
 
 function toLocalDateTimeValue(ts){
   if(!ts)return '';
@@ -2865,6 +3042,27 @@ function setupPlanningAutoSave(){
     updateNavState();
   });
 }
+function setupResilienceGuards(){
+  window.addEventListener('online',()=>{
+    if(store.syncPending){
+      updateCloudStatus('Conexión recuperada · sincronizando…','warn');
+      syncProfileToCloud({reason:'conexión recuperada'});
+    }
+  });
+  window.addEventListener('offline',()=>{
+    if(currentUser)updateCloudStatus('Sin conexión · guardado local activo','warn');
+  });
+  window.addEventListener('pagehide',()=>{
+    try{
+      if(currentUser){
+        store.lastSavedAt=Date.now();
+        localStorage.setItem('PAD_UTEQ',JSON.stringify(store));
+        saveUserBackup();
+      }
+    }catch(_){}
+  });
+}
+
 function init(){
   loadProfile();
   updatePeriodBadges();
@@ -2877,6 +3075,7 @@ function init(){
   lockRevisionNav();
   setupAutoSave();
   setupPlanningAutoSave();
+  setupResilienceGuards();
   updateLastSavedUI();
   startCountdown();
   updateNavState();
