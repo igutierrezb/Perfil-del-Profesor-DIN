@@ -6194,3 +6194,355 @@ body.printing-profile #printArea{
     white-space:normal!important;
   }
 }
+
+
+/* =========================================================
+   V37 · ajuste visual final solicitado
+   ========================================================= */
+
+/* ---------------------------------------------------------
+   Nota Coordinador / Favorita en dos renglones
+   --------------------------------------------------------- */
+.coord-fav-inline-note{
+  display:grid!important;
+  grid-template-columns:
+    minmax(185px,1.7fr)
+    58px
+    68px
+    168px
+    58px
+    48px!important;
+  gap:3px!important;
+  align-items:center!important;
+  margin:0 0 4px!important;
+  min-height:30px!important;
+}
+.coord-fav-inline-note .coord-note-line,
+.coord-fav-inline-note .fav-note-line{
+  display:flex!important;
+  align-items:center!important;
+  justify-content:center!important;
+  min-height:14px!important;
+  padding:2px 4px!important;
+  background:#fff7f5!important;
+  color:#96372f!important;
+  font-size:7.7px!important;
+  font-weight:800!important;
+  line-height:1.08!important;
+  text-align:center!important;
+  border-left:3px solid #c75247!important;
+}
+.coord-fav-inline-note .coord-note-line{
+  grid-column:5 / 7!important;
+  grid-row:1!important;
+  border-radius:0 5px 5px 0!important;
+}
+.coord-fav-inline-note .fav-note-line{
+  grid-column:5 / 7!important;
+  grid-row:2!important;
+  border-radius:0 5px 5px 0!important;
+}
+
+/* ---------------------------------------------------------
+   Coordinador / Favorita: círculos iguales y centrado real
+   --------------------------------------------------------- */
+.coord-row-check,
+.ideal-btn{
+  width:27px!important;
+  height:27px!important;
+  min-width:27px!important;
+  min-height:27px!important;
+  max-width:27px!important;
+  max-height:27px!important;
+  margin:0 auto!important;
+  padding:0!important;
+  border-radius:50%!important;
+  display:grid!important;
+  place-items:center!important;
+  justify-self:center!important;
+  align-self:center!important;
+  line-height:1!important;
+  box-sizing:border-box!important;
+  overflow:visible!important;
+}
+
+.coord-row-check{
+  border:1.5px solid #aac7b6!important;
+  background:#f4fbf7!important;
+  color:#238057!important;
+}
+.coord-row-check span{
+  width:100%!important;
+  height:100%!important;
+  display:grid!important;
+  place-items:center!important;
+  margin:0!important;
+  padding:0!important;
+  font-size:16px!important;
+  line-height:1!important;
+  transform:translateY(-.2px)!important;
+  opacity:.35;
+}
+.coord-row-check.on span,
+.coord-row-check:has(input:checked) span{
+  opacity:1!important;
+}
+.coord-row-check.on,
+.coord-row-check:has(input:checked){
+  background:#e5f6ec!important;
+  border-color:#65b087!important;
+  box-shadow:0 0 0 2px rgba(62,151,100,.08)!important;
+}
+
+.ideal-btn{
+  border:1.5px solid #ddb44a!important;
+  background:#fffaf0!important;
+  color:#a86f00!important;
+  font-size:17px!important;
+}
+.ideal-btn.on{
+  background:#fff0c9!important;
+  border-color:#d29d28!important;
+  color:#8f5d00!important;
+  font-size:17px!important;
+}
+.ideal-btn:not(.on){
+  background:#fffdf8!important;
+}
+
+/* Evitar cortes dentro de las dos columnas */
+.course .coord-row-check,
+.course .ideal-btn{
+  position:relative!important;
+  inset:auto!important;
+  transform:none!important;
+}
+.course-columns .coord-head,
+.course-columns .fav-head{
+  overflow:visible!important;
+}
+
+/* ---------------------------------------------------------
+   Tabla de cuatrimestres: más compacta en ancho
+   --------------------------------------------------------- */
+@media (min-width:1180px){
+  main{
+    max-width:1900px!important;
+    padding-left:8px!important;
+    padding-right:8px!important;
+  }
+
+  .semesters-grid{
+    grid-template-columns:repeat(2,minmax(0,1fr))!important;
+    gap:0!important;
+    width:100%!important;
+    min-width:0!important;
+  }
+
+  .semester-card{
+    min-width:0!important;
+    padding-left:8px!important;
+    padding-right:8px!important;
+  }
+
+  .course-columns,
+  .course{
+    grid-template-columns:
+      minmax(150px,1.62fr)
+      58px
+      68px
+      168px
+      58px
+      48px!important;
+    gap:3px!important;
+  }
+
+  .course{
+    min-height:43px!important;
+    padding:4px 4px!important;
+  }
+
+  .course .name{
+    min-width:0!important;
+    font-size:10px!important;
+    line-height:1.14!important;
+    white-space:normal!important;
+    overflow-wrap:anywhere!important;
+    word-break:normal!important;
+    max-height:2.45em!important;
+    overflow:hidden!important;
+  }
+
+  .course-hours{
+    font-size:7.8px!important;
+  }
+
+  .toggle{
+    gap:3px!important;
+    font-size:8.5px!important;
+  }
+  .switch{
+    width:29px!important;
+    height:18px!important;
+  }
+  .switch::after{
+    width:12px!important;
+    height:12px!important;
+    top:3px!important;
+    left:3px!important;
+  }
+  .toggle input:checked + .switch::after{
+    left:14px!important;
+  }
+
+  .comp-buttons{
+    gap:2px!important;
+    justify-content:center!important;
+  }
+  .comp-buttons .mini{
+    width:28px!important;
+    min-width:28px!important;
+    max-width:28px!important;
+    height:27px!important;
+    min-height:27px!important;
+    padding:2px 0!important;
+    font-size:8.5px!important;
+  }
+
+  .area-buttons{
+    display:grid!important;
+    grid-template-columns:repeat(7,21px)!important;
+    gap:2px!important;
+    justify-content:center!important;
+    width:100%!important;
+  }
+  .area-buttons .mini{
+    width:21px!important;
+    min-width:21px!important;
+    max-width:21px!important;
+    height:25px!important;
+    min-height:25px!important;
+    padding:1px 0!important;
+    font-size:7.6px!important;
+    border-radius:5px!important;
+  }
+
+  .course-columns{
+    padding:5px 4px!important;
+    font-size:7.6px!important;
+  }
+  .course-columns .area-head{
+    font-size:7.4px!important;
+  }
+  .course-columns .coord-head,
+  .course-columns .fav-head{
+    font-size:7px!important;
+  }
+}
+
+/* Aun con zoom, evitar que la tabla se desborde innecesariamente */
+.program-scroll-wrap{
+  overflow-x:hidden!important;
+}
+.semesters-grid{
+  min-width:0!important;
+}
+
+/* ---------------------------------------------------------
+   PDF: firmas/sello 4 mm más arriba desde V36
+   --------------------------------------------------------- */
+@media print{
+  #printArea .program-trio .sign{
+    bottom:2mm!important;
+  }
+}
+
+/* ---------------------------------------------------------
+   Administración: acrónimo + 3 acciones en una sola línea
+   --------------------------------------------------------- */
+.acronym-edit.acronym-only{
+  display:block!important;
+  margin:0!important;
+  padding:0!important;
+}
+.acronym-edit.acronym-only input{
+  width:100%!important;
+  min-height:32px!important;
+  height:32px!important;
+  margin:0!important;
+  padding:5px 8px!important;
+  text-align:center!important;
+  font-size:9px!important;
+  font-weight:800!important;
+  text-transform:uppercase!important;
+  box-sizing:border-box!important;
+}
+
+@media(min-width:900px){
+  .program-admin-item{
+    grid-template-columns:minmax(0,1fr) 118px 98px 132px 110px!important;
+    gap:7px!important;
+    align-items:center!important;
+  }
+  .acronym-edit.acronym-only,
+  .program-admin-item .program-action-btn{
+    width:100%!important;
+    min-width:0!important;
+    align-self:center!important;
+  }
+}
+
+/* ---------------------------------------------------------
+   Portada más moderna, armónica con DIN
+   --------------------------------------------------------- */
+.hero{
+  background:
+    linear-gradient(118deg,#143f5a 0%,#1d6077 52%,#3f8990 100%)!important;
+  border-bottom:4px solid #e59a49!important;
+  box-shadow:0 5px 18px rgba(16,54,74,.16)!important;
+}
+.hero h1{
+  color:#fff!important;
+  text-shadow:0 1px 2px rgba(0,0,0,.08)!important;
+}
+.hero .eyebrow{
+  color:#d9edf2!important;
+}
+.hero p{
+  color:#e7f2f5!important;
+}
+.hero-side,
+.hero-side *{
+  color:#edf7f8!important;
+}
+.hero .period-badge{
+  background:rgba(255,255,255,.12)!important;
+  border-color:rgba(255,255,255,.35)!important;
+  color:#fff!important;
+}
+.hero .ghost{
+  background:rgba(255,255,255,.10)!important;
+  border-color:rgba(255,255,255,.35)!important;
+  color:#fff!important;
+}
+.hero-icon{
+  background:transparent!important;
+  filter:drop-shadow(0 6px 12px rgba(0,0,0,.16))!important;
+}
+
+/* Responsive */
+@media(max-width:780px){
+  .coord-fav-inline-note{
+    display:flex!important;
+    flex-direction:column!important;
+    gap:2px!important;
+  }
+  .coord-fav-inline-note .coord-note-line,
+  .coord-fav-inline-note .fav-note-line{
+    width:100%!important;
+    min-height:18px!important;
+  }
+  .program-scroll-wrap{
+    overflow-x:visible!important;
+  }
+}

@@ -860,7 +860,10 @@ function renderCurrentProgram(){
   p.semesters.forEach((sem,s)=>{
     h+=`<div class="semester-card">
       <h4>${s+1}.° cuatrimestre <span>${sem.length} asignaturas</span></h4>
-      <div class="coord-fav-inline-note"><span>✓ Si ya la coordinaste · ★ si es favorita</span></div>
+      <div class="coord-fav-inline-note">
+        <span class="coord-note-line">✓ Si ya la coordinaste</span>
+        <span class="fav-note-line">★ Si es favorita</span>
+      </div>
       <div class="course-columns">
         <span>Asignatura</span>
         <span>Habilitar</span>
@@ -1651,7 +1654,7 @@ function renderProgramAdminList(){
     const rule=commonRuleForProgram(p.id);
     return `<div class="program-admin-item ${enabled?'':'disabled'}">
       <div class="program-admin-name"><b>${p.name}</b><small>${p.exit}${custom?' · Programa agregado':''}${rule?` · <strong>Tronco común</strong>`:''}</small></div>
-      <label class="acronym-edit"><span class="admin-icon acronym-icon">ABC</span><span>Acrónimo</span><input value="${programAcronym(p)}" maxlength="18" onchange="setProgramAcronym('${p.id}',this.value)"></label>
+      <label class="acronym-edit acronym-only"><input aria-label="Acrónimo del programa" value="${programAcronym(p)}" maxlength="18" onchange="setProgramAcronym('${p.id}',this.value)"></label>
       <button class="edit-program-btn program-action-btn" onclick="openProgramEditor('${p.id}')"><span class="admin-icon edit-icon">✎</span>Editar</button>
       <button class="common-program-btn program-action-btn ${rule?'active':''}" onclick="openCommonRuleEditor('${p.id}')"><span class="admin-icon common-icon">↔</span>${rule?'Tronco común':'Configurar tronco'}</button>
       <button class="program-action-btn ${enabled?'disable-program':'enable-program'}" onclick="toggleProgramEnabled('${p.id}')"><span class="admin-icon state-icon">${enabled?'−':'+'}</span>${enabled?'Deshabilitar':'Habilitar'}</button>

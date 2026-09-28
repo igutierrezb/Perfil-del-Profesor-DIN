@@ -1,0 +1,19 @@
+PERFIL PROFESOR DIN · V37
+
+CAMBIOS
+- Nota superior en dos líneas:
+  ✓ Si ya la coordinaste
+  ★ Si es favorita
+- Coordinador y Favorita pasan a controles circulares iguales y centrados.
+- PDF: firmas y sello de hojas 2+ suben 4 mm respecto a la versión anterior.
+- Administración de programas:
+  se elimina “ABC Acrónimo”; quedan alineados acrónimo + Editar + Tronco común + Deshabilitar.
+- Tablas de cuatrimestres:
+  más compactas en ancho;
+  materias pueden ocupar dos líneas;
+  botones X/XX y Área reducen ancho sin cortarse.
+- Se busca conservar dos cuatrimestres visibles incluso con mayor zoom.
+- Portada modernizada con azul petróleo/teal y acento naranja, en armonía con el logo DIN.
+
+deploy-pages.yml: NO necesita actualización.
+firestore.rules: NO necesita actualización.
