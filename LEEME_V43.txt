@@ -1,0 +1,19 @@
+PERFIL PROFESOR DIN · V43
+
+Cambios exclusivamente visuales:
+
+- Área de trabajo aproximadamente 4% más compacta en escritorio.
+- Se aumenta el margen interno izquierdo de las asignaturas para que
+  el texto no se monte sobre la barra gris/verde de estado.
+- Nombre de las asignaturas: +0.5 aprox. de tamaño de fuente en escritorio.
+- Encabezados:
+  1. Formación profesional
+  2. Experiencia docente
+  3. Experiencia laboral
+  aumentan aproximadamente 2 puntos.
+- En móvil esos encabezados también se incrementan.
+
+No se modifica lógica, Firestore, impresión ni autenticación.
+
+deploy-pages.yml: NO necesita actualización.
+firestore.rules: NO necesita actualización.

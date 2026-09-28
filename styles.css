@@ -7263,3 +7263,71 @@ body.printing-profile #printArea{
     padding:0!important;
   }
 }
+
+
+/* =========================================================
+   V43 · compactación adicional y legibilidad
+   Sólo cambios visuales.
+   ========================================================= */
+
+/* Área de trabajo ~4% más compacta en escritorio grande */
+@media (min-width:1180px){
+  main{
+    width:calc(100% - 36px)!important;
+    max-width:1595px!important;
+    margin-left:auto!important;
+    margin-right:auto!important;
+  }
+
+  /* Dar aire al nombre respecto de la barra lateral de estado */
+  .course .name{
+    padding-left:6px!important;
+    padding-right:2px!important;
+    font-size:10.5px!important; /* +0.5 aprox. */
+    box-sizing:border-box!important;
+  }
+}
+
+/* Mantener la misma proporción de compactación con zoom alto */
+@media (min-width:1000px) and (max-width:1179px){
+  main{
+    width:calc(100% - 28px)!important;
+    max-width:1075px!important;
+    margin-left:auto!important;
+    margin-right:auto!important;
+  }
+
+  .course .name{
+    padding-left:6px!important;
+    padding-right:2px!important;
+    font-size:10px!important;
+    box-sizing:border-box!important;
+  }
+}
+
+/* La barra verde/gris ya no invade visualmente el texto */
+.course{
+  position:relative!important;
+}
+.course .name{
+  border-left:0!important;
+}
+
+/* Encabezados de Formación profesional / Experiencia docente /
+   Experiencia laboral: +2 puntos sin cambiar distribución. */
+#perfil .section-head h2{
+  font-size:19px!important;
+  line-height:1.12!important;
+}
+
+/* En móvil se respeta el incremento visual solicitado */
+@media (max-width:780px){
+  #perfil .section-head h2{
+    font-size:20px!important;
+    line-height:1.12!important;
+  }
+
+  .course .name{
+    padding-left:7px!important;
+  }
+}
