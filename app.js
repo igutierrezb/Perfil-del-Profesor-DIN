@@ -990,10 +990,10 @@ window.printProfile=async function(){
     showCaptureErrors(v.errors);
     return;
   }
-  buildPrint();
 
-  // Si ya estaba finalizado, permite reimprimir sin volver a modificar el estado.
+  // Si ya estaba finalizado, únicamente reconstruye e imprime.
   if(submissionLockedForCurrentPeriod() || isAdmin()){
+    buildPrint();
     openProfilePrintDialog();
     return;
   }
@@ -1002,7 +1002,10 @@ window.printProfile=async function(){
     const proceed=window.confirm(
       'El perfil no cumple todavía todas las validaciones. Puede imprimir el estado actual, pero NO se marcará como concluido.\n\n¿Desea continuar con la impresión?'
     );
-    if(proceed)openProfilePrintDialog();
+    if(proceed){
+      buildPrint();
+      openProfilePrintDialog();
+    }
     return;
   }
 
@@ -1011,7 +1014,13 @@ window.printProfile=async function(){
   );
   if(!ok){toast('La captura permanece abierta.');return}
 
+  // La hora se registra exactamente al aceptar esta confirmación.
   await finalizeCurrentProfile();
+
+  // El formato se construye DESPUÉS del cierre para que incluya
+  // la fecha y hora recién registradas.
+  buildPrint();
+
   toast('Perfil concluido. La edición quedó bloqueada.');
   openProfilePrintDialog();
 }
@@ -1107,7 +1116,7 @@ async function renderTeacherAdminList(){
       const lastEdit=formatTeacherUpdatedAt(r.updatedAt);
       const statusText=override
         ?(doneNow
-          ?`Última edición: ${lastEdit} · Finalizó y envió: ${lastCompletion} · Edición individual habilitada`
+          ?`Última edición: ${lastEdit} · Última finalización: ${lastCompletion} · Edición individual habilitada`
           :`Última edición: ${lastEdit} · Edición individual habilitada`)
         :(doneNow
           ?`Última edición: ${lastEdit} · Finalizó y envió: ${lastCompletion}`

@@ -5865,3 +5865,180 @@ body.printing-profile #printArea{
   .coord-fav-inline-note span{display:block!important;text-align:left!important;font-size:8.5px!important}
   .capture-marquee-track span{padding-right:72px!important}
 }
+
+
+/* =========================================================
+   V35 · ajustes finos de impresión y captura
+   ========================================================= */
+
+/* -------- Primera hoja de impresión --------
+   +2 puntos aprox. SOLO al contenido de las celdas.
+   Encabezados/secciones no cambian. */
+@media print{
+  #printArea .profile-first-sheet .profileTable td{
+    font-size:11.2px!important;
+    line-height:1.02!important;
+    padding-top:1px!important;
+    padding-bottom:1px!important;
+  }
+
+  /* Hojas 2+: nombre de materias -0.5 pt aprox. */
+  #printArea .program-trio .currTable td.subject{
+    font-size:10px!important;
+    line-height:1.03!important;
+    padding-top:1.25px!important;
+    padding-bottom:1.25px!important;
+  }
+
+  /* La altura se adapta al texto reducido, sin forzar filas. */
+  #printArea .program-trio .currTable tr{
+    height:auto!important;
+    min-height:0!important;
+  }
+
+  /* Firmas y sello 4 mm más abajo respecto a la posición anterior.
+     Antes estaban a ~2 mm del borde interior; ahora bajan 4 mm. */
+  #printArea .program-trio .sign{
+    bottom:-2mm!important;
+  }
+}
+
+/* -------- Cintillo animado --------
+   +1.5 aprox. de fuente y separación clara entre pasos. */
+.capture-marquee-track span{
+  font-size:11.7px!important;
+  padding-top:11px!important;
+  padding-bottom:11px!important;
+  padding-right:145px!important;
+  letter-spacing:.014em!important;
+  word-spacing:.12em!important;
+  line-height:1.25!important;
+}
+.capture-marquee-track span::before{
+  margin-left:38px!important;
+  margin-right:16px!important;
+}
+
+/* -------- Coordinador / Favorita --------
+   Controles compactos, proporcionados y centrados,
+   cercanos al tamaño de Área de conocimiento. */
+.coord-row-check{
+  width:26px!important;
+  height:26px!important;
+  min-width:26px!important;
+  min-height:26px!important;
+  max-width:26px!important;
+  max-height:26px!important;
+  border-radius:50%!important;
+  padding:0!important;
+  display:grid!important;
+  place-items:center!important;
+  justify-self:center!important;
+  align-self:center!important;
+  box-sizing:border-box!important;
+}
+.coord-row-check span{
+  font-size:14px!important;
+  line-height:1!important;
+  transform:none!important;
+  margin:0!important;
+}
+
+.ideal-btn{
+  width:26px!important;
+  min-width:26px!important;
+  max-width:26px!important;
+  height:27px!important;
+  min-height:27px!important;
+  max-height:27px!important;
+  padding:0!important;
+  margin:0!important;
+  display:grid!important;
+  place-items:center!important;
+  justify-self:center!important;
+  align-self:center!important;
+  border-radius:6px!important;
+  line-height:1!important;
+  box-sizing:border-box!important;
+  overflow:visible!important;
+}
+.ideal-btn,
+.ideal-btn.on{
+  font-size:17px!important;
+}
+.ideal-btn:not(.on){
+  background:#fffdf6!important;
+}
+
+/* El cintillo azul de Área de conocimiento se pega al texto,
+   sin irse hasta el fondo del recuadro. */
+.knowledge-key-inline,
+.single-line-key{
+  margin-top:5px!important;
+  font-size:10px!important;
+  line-height:1.12!important;
+}
+
+/* -------- Progreso --------
+   Más legible y con mayor jerarquía visual. */
+.progress{
+  min-width:330px!important;
+  padding:8px 12px!important;
+  text-align:center!important;
+  background:#f8fbfc!important;
+  border:1px solid #d7e5eb!important;
+  border-radius:11px!important;
+  box-shadow:inset 0 1px 0 rgba(255,255,255,.8)!important;
+  font-size:11.3px!important; /* +1 aprox. respecto al tamaño anterior */
+}
+.progress strong{
+  display:block!important;
+  color:#16425e!important;
+  font-size:11.8px!important;
+  font-weight:850!important;
+  margin-bottom:5px!important;
+}
+.progress>div{
+  height:12px!important;
+  margin:5px 0 7px!important;
+  background:#dbe8ec!important;
+  border:1px solid #c8dade!important;
+  border-radius:999px!important;
+  box-shadow:inset 0 1px 2px rgba(28,77,96,.08)!important;
+}
+.progress i{
+  border-radius:999px!important;
+  background:linear-gradient(90deg,#1c8f86,#37b3a4,#74cfb6)!important;
+  box-shadow:inset 0 1px 0 rgba(255,255,255,.28)!important;
+}
+.progress small{
+  margin-top:3px!important;
+  font-size:10px!important;
+  line-height:1.25!important;
+}
+#idealCounter{
+  color:#8a6816!important;
+}
+#programCounter{
+  color:#23627e!important;
+}
+
+/* Administración: fecha de cierre con lectura clara */
+.teacher-admin-status span{
+  font-size:9px!important;
+}
+.teacher-admin-row.finished .teacher-admin-status strong{
+  color:#236848!important;
+}
+
+/* Móvil */
+@media(max-width:780px){
+  .capture-marquee-track span{
+    font-size:10.5px!important;
+    padding-right:100px!important;
+  }
+  .progress{
+    min-width:0!important;
+    width:100%!important;
+  }
+}

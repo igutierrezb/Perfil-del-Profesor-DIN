@@ -1,0 +1,30 @@
+PERFIL PROFESOR DIN · V35
+
+CAMBIOS
+1. Impresión:
+   - Primera hoja: contenido de la tabla +2 puntos aprox.
+   - Hojas 2+: nombre de asignaturas -0.5 punto aprox.
+   - Filas ajustan su alto de forma natural.
+   - Firmas y sello se desplazan 4 mm hacia abajo en hojas 2+.
+2. Cintillo animado:
+   - fuente +1.5 aprox.;
+   - más separación entre cada repetición/paso.
+3. Coordinador/Favorita:
+   - controles más compactos y proporcionados;
+   - palomita centrada;
+   - estrella conserva tamaño pero el recuadro se reduce.
+4. Área de conocimiento:
+   - el cintillo azul se pega más al texto superior;
+   - aumenta ligeramente la fuente.
+5. Profesores y cierre:
+   - la hora de finalización se registra exactamente al aceptar
+     “Finalizar e imprimir / guardar PDF”;
+   - si se habilita de nuevo y vuelve a finalizar, se sustituye por la nueva hora.
+6. Barra de progreso:
+   - mayor presencia visual, fuente ligeramente mayor y barra más clara.
+
+DEPLOY-PAGES.YML
+- NO necesita actualización si ya usa V30+.
+
+FIRESTORE
+- NO necesita cambios.
