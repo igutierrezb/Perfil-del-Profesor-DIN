@@ -9557,3 +9557,144 @@ body.capture-orientation-open{overflow:hidden!important}
   .transversal-target-grid{grid-template-columns:1fr!important}
   .transversal-rule-row{grid-template-columns:1fr!important}
 }
+
+
+/* =========================================================
+   V60 · Transversalidad 1 a 1 + sincronización automática
+   ========================================================= */
+.transversal-auto-note{
+  margin:8px 0 12px!important;
+  padding:9px 11px!important;
+  border-left:4px solid #3b839f!important;
+  border-radius:0 9px 9px 0!important;
+  background:#eef7fa!important;
+  color:#385a68!important;
+  font-size:8.5px!important;
+  line-height:1.4!important;
+}
+.transversal-auto-note strong{
+  color:#175b75!important;
+}
+.transversal-pair-grid{
+  display:grid!important;
+  grid-template-columns:minmax(0,1fr) 38px minmax(0,1fr)!important;
+  gap:10px!important;
+  align-items:stretch!important;
+}
+.transversal-side{
+  display:grid!important;
+  grid-template-columns:1.15fr .55fr 1fr!important;
+  gap:8px!important;
+  align-content:start!important;
+  padding:11px!important;
+  border:1px solid #d7e3e9!important;
+  border-radius:11px!important;
+  background:#fbfdfe!important;
+}
+.transversal-side.source{border-top:3px solid #367ba0!important}
+.transversal-side.target{border-top:3px solid #4d9a7f!important}
+.transversal-side-title{
+  grid-column:1/-1!important;
+  display:flex!important;
+  gap:8px!important;
+  align-items:center!important;
+  margin-bottom:2px!important;
+}
+.transversal-side-title>span{
+  width:27px!important;
+  height:27px!important;
+  display:grid!important;
+  place-items:center!important;
+  border-radius:8px!important;
+  background:#e7f2f7!important;
+  color:#1f617e!important;
+  font-size:11px!important;
+  font-weight:900!important;
+}
+.transversal-side.target .transversal-side-title>span{
+  background:#e8f5ef!important;
+  color:#2c775d!important;
+}
+.transversal-side-title div{
+  display:flex!important;
+  flex-direction:column!important;
+  gap:1px!important;
+}
+.transversal-side-title b{font-size:10px!important;color:#244c61!important}
+.transversal-side-title small{font-size:7.7px!important;color:#71848e!important}
+.transversal-side label{
+  display:flex!important;
+  flex-direction:column!important;
+  gap:4px!important;
+  min-width:0!important;
+  color:#4b6470!important;
+  font-size:8px!important;
+  font-weight:800!important;
+}
+.transversal-side select{
+  min-width:0!important;
+  min-height:34px!important;
+  border:1px solid #c8d9e2!important;
+  border-radius:8px!important;
+  background:#fff!important;
+}
+.transversal-pair-arrow{
+  display:grid!important;
+  place-items:center!important;
+  align-self:center!important;
+  width:34px!important;
+  height:34px!important;
+  border-radius:50%!important;
+  background:#eaf2f6!important;
+  color:#286981!important;
+  font-size:18px!important;
+  font-weight:900!important;
+}
+.transversal-rule-row.v60{
+  grid-template-columns:minmax(180px,1fr) 28px minmax(180px,1fr) auto!important;
+}
+.transversal-rule-endpoint{
+  display:flex!important;
+  flex-direction:column!important;
+  gap:2px!important;
+}
+.transversal-rule-endpoint strong{font-size:8.7px!important;color:#254f63!important}
+.transversal-rule-endpoint small{font-size:7.3px!important;color:#748792!important}
+.endpoint-chip{
+  align-self:flex-start!important;
+  padding:2px 5px!important;
+  border-radius:999px!important;
+  background:#e7f2f7!important;
+  color:#24647e!important;
+  font-size:6.8px!important;
+  font-weight:900!important;
+}
+.endpoint-chip.target{
+  background:#e8f5ef!important;
+  color:#34775f!important;
+}
+.transversal-rule-link{
+  display:grid!important;
+  place-items:center!important;
+  color:#6f8996!important;
+  font-weight:900!important;
+}
+
+/* Botones destructivos: el candado visual acompaña el segundo candado escrito. */
+.teacher-reset-program-btn,
+.teacher-delete-btn{
+  font-weight:800!important;
+}
+
+@media(max-width:1050px){
+  .transversal-pair-grid{grid-template-columns:1fr!important}
+  .transversal-pair-arrow{
+    transform:rotate(90deg)!important;
+    justify-self:center!important;
+  }
+}
+@media(max-width:720px){
+  .transversal-side{grid-template-columns:1fr!important}
+  .transversal-rule-row.v60{grid-template-columns:1fr!important}
+  .transversal-rule-link{transform:rotate(90deg)!important}
+}

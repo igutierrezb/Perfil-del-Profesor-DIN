@@ -247,7 +247,7 @@ function applyEditState(){
     root.querySelectorAll('input,select,textarea,button').forEach(el=>{
       // En solo lectura se permite navegar por todos los programas y llegar a Revisión.
       if(el.closest('.flow-buttons')) return;
-      if(id==='captura' && el.textContent.includes('Continuar a revisión')) return;
+      if(id==='captura' && (el.textContent.includes('Continuar a revisión')||el.textContent.includes('continuar a revisión'))) return;
       el.disabled=locked;
     });
   });
@@ -359,7 +359,7 @@ function commonNoticeHtml(pid){
     <div class="common-sync-icon">↔</div>
     <div class="common-sync-copy">
       <strong>Tronco común sincronizado · ${escapeHtml(semesterText)} cuatrimestre${(rule.semesters||[]).length===1?'':'s'}</strong>
-      <p>Las asignaturas coincidentes de estos cuatrimestres están vinculadas. Si <b>habilita o deshabilita</b> una materia en este programa, el mismo estado se reflejará automáticamente en los demás programas del tronco común.</p>
+      <p>Las asignaturas coincidentes de estos cuatrimestres comparten su configuración académica. Si posteriormente <b>deshabilita</b> una materia, esa decisión será individual y no modificará las demás.</p>
       <div class="common-sync-programs"><span>Programas relacionados:</span><ul>${peerHtml}</ul></div>
     </div>
   </div>`;
@@ -383,6 +383,7 @@ function profileBackupSnapshot(){
     planningByPeriod:JSON.parse(JSON.stringify(planningByPeriod||{})),
     submittedPeriod:store.submittedPeriod||null,
     finalizedAtMs:Number(store.finalizedAtMs)||null,
+    profileResetToken:store.profileResetToken||null,
     currentProgramIndex:Number.isInteger(currentProgramIndex)?currentProgramIndex:0,
     localUpdatedAt:Number(store.localUpdatedAt)||Number(store.lastSavedAt)||Date.now(),
     savedAt:Date.now()
@@ -421,6 +422,7 @@ function persist(options={}){
   store.disabledPrograms=disabledPrograms;
   store.programAcronyms=programAcronyms;
   store.commonRules=commonRules;
+  store.transversalRules=transversalRules;
   store.planningByPeriod=planningByPeriod;
   store.currentProgramIndex=currentProgramIndex;
   store.lastSavedAt=now;
@@ -592,7 +594,7 @@ function applyProfileContent(data){
 function renderLoadedProfile(){
   localStorage.setItem('PAD_UTEQ',JSON.stringify({
     ...store,cfg,customPrograms,programOverrides,disabledPrograms,
-    programAcronyms,commonRules,currentProgramIndex,lastSavedAt
+    programAcronyms,commonRules,transversalRules,currentProgramIndex,lastSavedAt
   }));
   saveUserBackup();
   loadProfileValuesOnly();
@@ -612,7 +614,16 @@ async function loadRemoteProfile(){
       const backup=readUserBackup();
       const remoteUpdatedAt=Number(d.clientUpdatedAt)||timestampToMs(d.updatedAt)||0;
       const localUpdatedAt=Number(backup?.localUpdatedAt)||0;
-      const localIsNewer=!!backup && localUpdatedAt>remoteUpdatedAt;
+      const remoteResetToken=d.profileResetToken||null;
+      const backupResetToken=backup?.profileResetToken||null;
+      const remoteAnswers=d.answers&&typeof d.answers==='object'?d.answers:{};
+      const remoteProgramMeta=d.programMeta&&typeof d.programMeta==='object'?d.programMeta:{};
+      const explicitResetIsNew=
+        !!remoteResetToken &&
+        remoteResetToken!==backupResetToken &&
+        Object.keys(remoteAnswers).length===0 &&
+        Object.keys(remoteProgramMeta).length===0;
+      const localIsNewer=!!backup && !explicitResetIsNew && localUpdatedAt>remoteUpdatedAt;
 
       if('individualEditEnabled' in d)store.individualEditEnabled=!!d.individualEditEnabled;
       if('individualEditDisabled' in d)store.individualEditDisabled=!!d.individualEditDisabled;
@@ -709,7 +720,15 @@ async function initCloud(){
     store.individualEditDisabled=!!d.individualEditDisabled;
     store.profileResetToken=d.profileResetToken||null;
 
-    if(store.profileResetToken&&priorResetToken!==store.profileResetToken&&!isAdmin()){
+    const snapshotAnswers=d.answers&&typeof d.answers==='object'?d.answers:{};
+    const snapshotProgramMeta=d.programMeta&&typeof d.programMeta==='object'?d.programMeta:{};
+    const explicitProgramReset=
+      !!store.profileResetToken &&
+      priorResetToken!==store.profileResetToken &&
+      Object.keys(snapshotAnswers).length===0 &&
+      Object.keys(snapshotProgramMeta).length===0;
+
+    if(explicitProgramReset&&!isAdmin()){
       answers={};
       programMeta={};
       store.answers=answers;
@@ -718,19 +737,20 @@ async function initCloud(){
       if(d.profile)store.profile=d.profile;
       localStorage.setItem('PAD_UTEQ',JSON.stringify({
         ...store,cfg,answers,programMeta,customPrograms,programOverrides,
-        disabledPrograms,programAcronyms,commonRules,currentProgramIndex,lastSavedAt
+        disabledPrograms,programAcronyms,commonRules,transversalRules,currentProgramIndex,lastSavedAt
       }));
+      saveUserBackup();
       loadProfileValuesOnly();
       renderCurrentProgram();
       updateProgress();
       applyEditState();
       updateNavState();
-      toast('Administración reinició la captura por asignaturas. Puede editar nuevamente su perfil.');
+      toast('Administración eliminó las asignaturas capturadas. El Perfil por programa iniciará desde cero.');
       return;
     }
 
     if(priorPeriod!==store.submittedPeriod || priorOverride!==store.individualEditEnabled || priorDisabled!==store.individualEditDisabled){
-      localStorage.setItem('PAD_UTEQ',JSON.stringify({...store,cfg,answers,programMeta,customPrograms,programOverrides,disabledPrograms,programAcronyms,commonRules,currentProgramIndex,lastSavedAt}));
+      localStorage.setItem('PAD_UTEQ',JSON.stringify({...store,cfg,answers,programMeta,customPrograms,programOverrides,disabledPrograms,programAcronyms,commonRules,transversalRules,currentProgramIndex,lastSavedAt}));
       applyEditState();updateNavState();
       toast(store.individualEditDisabled
         ?'Administración deshabilitó temporalmente la edición de su perfil.'
@@ -1190,7 +1210,7 @@ function captureOrientationSessionKey(){
   return `PAD_CAPTURE_ORIENTATION_${currentUser?.uid||'guest'}_${String(cfg.periodo||'').replace(/\s+/g,'_')}`;
 }
 function shouldShowCaptureOrientation(){
-  if(isAdmin()||submissionLockedForCurrentPeriod())return false;
+  if(isAdmin()||(submissionLockedForCurrentPeriod()&&!individualEditOverride()))return false;
   try{return sessionStorage.getItem(captureOrientationSessionKey())!=='1'}catch(_){return true}
 }
 function showCaptureOrientationIfNeeded(){
@@ -1357,7 +1377,11 @@ window.continueToCapture=async function(){
   });
 
   updateNavState();
-  requestAnimationFrame(showCaptureOrientationIfNeeded);
+  requestAnimationFrame(()=>{
+    // Al avanzar desde Datos del profesor debe mostrarse la orientación de captura.
+    try{sessionStorage.removeItem(captureOrientationSessionKey())}catch(_){}
+    showCaptureOrientationIfNeeded();
+  });
   return true;
 }
 
@@ -1375,10 +1399,49 @@ function originTooltip(code){
   return labels[String(code)]||String(code);
 }
 function normalizeOrigins(code){return String(code).split('').map(Number)}
-window.setEnabled=function(pid,s,c,name,on){if(!requireEditing())return;if(isEnglish(name))return;const r=getAns(pid,s,c,name);r.status=on?(r.status==='off'?'pending':r.status):'off';if(!on){r.origins=[];r.ideal=false}answers[key(pid,s,c)]=r;replicateCommon(pid,s,c,r);replicateTransversalAnswer(pid,s,c,name,r);persist();renderCurrentProgram()}
-window.setCompetence=function(pid,s,c,name,level){if(!requireEditing())return;const r=getAns(pid,s,c,name);if(['off','na'].includes(r.status))return;r.status=level;r.origins=[];answers[key(pid,s,c)]=r;replicateCommon(pid,s,c,r);replicateTransversalAnswer(pid,s,c,name,r);persist();renderCurrentProgram()}
-window.setOriginCode=function(pid,s,c,name,code){if(!requireEditing())return;const r=getAns(pid,s,c,name);if(!['X','XX'].includes(r.status))return;r.origins=normalizeOrigins(code);answers[key(pid,s,c)]=r;replicateCommon(pid,s,c,r);replicateTransversalAnswer(pid,s,c,name,r);persist();renderCurrentProgram()}
-window.toggleIdeal=function(pid,s,c,name){if(!requireEditing())return;const r=getAns(pid,s,c,name);if(!['X','XX'].includes(r.status)||(r.origins||[]).length===0){toast('Primero seleccione competencia y área de conocimiento.');return}r.ideal=!r.ideal;answers[key(pid,s,c)]=r;replicateCommon(pid,s,c,r);replicateTransversalAnswer(pid,s,c,name,r);persist();renderCurrentProgram()}
+window.setEnabled=function(pid,s,c,name,on){
+  if(!requireEditing())return;
+  if(isEnglish(name))return;
+  let r=getAns(pid,s,c,name);
+
+  if(!on){
+    // Deshabilitar es una decisión individual; nunca se replica.
+    r.status='off';
+    r.origins=[];
+    r.ideal=false;
+    answers[key(pid,s,c)]=r;
+    setCoordinatorValue(pid,s,c,false);
+    persist();
+    renderCurrentProgram();
+    return;
+  }
+
+  if(r.status==='off'){
+    const peer=bestLinkedAnswer(pid,s,c,name);
+    if(peer){
+      const source=getAns(peer.pid,peer.s,peer.c,peer.name);
+      r={
+        status:source.status==='off'?'pending':source.status,
+        origins:[...(source.origins||[])],
+        ideal:!!source.ideal
+      };
+      setCoordinatorValue(pid,s,c,coordinatorValue(peer.pid,peer.s,peer.c));
+    }else{
+      r={status:'pending',origins:[],ideal:false};
+      setCoordinatorValue(pid,s,c,false);
+    }
+  }
+
+  answers[key(pid,s,c)]=r;
+  replicateCommon(pid,s,c,r);
+  replicateLinkedAnswer(pid,s,c,name,r);
+  replicateLinkedCoordinator(pid,s,c,name,coordinatorValue(pid,s,c));
+  persist();
+  renderCurrentProgram();
+}
+window.setCompetence=function(pid,s,c,name,level){if(!requireEditing())return;const r=getAns(pid,s,c,name);if(['off','na'].includes(r.status))return;r.status=level;r.origins=[];answers[key(pid,s,c)]=r;replicateCommon(pid,s,c,r);replicateLinkedAnswer(pid,s,c,name,r);persist();renderCurrentProgram()}
+window.setOriginCode=function(pid,s,c,name,code){if(!requireEditing())return;const r=getAns(pid,s,c,name);if(!['X','XX'].includes(r.status))return;r.origins=normalizeOrigins(code);answers[key(pid,s,c)]=r;replicateCommon(pid,s,c,r);replicateLinkedAnswer(pid,s,c,name,r);persist();renderCurrentProgram()}
+window.toggleIdeal=function(pid,s,c,name){if(!requireEditing())return;const r=getAns(pid,s,c,name);if(!['X','XX'].includes(r.status)||(r.origins||[]).length===0){toast('Primero seleccione competencia y área de conocimiento.');return}r.ideal=!r.ideal;answers[key(pid,s,c)]=r;replicateCommon(pid,s,c,r);replicateLinkedAnswer(pid,s,c,name,r);persist();renderCurrentProgram()}
 function replicateCommon(pid,s,c,r){
   const source=allPrograms().find(x=>x.id===pid);
   const sourceName=source?.semesters?.[s]?.[c];
@@ -1392,38 +1455,81 @@ function replicateCommon(pid,s,c,r){
     const targetSem=target?.semesters?.[s]||[];
     const tc=targetSem.findIndex(n=>normalizeSubjectName(n)===normalized);
     if(tc<0)return;
+    const current=getAns(other,s,tc,targetSem[tc]);
+    if(current.status==='off')return;
     answers[key(other,s,tc)]={status:r.status,origins:[...(r.origins||[])],ideal:!!r.ideal};
     synced++;
   });
   return synced;
 }
 
-function findCourseLocationsByName(programId,normalizedName){
-  const pr=allPrograms().find(x=>x.id===programId);
-  if(!pr)return [];
-  const found=[];
-  pr.semesters.forEach((sem,s)=>sem.forEach((name,c)=>{
-    if(normalizeSubjectName(name)===normalizedName)found.push({pid:programId,s,c,name});
-  }));
+
+function strictSubjectKey(name){
+  return String(name||'').trim().replace(/\s+/g,' ').toLocaleLowerCase('es-MX');
+}
+function isProjectIntegrator(name){
+  return /^proyecto integrador(?:\s|$)/i.test(String(name||'').trim());
+}
+function courseLocation(pid,s,c){
+  const pr=allPrograms().find(x=>x.id===pid);
+  const name=pr?.semesters?.[s]?.[c];
+  return name===undefined?null:{pid,s,c,name};
+}
+function automaticSameNameLocations(pid,s,c,name){
+  if(!name||isProjectIntegrator(name))return [];
+  const wanted=strictSubjectKey(name),found=[];
+  allPrograms().forEach(pr=>pr.semesters.forEach((sem,ss)=>sem.forEach((n,cc)=>{
+    if(isProjectIntegrator(n))return;
+    if(strictSubjectKey(n)===wanted && !(pr.id===pid&&ss===s&&cc===c)){
+      found.push({pid:pr.id,s:ss,c:cc,name:n});
+    }
+  })));
   return found;
 }
-function transversalRuleForCourse(pid,name){
-  const normalized=normalizeSubjectName(name||'');
-  if(!normalized)return [];
-  return transversalRules.filter(rule=>{
-    if(rule.subjectNormalized!==normalized)return false;
-    const ids=[rule.sourceProgramId,...(rule.targetProgramIds||[])];
-    return ids.includes(pid);
-  });
+function normalizeTransversalEndpoint(ep){
+  if(!ep||typeof ep!=='object')return null;
+  const pid=String(ep.pid||'');
+  const s=Number(ep.s),c=Number(ep.c);
+  if(!pid||!Number.isInteger(s)||!Number.isInteger(c))return null;
+  return courseLocation(pid,s,c);
 }
-function transversalLocations(rule){
-  const ids=[rule.sourceProgramId,...(rule.targetProgramIds||[])];
+function explicitTransversalPeers(pid,s,c,name){
+  if(isProjectIntegrator(name))return [];
+  const peers=[];
+  transversalRules.forEach(rule=>{
+    if(rule.source&&rule.target){
+      const a=normalizeTransversalEndpoint(rule.source);
+      const b=normalizeTransversalEndpoint(rule.target);
+      if(!a||!b||isProjectIntegrator(a.name)||isProjectIntegrator(b.name))return;
+      if(a.pid===pid&&a.s===s&&a.c===c)peers.push(b);
+      else if(b.pid===pid&&b.s===s&&b.c===c)peers.push(a);
+      return;
+    }
+
+    // Compatibilidad con las reglas creadas en V59.
+    if(rule.subjectNormalized){
+      const ids=[rule.sourceProgramId,...(rule.targetProgramIds||[])];
+      if(!ids.includes(pid) || normalizeSubjectName(name)!==rule.subjectNormalized)return;
+      ids.forEach(id=>{
+        if(id===pid)return;
+        const pr=allPrograms().find(x=>x.id===id);
+        pr?.semesters?.forEach((sem,ss)=>sem.forEach((n,cc)=>{
+          if(!isProjectIntegrator(n)&&normalizeSubjectName(n)===rule.subjectNormalized){
+            peers.push({pid:id,s:ss,c:cc,name:n});
+          }
+        }));
+      });
+    }
+  });
+  return peers;
+}
+function linkedCourseLocations(pid,s,c,name){
+  if(isProjectIntegrator(name))return [];
   const seen=new Set(),out=[];
-  ids.forEach(pid=>{
-    findCourseLocationsByName(pid,rule.subjectNormalized).forEach(loc=>{
-      const k=`${loc.pid}|${loc.s}|${loc.c}`;
-      if(!seen.has(k)){seen.add(k);out.push(loc)}
-    });
+  [...automaticSameNameLocations(pid,s,c,name),...explicitTransversalPeers(pid,s,c,name)].forEach(loc=>{
+    const k=`${loc.pid}|${loc.s}|${loc.c}`;
+    if(k===`${pid}|${s}|${c}`||seen.has(k))return;
+    seen.add(k);out.push(loc);
   });
   return out;
 }
@@ -1434,45 +1540,54 @@ function setCoordinatorValue(pid,s,c,checked){
   arr=checked?[...new Set([...arr,id])]:arr.filter(x=>x!==id);
   programMeta[pid].coordinators=arr;
 }
-function replicateTransversalAnswer(pid,s,c,name,r){
-  const rules=transversalRuleForCourse(pid,name);
+function coordinatorValue(pid,s,c){
+  return !!(((programMeta[pid]||{}).coordinators||[]).includes(`${s}|${c}`));
+}
+function bestLinkedAnswer(pid,s,c,name){
+  const peers=linkedCourseLocations(pid,s,c,name);
+  const complete=peers.find(loc=>{
+    const a=getAns(loc.pid,loc.s,loc.c,loc.name);
+    return ['X','XX'].includes(a.status)&&(a.origins||[]).length;
+  });
+  if(complete)return complete;
+  return peers.find(loc=>getAns(loc.pid,loc.s,loc.c,loc.name).status!=='off')||null;
+}
+function replicateLinkedAnswer(pid,s,c,name,r){
+  if(isProjectIntegrator(name))return 0;
   let synced=0;
-  rules.forEach(rule=>{
-    transversalLocations(rule).forEach(loc=>{
-      if(loc.pid===pid&&loc.s===s&&loc.c===c)return;
-      answers[key(loc.pid,loc.s,loc.c)]={
-        status:r.status,
-        origins:[...(r.origins||[])],
-        ideal:!!r.ideal
-      };
-      synced++;
-    });
+  linkedCourseLocations(pid,s,c,name).forEach(loc=>{
+    const current=getAns(loc.pid,loc.s,loc.c,loc.name);
+    // Una materia deshabilitada intencionalmente queda independiente.
+    if(current.status==='off')return;
+    answers[key(loc.pid,loc.s,loc.c)]={
+      status:r.status,
+      origins:[...(r.origins||[])],
+      ideal:!!r.ideal
+    };
+    synced++;
   });
   return synced;
 }
-function replicateTransversalCoordinator(pid,s,c,name,checked){
-  const rules=transversalRuleForCourse(pid,name);
+function replicateLinkedCoordinator(pid,s,c,name,checked){
+  if(isProjectIntegrator(name))return 0;
   let synced=0;
-  rules.forEach(rule=>{
-    transversalLocations(rule).forEach(loc=>{
-      if(loc.pid===pid&&loc.s===s&&loc.c===c)return;
-      setCoordinatorValue(loc.pid,loc.s,loc.c,checked);
-      synced++;
-    });
+  linkedCourseLocations(pid,s,c,name).forEach(loc=>{
+    const current=getAns(loc.pid,loc.s,loc.c,loc.name);
+    if(current.status==='off')return;
+    setCoordinatorValue(loc.pid,loc.s,loc.c,checked);
+    synced++;
   });
   return synced;
 }
-function courseTransversalBadge(pid,name){
-  const rules=transversalRuleForCourse(pid,name);
-  if(!rules.length)return '';
-  const related=new Set();
-  rules.forEach(rule=>[rule.sourceProgramId,...(rule.targetProgramIds||[])].forEach(id=>{
-    if(id!==pid){
-      const pr=allPrograms().find(x=>x.id===id);
-      if(pr)related.add(programAcronym(pr));
-    }
-  }));
-  return `<span class="transversal-course-badge" title="Esta asignatura está sincronizada con ${escapeHtml([...related].join(', '))}">↔ Transversal</span>`;
+function courseTransversalBadge(pid,s,c,name){
+  if(isProjectIntegrator(name))return '';
+  const peers=linkedCourseLocations(pid,s,c,name);
+  if(!peers.length)return '';
+  const labels=[...new Set(peers.map(loc=>{
+    const pr=allPrograms().find(x=>x.id===loc.pid);
+    return pr?`${programAcronym(pr)} · ${loc.s+1}.°`:loc.pid;
+  }))];
+  return `<span class="transversal-course-badge" title="Respuesta vinculada con: ${escapeHtml(labels.join(', '))}">↔ Vinculada</span>`;
 }
 
 function programStats(p){let total=0,done=0,missing=0;p.semesters.forEach((sem,s)=>sem.forEach((name,c)=>{if(isEnglish(name))return;total++;const a=getAns(p.id,s,c,name);if(a.status!=='pending')done++;else missing++}));return{total,done,missing}}
@@ -1598,7 +1713,7 @@ window.toggleCoordinator=function(pid,id,checked){
   const pr=allPrograms().find(x=>x.id===pid);
   const name=pr?.semesters?.[s]?.[c]||'';
   setCoordinatorValue(pid,s,c,checked);
-  replicateTransversalCoordinator(pid,s,c,name,checked);
+  replicateLinkedCoordinator(pid,s,c,name,checked);
   persist();
   renderCurrentProgram();
 }
@@ -1760,7 +1875,7 @@ function renderCurrentProgram(){
       const loc=`${currentProgramIndex}|${s}|${c}`;
 
       h+=`<div class="course ${pending?'pending':''} ${a.status==='off'?'off':''} ${reviewed&&a.status!=='off'?'reviewed':''} ${na?'na na-clean':''} ${needsAttention?'needs-attention':''}" data-course-loc="${loc}">
-        <div class="name">${subjectCase(name)}${subjectHours(p.id,s,c)?` <small class="course-hours">(${subjectHours(p.id,s,c)} h)</small>`:''}${na?' · NO APLICA':''}${!na?courseTransversalBadge(p.id,name):''}</div>`;
+        <div class="name">${subjectCase(name)}${subjectHours(p.id,s,c)?` <small class="course-hours">(${subjectHours(p.id,s,c)} h)</small>`:''}${na?' · NO APLICA':''}${!na?courseTransversalBadge(p.id,s,c,name):''}</div>`;
 
       if(na){
         h+=`<div class="control-placeholder"></div><div class="control-placeholder"></div><div class="control-placeholder"></div><div class="control-placeholder"></div><div class="control-placeholder"></div>`;
@@ -1797,14 +1912,14 @@ function renderCurrentProgram(){
   h+=`</div></div>
     <div class="program-save">
       <small>${st.missing?'Las filas resaltadas indican información pendiente.':'Programa completo.'}</small>
-      <button class="save-btn" onclick="saveAndNextProgram()">${lastProgram?'Continuar a revisión e impresión →':'Guardar y seguir →'}</button>
+      <button class="save-btn" onclick="saveAndNextProgram()">${lastProgram?'Guardar y continuar a revisión →':'Guardar y seguir →'}</button>
     </div>
   </article>`;
 
   $('programs').innerHTML=h;
   const flowBtn=$('flowNextBtn');
   if(flowBtn){
-    flowBtn.textContent=lastProgram?'Continuar a revisión e impresión →':'Guardar y seguir →';
+    flowBtn.textContent=lastProgram?'Guardar y continuar a revisión →':'Guardar y seguir →';
     flowBtn.onclick=()=>saveAndNextProgram();
   }
   requestAnimationFrame(adjustSemesterColumnWidths);
@@ -1956,6 +2071,9 @@ async function finalizeCurrentProfile(){
 
   store.submittedPeriod=cfg.periodo;
   store.finalizedAtMs=Date.now();
+  // Una reapertura individual termina aquí: después de finalizar vuelve a quedar bloqueado.
+  store.individualEditEnabled=false;
+  store.individualEditDisabled=false;
   persist();
 
   const finalSyncOk=await syncProfileToCloud({reason:'confirmación de finalización'});
@@ -1974,6 +2092,15 @@ async function finalizeCurrentProfile(){
   );
   applyEditState();updateNavState();
   return {preSyncOk,finalSyncOk};
+}
+
+function profileDocumentBaseName(){
+  const p=store.profile||{};
+  const surnames=[p.apPat,p.apMat].map(x=>String(x||'').trim()).filter(Boolean).join(' ');
+  return `Perfil Académico Docente · DIN · ${surnames||'Profesor'}`;
+}
+function safeProfilePdfFilename(){
+  return `${profileDocumentBaseName().replace(/[\\/:*?"<>|]+/g,' ').replace(/\s+/g,' ').trim()}.pdf`;
 }
 function mobilePrintClient(){
   const ua=navigator.userAgent||'';
@@ -2013,8 +2140,7 @@ async function createMobileLandscapePdf(){
       pdf.addImage(canvas.toDataURL('image/jpeg',0.94),'JPEG',x,y,w,h,undefined,'FAST');
     }
 
-    const safePeriod=String(cfg.periodo||'Periodo').replace(/[^a-z0-9]+/gi,'_');
-    pdf.save(`Perfil_Profesor_DIN_${safePeriod}.pdf`);
+    pdf.save(safeProfilePdfFilename());
     return true;
   }finally{
     document.body.classList.remove('mobile-pdf-capture');
@@ -2034,7 +2160,12 @@ async function openProfilePrintDialog(){
   }
 
   document.body.classList.add('printing-profile');
-  const cleanup=()=>document.body.classList.remove('printing-profile');
+  const previousTitle=document.title;
+  document.title=profileDocumentBaseName();
+  const cleanup=()=>{
+    document.body.classList.remove('printing-profile');
+    document.title=previousTitle;
+  };
   window.addEventListener('afterprint',cleanup,{once:true});
   requestAnimationFrame(()=>setTimeout(()=>window.print(),80));
 }
@@ -2042,7 +2173,7 @@ async function openProfilePrintDialog(){
 let finalizeDialogResolver=null;
 function showFinalizeDialog(){
   const modal=$('finalizeProfileModal');
-  if(!modal)return Promise.resolve(window.confirm('¿Finalizar e imprimir / guardar PDF? La edición quedará bloqueada para el periodo actual.'));
+  if(!modal)return Promise.resolve(window.confirm('¿Finalizar e imprimir / guardar PDF?\n\nLa edición quedará bloqueada para el periodo actual. Para cualquier modificación posterior deberá solicitar al JUCA la habilitación de edición.'));
   modal.classList.remove('hidden');
   document.body.classList.add('modal-open');
   return new Promise(resolve=>{finalizeDialogResolver=resolve});
@@ -2077,7 +2208,12 @@ window.printProfile=async function(){
     }
   }
 
-  if(submissionLockedForCurrentPeriod() || isAdmin()){
+  if(isAdmin()){
+    buildPrint();
+    await openProfilePrintDialog();
+    return;
+  }
+  if(submissionLockedForCurrentPeriod() && !individualEditOverride()){
     buildPrint();
     await openProfilePrintDialog();
     return;
@@ -2105,8 +2241,8 @@ window.printProfile=async function(){
 
   toast(
     result.finalSyncOk
-      ?'Perfil concluido y sincronizado. La edición quedó bloqueada.'
-      :'Perfil concluido. La edición quedó bloqueada; la sincronización con la nube se reintentará automáticamente.'
+      ?'Perfil concluido. La edición quedó bloqueada. Para cualquier modificación posterior, consulte a su JUCA.'
+      :'Perfil concluido y bloqueado. La nube se sincronizará automáticamente; para cualquier modificación posterior, consulte a su JUCA.'
   );
   await openProfilePrintDialog();
 }
@@ -2324,8 +2460,8 @@ async function renderTeacherAdminList(){
             return `<button class="teacher-reopen-btn ${enableNext?'':'active'}" onclick="setTeacherEditAccess('${r.uid}',${enableNext?'true':'false'})">${label}</button>`;
           })()}
           <button class="teacher-print-profile-btn" onclick="printTeacherProfile('${r.uid}')">Imprimir perfil</button>
-          <button class="teacher-reset-program-btn" onclick="resetTeacherProgramProfile('${r.uid}')">Eliminar asignaturas capturadas</button>
-          <button class="teacher-delete-btn" onclick="deleteTeacherProfile('${r.uid}')">Eliminar perfil completo</button>
+          <button class="teacher-reset-program-btn" onclick="resetTeacherProgramProfile('${r.uid}')">🔒 Eliminar asignaturas capturadas</button>
+          <button class="teacher-delete-btn" onclick="deleteTeacherProfile('${r.uid}')">🔒 Eliminar perfil completo</button>
         </div>
       </div>`;
     }).join('');
@@ -2381,7 +2517,7 @@ window.setTeacherEditAccess=async function(uid,enable){
   const r=teacherAdminCache[uid]||{};
   const who=r.name||r.email||'este profesor';
   const question=enable
-    ?`¿Habilitar la edición para ${who}?\n\nEl profesor podrá continuar editando su perfil mientras no haya vencido la fecha límite.`
+    ?`¿Habilitar la edición para ${who}?\n\nSe conservará íntegramente la última información guardada. El profesor continuará exactamente desde su captura anterior. Sólo los botones de eliminación pueden borrar información.`
     :`¿Deshabilitar la edición para ${who}?\n\nEl profesor podrá consultar su información, pero no podrá modificarla hasta que Administración vuelva a habilitarla.`;
   if(!confirm(question))return;
   try{
@@ -2403,16 +2539,30 @@ window.setTeacherEditAccess=async function(uid,enable){
 window.toggleTeacherEditOverride=function(uid,enable){return window.setTeacherEditAccess(uid,enable)}
 
 window.reopenTeacherProfile=function(uid){return window.toggleTeacherEditOverride(uid,true)}
+
+function confirmAdministrativeDeletion(firstMessage,secondLabel){
+  if(!confirm(firstMessage))return false;
+  const typed=prompt(
+    `SEGUNDO CANDADO DE SEGURIDAD\n\nPara confirmar ${secondLabel}, escriba exactamente:\n\nELIMINAR`
+  );
+  if(String(typed||'').trim().toUpperCase()!=='ELIMINAR'){
+    if(typed!==null)toast('Eliminación cancelada: no se escribió ELIMINAR.');
+    return false;
+  }
+  return true;
+}
+
 window.resetTeacherProgramProfile=async function(uid){
   if(!isAdmin()||!db)return;
   const r=teacherAdminCache[uid]||{};
   const who=r.name||r.email||'este profesor';
 
-  const ok=confirm(
+  const ok=confirmAdministrativeDeletion(
     `¿CONFIRMAR eliminación de las asignaturas capturadas de ${who}?\n\n`+
     `Se borrarán respuestas por asignatura, niveles X/XX, áreas de conocimiento, coordinaciones, favoritas y el estado de finalización.\n\n`+
     `Se conservarán los datos del profesor, pero la edición quedará habilitada para corregirlos y comenzar desde cero el Perfil por programa.\n\n`+
-    `Esta acción no se puede deshacer desde esta pantalla.`
+    `Esta acción no se puede deshacer desde esta pantalla.`,
+    'la eliminación de las asignaturas capturadas'
   );
   if(!ok)return;
 
@@ -2444,11 +2594,12 @@ window.deleteTeacherProfile=async function(uid){
   const r=teacherAdminCache[uid]||{};
   const who=r.name||r.email||'este profesor';
 
-  const ok=confirm(
+  const ok=confirmAdministrativeDeletion(
     `¿CONFIRMAR eliminación COMPLETA del perfil de ${who}?\n\n`+
     `Se eliminarán datos del profesor, formación, experiencia, respuestas por asignatura, niveles, áreas, coordinaciones, favoritas y el estado de finalización.\n\n`+
     `En su próximo ingreso comenzará desde cero. Esta acción NO elimina su cuenta institucional.\n\n`+
-    `Esta acción no se puede deshacer desde esta pantalla.`
+    `Esta acción no se puede deshacer desde esta pantalla.`,
+    'la eliminación COMPLETA del perfil'
   );
   if(!ok)return;
 
@@ -2464,138 +2615,157 @@ window.deleteTeacherProfile=async function(uid){
 }
 
 
-function transversalSubjectOptionsForProgram(pid){
+
+function transversalAvailablePrograms(){
+  return allPrograms();
+}
+function transversalSemesterCourses(pid,s){
   const pr=allPrograms().find(x=>x.id===pid);
-  if(!pr)return [];
-  const seen=new Set(),items=[];
-  pr.semesters.forEach((sem,s)=>sem.forEach((name,c)=>{
-    if(isEnglish(name))return;
-    const norm=normalizeSubjectName(name);
-    if(!norm||seen.has(norm))return;
-    seen.add(norm);
-    items.push({s,c,name,normalized:norm});
-  }));
-  return items;
+  const sem=pr?.semesters?.[Number(s)]||[];
+  return sem.map((name,c)=>({pid,s:Number(s),c,name}))
+    .filter(x=>!isEnglish(x.name)&&!isProjectIntegrator(x.name));
+}
+function endpointFromControls(side){
+  const prefix=side==='source'?'transversalSource':'transversalTarget';
+  const pid=$(prefix+'Program')?.value||'';
+  const s=Number($(prefix+'Semester')?.value);
+  const c=Number($(prefix+'Subject')?.value);
+  return Number.isInteger(s)&&Number.isInteger(c)?courseLocation(pid,s,c):null;
 }
 function renderTransversalAdmin(){
-  const source=$('transversalSourceProgram');
-  if(!source)return;
-  const active=allPrograms();
-  const previous=source.value;
-  source.innerHTML=active.map(p=>`<option value="${p.id}">${escapeHtml(programAcronym(p))} · ${escapeHtml(p.name)} — ${escapeHtml(p.exit)}</option>`).join('');
-  if(previous&&active.some(p=>p.id===previous))source.value=previous;
-  renderTransversalSubjectOptions();
+  const source=$('transversalSourceProgram'),target=$('transversalTargetProgram');
+  if(!source||!target)return;
+
+  const ps=transversalAvailablePrograms();
+  const oldSource=source.value,oldTarget=target.value;
+  source.innerHTML=ps.map(p=>`<option value="${p.id}">${escapeHtml(programAcronym(p))} · ${escapeHtml(p.name)} — ${escapeHtml(p.exit)}</option>`).join('');
+  if(oldSource&&ps.some(p=>p.id===oldSource))source.value=oldSource;
+
+  renderTransversalSemesterOptions('source',false);
+  syncTransversalDestinationPrograms(oldTarget);
   renderTransversalRulesList();
 }
-window.renderTransversalSubjectOptions=function(){
-  const source=$('transversalSourceProgram'),subject=$('transversalSourceSubject');
-  if(!source||!subject)return;
-  const previous=subject.value;
-  const items=transversalSubjectOptionsForProgram(source.value);
-  subject.innerHTML=items.map(x=>`<option value="${encodeURIComponent(x.normalized)}">${escapeHtml(subjectCase(x.name))}</option>`).join('');
-  if(previous&&items.some(x=>encodeURIComponent(x.normalized)===previous))subject.value=previous;
-  renderTransversalTargets();
+window.syncTransversalDestinationPrograms=function(preferred=''){
+  const source=$('transversalSourceProgram'),target=$('transversalTargetProgram');
+  if(!source||!target)return;
+  const previous=preferred||target.value;
+  const candidates=transversalAvailablePrograms().filter(p=>p.id!==source.value);
+  target.innerHTML=candidates.map(p=>`<option value="${p.id}">${escapeHtml(programAcronym(p))} · ${escapeHtml(p.name)} — ${escapeHtml(p.exit)}</option>`).join('');
+  if(previous&&candidates.some(p=>p.id===previous))target.value=previous;
+  renderTransversalSemesterOptions('target',false);
 }
-window.renderTransversalTargets=function(){
-  const source=$('transversalSourceProgram'),subject=$('transversalSourceSubject'),root=$('transversalTargets');
-  if(!source||!subject||!root)return;
-  const pid=source.value;
-  const normalized=decodeURIComponent(subject.value||'');
-  if(!pid||!normalized){
-    root.innerHTML='<div class="transversal-empty">Seleccione programa y asignatura.</div>';
-    return;
-  }
-
-  const existing=transversalRules.find(r=>r.sourceProgramId===pid&&r.subjectNormalized===normalized)
-    || transversalRules.find(r=>r.subjectNormalized===normalized&&[r.sourceProgramId,...(r.targetProgramIds||[])].includes(pid));
-
-  const targetIds=new Set(existing?.targetProgramIds||[]);
-  if(existing?.sourceProgramId&&existing.sourceProgramId!==pid)targetIds.add(existing.sourceProgramId);
-
-  const candidates=allPrograms().filter(p=>p.id!==pid).map(p=>{
-    const locations=findCourseLocationsByName(p.id,normalized);
-    return {p,locations};
-  }).filter(x=>x.locations.length);
-
-  if(!candidates.length){
-    root.innerHTML='<div class="transversal-empty">No se encontraron otras materias con el mismo nombre en los programas educativos.</div>';
-    return;
-  }
-
-  root.innerHTML=`<div class="transversal-target-title">3. Programas donde se sincronizará esta asignatura</div>
-    <div class="transversal-target-grid">
-      ${candidates.map(({p,locations})=>`<label class="transversal-target-card">
-        <input type="checkbox" data-transversal-target="${p.id}" ${targetIds.has(p.id)?'checked':''}>
-        <span class="transversal-target-check">✓</span>
-        <span class="transversal-target-copy">
-          <b>${escapeHtml(programAcronym(p))} · ${escapeHtml(p.name)}</b>
-          <small>${escapeHtml(p.exit)} · ${locations.map(x=>`${x.s+1}.° cuatrimestre`).join(', ')}</small>
-        </span>
-      </label>`).join('')}
-    </div>`;
+window.renderTransversalSemesterOptions=function(side,resyncTarget=true){
+  const prefix=side==='source'?'transversalSource':'transversalTarget';
+  const program=$(prefix+'Program'),semester=$(prefix+'Semester');
+  if(!program||!semester)return;
+  const pr=allPrograms().find(x=>x.id===program.value);
+  const previous=Number(semester.value);
+  semester.innerHTML=(pr?.semesters||[]).map((sem,s)=>`<option value="${s}">${s+1}.° cuatrimestre</option>`).join('');
+  if(Number.isInteger(previous)&&pr?.semesters?.[previous])semester.value=String(previous);
+  renderTransversalCourseOptions(side);
+  if(side==='source'&&resyncTarget)syncTransversalDestinationPrograms();
+}
+window.renderTransversalCourseOptions=function(side){
+  const prefix=side==='source'?'transversalSource':'transversalTarget';
+  const program=$(prefix+'Program'),semester=$(prefix+'Semester'),subject=$(prefix+'Subject');
+  if(!program||!semester||!subject)return;
+  const previous=Number(subject.value);
+  const courses=transversalSemesterCourses(program.value,Number(semester.value));
+  subject.innerHTML=courses.map(x=>`<option value="${x.c}">${escapeHtml(subjectCase(x.name))}</option>`).join('');
+  if(Number.isInteger(previous)&&courses.some(x=>x.c===previous))subject.value=String(previous);
 }
 window.saveTransversalRule=function(){
   if(!isAdmin())return;
-  const source=$('transversalSourceProgram'),subject=$('transversalSourceSubject');
-  const sourceProgramId=source?.value||'';
-  const subjectNormalized=decodeURIComponent(subject?.value||'');
-  const targetProgramIds=[...document.querySelectorAll('[data-transversal-target]:checked')].map(x=>x.dataset.transversalTarget);
-  if(!sourceProgramId||!subjectNormalized){toast('Seleccione programa y asignatura.');return}
-  if(!targetProgramIds.length){toast('Seleccione al menos un programa relacionado.');return}
+  const source=endpointFromControls('source');
+  const target=endpointFromControls('target');
 
-  const sourceItem=transversalSubjectOptionsForProgram(sourceProgramId).find(x=>x.normalized===subjectNormalized);
-  const label=sourceItem?.name||subjectNormalized;
+  if(!source||!target){toast('Seleccione completamente la materia de origen y la materia de destino.');return}
+  if(isProjectIntegrator(source.name)||isProjectIntegrator(target.name)){
+    toast('Proyecto integrador siempre debe permanecer autónomo.');
+    return;
+  }
+  if(source.pid===target.pid&&source.s===target.s&&source.c===target.c){
+    toast('La materia de origen y la de destino deben ser distintas.');
+    return;
+  }
 
-  // Una misma asignatura normalizada usa una sola regla transversal para evitar cadenas ambiguas.
-  transversalRules=transversalRules.filter(r=>r.subjectNormalized!==subjectNormalized);
+  const samePair=transversalRules.some(rule=>{
+    if(!rule.source||!rule.target)return false;
+    const a=rule.source,b=rule.target;
+    const direct=a.pid===source.pid&&a.s===source.s&&a.c===source.c&&b.pid===target.pid&&b.s===target.s&&b.c===target.c;
+    const reverse=b.pid===source.pid&&b.s===source.s&&b.c===source.c&&a.pid===target.pid&&a.s===target.s&&a.c===target.c;
+    return direct||reverse;
+  });
+  if(samePair){toast('Esta relación transversal ya está configurada.');return}
+
   transversalRules.push({
     id:`TR_${Date.now()}`,
-    subjectName:label,
-    subjectNormalized,
-    sourceProgramId,
-    targetProgramIds:[...new Set(targetProgramIds)]
+    source:{pid:source.pid,s:source.s,c:source.c},
+    target:{pid:target.pid,s:target.s,c:target.c},
+    sourceName:source.name,
+    targetName:target.name
   });
 
   store.transversalRules=transversalRules;
   persist();
-  saveGlobalSettings('Asignatura transversal configurada');
-  renderTransversalAdmin();
+  saveGlobalSettings('Relación transversal configurada');
+  renderTransversalRulesList();
   renderCurrentProgram();
-  toast('Transversalidad guardada. Las próximas selecciones se sincronizarán entre los programas vinculados.');
+  toast('Relación transversal guardada.');
 }
 window.deleteTransversalRule=function(id){
   if(!isAdmin())return;
   const rule=transversalRules.find(r=>r.id===id);
   if(!rule)return;
-  if(!confirm(`¿Quitar la transversalidad de "${rule.subjectName||'esta asignatura'}"?\n\nLas respuestas ya capturadas no se borrarán.`))return;
+  if(!confirm('¿Quitar esta relación transversal? Las respuestas ya capturadas no se borrarán.'))return;
   transversalRules=transversalRules.filter(r=>r.id!==id);
   store.transversalRules=transversalRules;
   persist();
-  saveGlobalSettings('Asignatura transversal eliminada');
-  renderTransversalAdmin();
+  saveGlobalSettings('Relación transversal eliminada');
+  renderTransversalRulesList();
   renderCurrentProgram();
-  toast('Transversalidad eliminada.');
+  toast('Relación transversal eliminada.');
 }
 function renderTransversalRulesList(){
   const root=$('transversalRulesList');
   if(!root)return;
   if(!transversalRules.length){
-    root.innerHTML='<div class="transversal-empty">No hay asignaturas transversales configuradas.</div>';
+    root.innerHTML='<div class="transversal-empty">No hay relaciones transversales configuradas.</div>';
     return;
   }
   root.innerHTML=transversalRules.map(rule=>{
+    if(rule.source&&rule.target){
+      const a=normalizeTransversalEndpoint(rule.source);
+      const b=normalizeTransversalEndpoint(rule.target);
+      if(!a||!b)return '';
+      const pa=allPrograms().find(x=>x.id===a.pid),pb=allPrograms().find(x=>x.id===b.pid);
+      return `<div class="transversal-rule-row v60">
+        <div class="transversal-rule-endpoint">
+          <span class="endpoint-chip">Origen</span>
+          <strong>${escapeHtml(subjectCase(a.name))}</strong>
+          <small>${escapeHtml(pa?programAcronym(pa):a.pid)} · ${a.s+1}.° cuatrimestre</small>
+        </div>
+        <div class="transversal-rule-link">→</div>
+        <div class="transversal-rule-endpoint">
+          <span class="endpoint-chip target">Destino</span>
+          <strong>${escapeHtml(subjectCase(b.name))}</strong>
+          <small>${escapeHtml(pb?programAcronym(pb):b.pid)} · ${b.s+1}.° cuatrimestre</small>
+        </div>
+        <button type="button" onclick="deleteTransversalRule('${rule.id}')">Quitar</button>
+      </div>`;
+    }
+
+    // Compatibilidad con relaciones de V59 ya guardadas.
     const source=allPrograms().find(x=>x.id===rule.sourceProgramId);
     const targets=(rule.targetProgramIds||[]).map(id=>allPrograms().find(x=>x.id===id)).filter(Boolean);
-    return `<div class="transversal-rule-row">
-      <div class="transversal-rule-name">
-        <strong>${escapeHtml(subjectCase(rule.subjectName||rule.subjectNormalized))}</strong>
-        <span>Origen: ${escapeHtml(source?programAcronym(source):rule.sourceProgramId)}</span>
-      </div>
+    return `<div class="transversal-rule-row legacy">
+      <div class="transversal-rule-name"><strong>${escapeHtml(subjectCase(rule.subjectName||rule.subjectNormalized||'Asignatura'))}</strong><span>Configuración anterior · ${escapeHtml(source?programAcronym(source):'')}</span></div>
       <div class="transversal-rule-targets">${targets.map(p=>`<span>${escapeHtml(programAcronym(p))}</span>`).join('')}</div>
       <button type="button" onclick="deleteTransversalRule('${rule.id}')">Quitar</button>
     </div>`;
   }).join('');
 }
+
 
 function renderAdmin(){
   $('jefe').value=cfg.jefe;$('codigo').value=cfg.codigo;$('revisionCal').value=cfg.revision;$('fechaRevision').value=cfg.fechaRevision;$('periodoAdmin').value=cfg.periodo;

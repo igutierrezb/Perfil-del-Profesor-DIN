@@ -1,0 +1,60 @@
+PERFIL PROFESOR DIN · V60
+
+CAMBIOS PUNTUALES
+
+1. Reapertura de edición
+- Habilitar edición individual NO borra profile, answers, programMeta ni Comisiones.
+- El profesor recupera exactamente su última captura.
+- Se corrigió la interpretación de profileResetToken: un token histórico ya no vacía la captura al iniciar sesión.
+- Sólo un reset administrativo realmente vacío o la eliminación completa pueden iniciar de cero.
+- El respaldo local por UID conserva también el token de reset.
+
+2. Eliminaciones
+- Los dos botones destructivos muestran candado.
+- Conservan la primera confirmación.
+- Se agrega un segundo candado: Administración debe escribir ELIMINAR.
+
+3. Sincronización automática por nombre
+- Las materias con el mismo nombre exacto se vinculan en cualquier programa/cuatrimestre.
+- Se replica X/XX, área de conocimiento, coordinador y favorita.
+- Si una materia se deshabilita, el cambio es exclusivamente individual.
+- Una materia ya deshabilitada no vuelve a activarse por cambios hechos en otras.
+- Al volver a habilitarla, recupera la configuración de una homóloga capturada si existe.
+- Proyecto integrador siempre es autónomo y queda excluido.
+
+4. Módulo administrativo transversal
+- Relación uno a uno.
+- Origen: programa + cuatrimestre + asignatura.
+- Destino: programa + cuatrimestre + asignatura.
+- Permite agregar relaciones una por una entre programas.
+- Mantiene compatibilidad con reglas V59 previamente guardadas.
+
+5. Indicaciones de captura
+- Al pulsar Guardar y continuar desde Datos del profesor se fuerza la apertura de la ventana de orientación.
+- También funciona cuando el perfil fue reabierto por JUCA.
+
+6. Finalización
+- Un perfil reabierto vuelve a mostrar el aviso de finalización.
+- Al confirmar, se elimina el permiso temporal de edición.
+- Queda bloqueado aunque la captura general todavía esté abierta.
+- El mensaje y la notificación posterior indican consultar al JUCA para cualquier modificación futura.
+
+7. Nombre del archivo
+- PDF móvil: “Perfil Académico Docente · DIN · Apellido Paterno Apellido Materno.pdf”.
+- En escritorio se cambia temporalmente el título del documento para que Guardar como PDF proponga el mismo nombre.
+
+8. Último programa
+- El botón ahora dice “Guardar y continuar a revisión →”.
+
+NO MODIFICADO
+- firestore.rules
+- deploy-pages.yml
+- autenticación
+- Excel
+- estructura/calibración del formato impreso
+- datos institucionales
+- Comisiones
+- cálculo de avance administrativo
+
+deploy-pages.yml: NO necesita actualización.
+firestore.rules: NO necesita actualización.

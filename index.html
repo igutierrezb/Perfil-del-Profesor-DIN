@@ -430,33 +430,53 @@
       <div class="section-head transversal-admin-head">
         <div>
           <h2>Asignaturas transversales</h2>
-          <p>Vincule materias con el mismo nombre para que su captura sea idéntica en los programas seleccionados.</p>
+          <p>Configure, una por una, relaciones específicas entre una materia de origen y una materia de destino.</p>
         </div>
-        <span class="transversal-admin-badge">↔ Sincronización</span>
+        <span class="transversal-admin-badge">↔ Vinculación 1 a 1</span>
       </div>
 
-      <div class="transversal-config-grid">
-        <label>1. Programa de origen
-          <select id="transversalSourceProgram" onchange="renderTransversalSubjectOptions()"></select>
-        </label>
-        <label>2. Asignatura
-          <select id="transversalSourceSubject" onchange="renderTransversalTargets()"></select>
-        </label>
+      <div class="transversal-auto-note">
+        <strong>Sincronización automática por nombre.</strong>
+        Las asignaturas con el <b>mismo nombre exacto</b> comparten automáticamente competencia, área de conocimiento, coordinación y favorita.
+        Si una materia se <b>deshabilita</b>, esa decisión sólo afecta a esa materia. <b>Proyecto integrador siempre permanece autónomo.</b>
       </div>
 
-      <div class="transversal-help">
-        Seleccione una asignatura y después marque en qué otros programas desea hacerla transversal.
-        Sólo se mostrarán programas donde exista una materia con el <b>mismo nombre</b>.
-      </div>
+      <div class="transversal-pair-grid">
+        <section class="transversal-side source">
+          <div class="transversal-side-title"><span>1</span><div><b>Materia de origen</b><small>Programa, cuatrimestre y asignatura.</small></div></div>
+          <label>Programa
+            <select id="transversalSourceProgram" onchange="renderTransversalSemesterOptions('source')"></select>
+          </label>
+          <label>Cuatrimestre
+            <select id="transversalSourceSemester" onchange="renderTransversalCourseOptions('source')"></select>
+          </label>
+          <label>Asignatura
+            <select id="transversalSourceSubject" onchange="syncTransversalDestinationPrograms()"></select>
+          </label>
+        </section>
 
-      <div id="transversalTargets" class="transversal-targets"></div>
+        <div class="transversal-pair-arrow">→</div>
+
+        <section class="transversal-side target">
+          <div class="transversal-side-title"><span>2</span><div><b>Materia de destino</b><small>Programa, cuatrimestre y asignatura común.</small></div></div>
+          <label>Programa
+            <select id="transversalTargetProgram" onchange="renderTransversalSemesterOptions('target')"></select>
+          </label>
+          <label>Cuatrimestre
+            <select id="transversalTargetSemester" onchange="renderTransversalCourseOptions('target')"></select>
+          </label>
+          <label>Asignatura
+            <select id="transversalTargetSubject"></select>
+          </label>
+        </section>
+      </div>
 
       <div class="transversal-actions">
-        <button type="button" class="transversal-save-btn" onclick="saveTransversalRule()">Guardar transversalidad</button>
+        <button type="button" class="transversal-save-btn" onclick="saveTransversalRule()">＋ Agregar relación transversal</button>
       </div>
 
       <div class="transversal-configured">
-        <h3>Asignaturas transversales configuradas</h3>
+        <h3>Relaciones transversales configuradas</h3>
         <div id="transversalRulesList"></div>
       </div>
     </div>
