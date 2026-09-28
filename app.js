@@ -384,8 +384,11 @@ function profileBackupSnapshot(){
     submittedPeriod:store.submittedPeriod||null,
     finalizedAtMs:Number(store.finalizedAtMs)||null,
     profileResetToken:store.profileResetToken||null,
+    profileDeletionToken:store.profileDeletionToken||null,
     currentProgramIndex:Number.isInteger(currentProgramIndex)?currentProgramIndex:0,
     localUpdatedAt:Number(store.localUpdatedAt)||Number(store.lastSavedAt)||Date.now(),
+    cloudUpdatedAt:Number(store.cloudUpdatedAt)||0,
+    syncPending:!!store.syncPending,
     savedAt:Date.now()
   };
 }
@@ -409,6 +412,15 @@ function readUserBackup(){
 function clearUserBackup(uid){
   const key=profileBackupKey(uid);
   if(key)localStorage.removeItem(key);
+}
+function backupHasTeacherData(backup){
+  if(!backup||typeof backup!=='object')return false;
+  const p=backup.profile||{};
+  const hasProfile=!!(p.apPat||p.apMat||p.nombres||p.categoria||p.gradoAcademico||Object.values(p.extra||{}).some(Boolean));
+  const hasAnswers=Object.keys(backup.answers||{}).length>0;
+  const hasMeta=Object.keys(backup.programMeta||{}).length>0;
+  const hasPlanning=Object.keys(backup.planningByPeriod||{}).length>0;
+  return hasProfile||hasAnswers||hasMeta||hasPlanning||!!backup.submittedPeriod||!!backup.finalizedAtMs;
 }
 function persist(options={}){
   const {touch=true,schedule=true}=options;
@@ -534,6 +546,8 @@ function profileCloudPayload(){
     individualEditEnabled:!!store.individualEditEnabled,
     individualEditDisabled:!!store.individualEditDisabled,
     profileResetToken:store.profileResetToken||null,
+    profileDeletionToken:store.profileDeletionToken||null,
+    deletedByAdmin:false,
     planningByPeriod:JSON.parse(JSON.stringify(planningByPeriod)),
     clientUpdatedAt:Number(store.localUpdatedAt)||Date.now(),
     updatedAt:serverTimestamp()
@@ -612,6 +626,22 @@ async function loadRemoteProfile(){
     if(snap.exists()){
       const d=snap.data()||{};
       const backup=readUserBackup();
+
+      // Una eliminación administrativa explícita prevalece sobre cualquier respaldo local antiguo.
+      if(d.deletedByAdmin===true){
+        clearUserBackup(currentUser.uid);
+        resetLocalTeacherData({keepProfile:false});
+        store.profileDeletionToken=d.profileDeletionToken||null;
+        store.localUpdatedAt=timestampToMs(d.deletedAt)||Date.now();
+        store.cloudUpdatedAt=store.localUpdatedAt;
+        store.syncPending=false;
+        localStorage.setItem('PAD_UTEQ',JSON.stringify(store));
+        remoteProfileLoaded=true;
+        updateCloudStatus('Perfil eliminado por Administración · nueva captura disponible','warn');
+        toast('Administración eliminó este perfil. Puede iniciar una nueva captura desde cero.');
+        return;
+      }
+
       const remoteUpdatedAt=Number(d.clientUpdatedAt)||timestampToMs(d.updatedAt)||0;
       const localUpdatedAt=Number(backup?.localUpdatedAt)||0;
       const remoteResetToken=d.profileResetToken||null;
@@ -663,10 +693,28 @@ async function loadRemoteProfile(){
         toast('Perfil finalizado. Puede consultarlo e imprimirlo nuevamente. Si requiere editar algo, consulte a su JUCA.');
       }
     }else{
-      clearUserBackup(currentUser.uid);
-      resetLocalTeacherData({keepProfile:false});
-      remoteProfileLoaded=true;
-      updateCloudStatus('Perfil nuevo · sincronización activa','ok');
+      const backup=readUserBackup();
+      if(backupHasTeacherData(backup)){
+        // Firestore todavía no contiene el documento, pero existe una copia válida del mismo UID.
+        // Se recupera primero y después se intenta reconstruir la copia en nube; nunca se destruye al cerrar sesión.
+        applyProfileContent(backup);
+        currentProgramIndex=Number.isInteger(backup.currentProgramIndex)?backup.currentProgramIndex:0;
+        store.submittedPeriod=backup.submittedPeriod||null;
+        store.finalizedAtMs=Number(backup.finalizedAtMs)||null;
+        store.profileResetToken=backup.profileResetToken||null;
+        store.profileDeletionToken=backup.profileDeletionToken||null;
+        store.localUpdatedAt=Number(backup.localUpdatedAt)||Date.now();
+        store.cloudUpdatedAt=Number(backup.cloudUpdatedAt)||0;
+        store.syncPending=true;
+        renderLoadedProfile();
+        remoteProfileLoaded=true;
+        updateCloudStatus('Recuperando respaldo local · sincronización pendiente','warn');
+        await syncProfileToCloud({reason:'recuperación después de cierre de sesión'});
+      }else{
+        resetLocalTeacherData({keepProfile:false});
+        remoteProfileLoaded=true;
+        updateCloudStatus('Perfil nuevo · sincronización activa','ok');
+      }
     }
   }catch(e){
     remoteProfileLoaded=true;
@@ -710,6 +758,18 @@ async function initCloud(){
       return;
     }
     const d=s.data()||{};
+
+    if(d.deletedByAdmin===true){
+      if(!isAdmin()){
+        clearUserBackup(currentUser?.uid);
+        resetLocalTeacherData({keepProfile:false});
+        store.profileDeletionToken=d.profileDeletionToken||null;
+        localStorage.setItem('PAD_UTEQ',JSON.stringify(store));
+        toast('Administración eliminó este perfil. La siguiente captura iniciará desde cero.');
+      }
+      return;
+    }
+
     const priorPeriod=store.submittedPeriod||null;
     const priorOverride=!!store.individualEditEnabled;
     const priorDisabled=!!store.individualEditDisabled;
@@ -766,7 +826,9 @@ async function loadTeachersForExport(){
     const snap=await getDocs(collection(db,'profiles'));
     const rows=[];
     snap.forEach(ds=>{
-      const d=ds.data(),p=d.profile||{};
+      const d=ds.data();
+      if(d.deletedByAdmin===true)return;
+      const p=d.profile||{};
       const name=[p.apPat,p.apMat,p.nombres].filter(Boolean).join(' ')||d.displayName||d.email||'(Sin nombre)';
       rows.push({name,category:p.categoria||'',answers:d.answers||{},programMeta:d.programMeta||{},planningByPeriod:d.planningByPeriod||{},email:d.email||'',uid:ds.id,submittedPeriod:d.submittedPeriod||null,finalizedAtMs:Number(d.finalizedAtMs)||null});
     });
@@ -926,23 +988,26 @@ window.signIn=async function(){
   await signInWithGoogleIdentity();
 }
 window.signOutApp=async function(){
+  const uid=currentUser?.uid||null;
   try{
+    // Guardado local redundante ANTES de cerrar Auth. La copia PAD_UTEQ_PROFILE_<UID>
+    // es independiente de la sesión y nunca se elimina por un cierre normal.
+    try{persist({touch:false,schedule:false})}catch(e){console.warn('Respaldo previo al cierre',e)}
     saveUserBackup();
+
     if(db&&currentUser&&remoteProfileLoaded){
-      await syncProfileToCloud({reason:'guardado final antes de cerrar sesión'});
+      const synced=await syncProfileToCloud({reason:'guardado final antes de cerrar sesión'});
+      if(!synced)console.warn('La sesión se cerrará con respaldo local por UID pendiente de nube.');
     }
+
+    // Reafirmar el respaldo después del intento de nube.
+    saveUserBackup();
     if(auth)await signOut(auth);
   }finally{
+    // PAD_UTEQ es sólo la copia de trabajo compartida del navegador. Se retira para que
+    // otra cuenta no vea datos ajenos; el respaldo privado por UID permanece intacto.
     localStorage.removeItem('PAD_UTEQ');
     sessionStorage.clear();
-    try{
-      if('caches' in window){
-        const keys=await caches.keys();
-        await Promise.all(keys.map(k=>caches.delete(k)));
-      }
-    }catch(e){
-      console.warn('No fue posible limpiar Cache Storage',e);
-    }
     location.reload();
   }
 }
@@ -2388,7 +2453,9 @@ async function renderTeacherAdminList(){
     const rows=[];
     teacherAdminCache={};
     snap.forEach(ds=>{
-      const d=ds.data()||{},p=d.profile||{};
+      const d=ds.data()||{};
+      if(d.deletedByAdmin===true)return;
+      const p=d.profile||{};
       const name=[p.apPat,p.apMat,p.nombres].filter(Boolean).join(' ')||d.displayName||d.email||'(Sin nombre)';
       const captureProgress=teacherCaptureProgress(d.answers||{});
       const row={
@@ -2604,7 +2671,26 @@ window.deleteTeacherProfile=async function(uid){
   if(!ok)return;
 
   try{
-    await deleteDoc(doc(db,'profiles',uid));
+    const deletionToken=`DEL-${Date.now()}-${uid}`;
+    await setDoc(doc(db,'profiles',uid),{
+      uid,
+      email:r.email||'',
+      displayName:r.name||'',
+      deletedByAdmin:true,
+      profileDeletionToken:deletionToken,
+      deletedAt:serverTimestamp(),
+      deletedBy:currentUser?.email||'',
+      profile:{},
+      answers:{},
+      programMeta:{},
+      planningByPeriod:{},
+      submittedPeriod:null,
+      finalizedAtMs:null,
+      individualEditEnabled:false,
+      individualEditDisabled:false,
+      profileResetToken:null,
+      updatedAt:serverTimestamp()
+    });
     await writeAudit(`Perfil completo eliminado por Administración: ${r.email||uid}`);
     toast('Perfil completo eliminado. En su próximo ingreso el profesor comenzará desde cero.');
     await renderTeacherAdminList();
@@ -2710,6 +2796,7 @@ window.saveTransversalRule=function(){
   persist();
   saveGlobalSettings('Relación transversal configurada');
   renderTransversalRulesList();
+  renderAcademicRelationsTree();
   renderCurrentProgram();
   toast('Relación transversal guardada.');
 }
@@ -2723,6 +2810,7 @@ window.deleteTransversalRule=function(id){
   persist();
   saveGlobalSettings('Relación transversal eliminada');
   renderTransversalRulesList();
+  renderAcademicRelationsTree();
   renderCurrentProgram();
   toast('Relación transversal eliminada.');
 }
@@ -2767,6 +2855,63 @@ function renderTransversalRulesList(){
 }
 
 
+
+function academicProgramLabel(pid){
+  const p=allPrograms().find(x=>x.id===pid);
+  return p?`${programAcronym(p)} · ${p.name}`:pid;
+}
+function exactSameNameGroups(){
+  const map=new Map();
+  allPrograms().forEach(p=>p.semesters.forEach((sem,s)=>sem.forEach((name,c)=>{
+    if(isEnglish(name)||isProjectIntegrator(name))return;
+    const exact=strictSubjectKey(name);
+    if(!exact)return;
+    if(!map.has(exact))map.set(exact,{name,locations:[]});
+    map.get(exact).locations.push({pid:p.id,s,c,name});
+  })));
+  return [...map.values()]
+    .filter(x=>x.locations.length>1)
+    .sort((a,b)=>subjectCase(a.name).localeCompare(subjectCase(b.name),'es',{sensitivity:'base'}));
+}
+function renderAcademicRelationsTree(){
+  const root=$('academicRelationsTree');
+  if(!root)return;
+
+  const commonHtml=commonRules.length
+    ?commonRules.map(rule=>{
+      const sems=(rule.semesters||[]).map(s=>`${s+1}.°`).join(', ');
+      const children=(rule.programIds||[]).map(pid=>`<li><span class="tree-node program">${escapeHtml(academicProgramLabel(pid))}</span></li>`).join('');
+      return `<li class="tree-branch common"><div class="tree-line"><span class="tree-type common">Tronco común</span><strong>${escapeHtml(rule.name)}</strong><small>Cuatrimestres ${escapeHtml(sems)}</small></div><ul>${children}</ul></li>`;
+    }).join('')
+    :'<li class="tree-empty">No hay troncos comunes configurados.</li>';
+
+  const automaticGroups=exactSameNameGroups();
+  const automaticHtml=automaticGroups.length
+    ?automaticGroups.map(group=>{
+      const children=group.locations.map(loc=>`<li><span class="tree-node course">${escapeHtml(academicProgramLabel(loc.pid))}</span><small>${loc.s+1}.° cuatrimestre</small></li>`).join('');
+      return `<li class="tree-branch automatic"><div class="tree-line"><span class="tree-type automatic">Mismo nombre</span><strong>${escapeHtml(subjectCase(group.name))}</strong><small>${group.locations.length} apariciones vinculables</small></div><ul>${children}</ul></li>`;
+    }).join('')
+    :'<li class="tree-empty">No hay materias repetidas por nombre exacto.</li>';
+
+  const explicitHtml=transversalRules.length
+    ?transversalRules.map(rule=>{
+      if(rule.source&&rule.target){
+        const a=normalizeTransversalEndpoint(rule.source),b=normalizeTransversalEndpoint(rule.target);
+        if(!a||!b)return '';
+        return `<li class="tree-branch explicit"><div class="tree-line"><span class="tree-type explicit">Transversal 1 a 1</span><strong>${escapeHtml(subjectCase(a.name))}</strong></div><ul><li><span class="tree-node origin">Origen · ${escapeHtml(academicProgramLabel(a.pid))}</span><small>${a.s+1}.° cuatrimestre</small></li><li><span class="tree-link-arrow">↓</span></li><li><span class="tree-node target">Destino · ${escapeHtml(subjectCase(b.name))} · ${escapeHtml(academicProgramLabel(b.pid))}</span><small>${b.s+1}.° cuatrimestre</small></li></ul></li>`;
+      }
+      const source=allPrograms().find(x=>x.id===rule.sourceProgramId);
+      const targetLabels=(rule.targetProgramIds||[]).map(academicProgramLabel);
+      return `<li class="tree-branch explicit"><div class="tree-line"><span class="tree-type explicit">Transversal anterior</span><strong>${escapeHtml(subjectCase(rule.subjectName||rule.subjectNormalized||'Asignatura'))}</strong></div><ul><li><span class="tree-node origin">${escapeHtml(source?academicProgramLabel(source.id):rule.sourceProgramId||'Origen')}</span></li>${targetLabels.map(x=>`<li><span class="tree-node target">${escapeHtml(x)}</span></li>`).join('')}</ul></li>`;
+    }).join('')
+    :'<li class="tree-empty">No hay relaciones transversales 1 a 1 configuradas.</li>';
+
+  root.innerHTML=`
+    <section class="relation-tree-section"><h3>1. Troncos comunes</h3><ul class="relation-tree-root">${commonHtml}</ul></section>
+    <section class="relation-tree-section"><h3>2. Materias vinculadas automáticamente por mismo nombre</h3><p class="relation-tree-note">Se excluyen Inglés y Proyecto integrador. Deshabilitar una materia continúa siendo una decisión individual.</p><ul class="relation-tree-root">${automaticHtml}</ul></section>
+    <section class="relation-tree-section"><h3>3. Relaciones transversales configuradas</h3><ul class="relation-tree-root">${explicitHtml}</ul></section>`;
+}
+
 function renderAdmin(){
   $('jefe').value=cfg.jefe;$('codigo').value=cfg.codigo;$('revisionCal').value=cfg.revision;$('fechaRevision').value=cfg.fechaRevision;$('periodoAdmin').value=cfg.periodo;
   updatePlanningAvailability();
@@ -2776,7 +2921,7 @@ function renderAdmin(){
   if(st){st.textContent=cfg.editingLocked?'Edición desactivada':'Edición activa';st.className='edit-mode-status '+(cfg.editingLocked?'locked':'open')}
   if(btn){btn.textContent=cfg.editingLocked?'Activar edición de perfiles':'Desactivar edición de perfiles';btn.className='edit-mode-btn '+(cfg.editingLocked?'activate':'deactivate')}
   if(!editingProgramId && !$('newProgramSemesters')?.children?.length)renderSemesterEditors();
-  renderProgramAdminList();renderCustomPrograms();renderRules();renderTransversalAdmin();applyEditState();renderTeacherAdminList()
+  renderProgramAdminList();renderCustomPrograms();renderRules();renderTransversalAdmin();renderAcademicRelationsTree();applyEditState();renderTeacherAdminList()
 }
 function normalizeEditorSemesterValues(values){
   if(!Array.isArray(values))return [];

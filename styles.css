@@ -9698,3 +9698,81 @@ body.capture-orientation-open{overflow:hidden!important}
   .transversal-rule-row.v60{grid-template-columns:1fr!important}
   .transversal-rule-link{transform:rotate(90deg)!important}
 }
+
+
+/* =========================================================
+   V61 · Mayor legibilidad del modal de finalización
+   ========================================================= */
+.finalize-modal-head h2{font-size:22px!important}
+.finalize-modal-head p{font-size:12.5px!important;line-height:1.35!important}
+.finalize-lock-warning{font-size:12.5px!important;line-height:1.5!important;padding:12px 14px!important}
+.finalize-checklist{gap:9px!important}
+.finalize-checklist li{font-size:12px!important;line-height:1.48!important;padding:9px 11px!important}
+.finalize-bullet{width:26px!important;height:26px!important;font-size:13px!important}
+.finalize-question{font-size:12.5px!important;line-height:1.4!important;padding:11px 13px!important}
+.finalize-back-btn,.finalize-confirm-btn{font-size:11.5px!important}
+
+/* Mensaje de orientación */
+.capture-orientation-principle strong{font-size:11px!important}
+.capture-orientation-principle span{font-size:9.5px!important;line-height:1.45!important}
+
+/* =========================================================
+   V61 · Mapa de relaciones académicas plegable
+   ========================================================= */
+.academic-relations-card{
+  padding:0!important;
+  overflow:hidden!important;
+  border-top:4px solid #567f9b!important;
+}
+.academic-relations-summary{
+  display:flex!important;
+  align-items:center!important;
+  justify-content:space-between!important;
+  gap:12px!important;
+  padding:14px 17px!important;
+  cursor:pointer!important;
+  list-style:none!important;
+  background:linear-gradient(90deg,#fbfdfe,#f2f7fa)!important;
+}
+.academic-relations-summary::-webkit-details-marker{display:none!important}
+.academic-relations-summary h2{margin:0 0 3px!important;font-size:16px!important;color:#173f57!important}
+.academic-relations-summary p{margin:0!important;font-size:8.8px!important;color:#617985!important}
+.academic-relations-toggle{
+  flex:0 0 auto!important;
+  padding:5px 9px!important;
+  border:1px solid #c7d9e3!important;
+  border-radius:999px!important;
+  background:#fff!important;
+  color:#35677f!important;
+  font-size:8px!important;
+  font-weight:850!important;
+}
+.academic-relations-card[open] .academic-relations-toggle{background:#eaf4f8!important}
+.academic-relations-body{padding:0 17px 16px!important;border-top:1px solid #e3ebef!important}
+.academic-relations-legend{display:flex!important;flex-wrap:wrap!important;gap:6px!important;padding:10px 0!important}
+.relation-legend,.tree-type{
+  display:inline-flex!important;align-items:center!important;width:max-content!important;
+  padding:3px 7px!important;border-radius:999px!important;font-size:7.4px!important;font-weight:900!important;
+}
+.relation-legend.common,.tree-type.common{background:#fff3cf!important;color:#7a5b11!important}
+.relation-legend.automatic,.tree-type.automatic{background:#e6f5f1!important;color:#28715d!important}
+.relation-legend.explicit,.tree-type.explicit{background:#e8f1f8!important;color:#2c6380!important}
+.academic-relations-tree{display:grid!important;grid-template-columns:repeat(3,minmax(0,1fr))!important;gap:10px!important}
+.relation-tree-section{min-width:0!important;padding:10px!important;border:1px solid #dce6eb!important;border-radius:10px!important;background:#fcfdfe!important}
+.relation-tree-section h3{margin:0 0 5px!important;color:#244d62!important;font-size:10px!important}
+.relation-tree-note{margin:0 0 7px!important;color:#71838d!important;font-size:7.5px!important;line-height:1.35!important}
+.relation-tree-root,.relation-tree-root ul{list-style:none!important;margin:0!important;padding:0!important}
+.tree-branch{position:relative!important;margin:0 0 8px!important;padding-left:12px!important;border-left:2px solid #d8e3e8!important}
+.tree-branch:last-child{margin-bottom:0!important}
+.tree-line{display:flex!important;flex-wrap:wrap!important;align-items:center!important;gap:5px!important;margin-bottom:4px!important}
+.tree-line strong{font-size:8.2px!important;color:#304f5f!important}
+.tree-line small,.tree-branch li small{font-size:7px!important;color:#7a8d96!important}
+.tree-branch ul{display:grid!important;gap:3px!important;padding-left:11px!important}
+.tree-branch li{display:flex!important;align-items:center!important;gap:5px!important;min-width:0!important}
+.tree-node{display:inline-flex!important;min-width:0!important;padding:3px 6px!important;border-radius:6px!important;background:#f0f5f7!important;color:#48616e!important;font-size:7.3px!important;line-height:1.25!important}
+.tree-node.course{background:#edf8f5!important;color:#356f60!important}
+.tree-node.origin{background:#eef5f9!important;color:#326780!important}
+.tree-node.target{background:#eef8f1!important;color:#39735b!important}
+.tree-link-arrow{color:#7c929d!important;font-size:10px!important;font-weight:900!important}
+.tree-empty{padding:7px!important;border:1px dashed #cbd9df!important;border-radius:7px!important;color:#758791!important;font-size:7.5px!important;text-align:center!important}
+@media(max-width:1100px){.academic-relations-tree{grid-template-columns:1fr!important}}

@@ -1,0 +1,38 @@
+PERFIL PROFESOR DIN · V61
+
+CAMBIOS PUNTUALES
+
+1. Modal de finalización
+- Se eliminó la frase “un solo juego”.
+- Se aumentó la tipografía del modal para facilitar su lectura.
+
+2. Orientación de captura
+- El recuadro amarillo ahora se presenta como un mensaje de autorreflexión y objetividad.
+
+3. Persistencia al cerrar sesión
+- Cerrar sesión NO elimina la copia privada PAD_UTEQ_PROFILE_<UID>.
+- Antes de cerrar se reafirma el guardado local y se intenta sincronizar Firestore.
+- PAD_UTEQ se sigue retirando sólo por privacidad entre cuentas del mismo navegador.
+- Ya no se borra Cache Storage al cerrar sesión.
+- Si al volver a entrar Firestore aún no tiene documento pero existe un respaldo válido del mismo UID, se recupera y se reconstruye la copia en nube.
+- La eliminación completa administrativa usa ahora una marca persistente (tombstone) para que un respaldo local antiguo no pueda resucitar un perfil borrado por Administración.
+- Los perfiles ya capturados no se modifican ni se reinician.
+
+4. Mapa de relaciones académicas
+- Nuevo apartado plegable después de Programas educativos y troncos comunes.
+- Sólo consulta; no edita información.
+- Muestra: troncos comunes, materias vinculadas por nombre exacto y relaciones transversales 1 a 1.
+- Indica programa, cuatrimestre y asignatura según corresponda.
+
+NO MODIFICADO
+- lógica de captura por asignatura;
+- impresión y calibración del formato;
+- Excel;
+- autenticación;
+- Comisiones;
+- porcentajes de avance;
+- firestore.rules;
+- deploy-pages.yml.
+
+deploy-pages.yml: NO necesita actualización.
+firestore.rules: NO necesita actualización.
