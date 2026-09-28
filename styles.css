@@ -6758,3 +6758,96 @@ body.printing-profile #printArea{
     max-height:34px!important;
   }
 }
+
+
+/* =========================================================
+   V39 · Columna ASIGNATURA ~35% más compacta en escritorio
+   Objetivo: conservar dos cuatrimestres visibles con zoom alto.
+   ========================================================= */
+@media (min-width:1180px){
+
+  .course-columns,
+  .course{
+    grid-template-columns:
+      minmax(84px,.92fr)
+      54px
+      64px
+      160px
+      44px
+      44px!important;
+    gap:2px!important;
+  }
+
+  /* Mantener la nota de Coordinador/Favorita alineada con la tabla */
+  .coord-fav-inline-note{
+    grid-template-columns:
+      minmax(84px,.92fr)
+      54px
+      64px
+      160px
+      44px
+      44px!important;
+    gap:2px!important;
+  }
+
+  /* El nombre puede usar dos renglones sin ensanchar la columna */
+  .course .name{
+    min-width:0!important;
+    width:100%!important;
+    white-space:normal!important;
+    overflow-wrap:anywhere!important;
+    word-break:normal!important;
+    line-height:1.12!important;
+    max-height:2.30em!important;
+    overflow:hidden!important;
+    padding-right:2px!important;
+  }
+
+  /* Encabezado ASIGNATURA también debe adaptarse al ancho reducido */
+  .course-columns>span:first-child{
+    min-width:0!important;
+    white-space:normal!important;
+    line-height:1.08!important;
+  }
+}
+
+/* En zoom alto / viewport efectivo reducido, preservar dos columnas
+   el mayor tiempo posible antes de pasar al diseño responsive. */
+@media (min-width:1000px) and (max-width:1179px){
+  .semesters-grid{
+    grid-template-columns:repeat(2,minmax(0,1fr))!important;
+    gap:0!important;
+  }
+
+  .course-columns,
+  .course{
+    grid-template-columns:
+      minmax(78px,.88fr)
+      52px
+      62px
+      154px
+      42px
+      42px!important;
+    gap:2px!important;
+  }
+
+  .coord-fav-inline-note{
+    grid-template-columns:
+      minmax(78px,.88fr)
+      52px
+      62px
+      154px
+      42px
+      42px!important;
+    gap:2px!important;
+  }
+
+  .course .name{
+    min-width:0!important;
+    white-space:normal!important;
+    overflow-wrap:anywhere!important;
+    line-height:1.10!important;
+    max-height:2.25em!important;
+    overflow:hidden!important;
+  }
+}

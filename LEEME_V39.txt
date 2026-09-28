@@ -1,0 +1,13 @@
+PERFIL PROFESOR DIN · V39
+
+Cambio puntual:
+- La columna ASIGNATURA se reduce aproximadamente 35% en escritorio.
+- Los nombres pueden ocupar hasta dos renglones.
+- Se conserva la alineación de Habilitar, Competencia, Área, Coordinador y Favorita.
+- La nota de Coordinador/Favorita usa la misma rejilla para no desalinearse.
+- Se intenta conservar dos cuatrimestres visibles incluso con zoom alto.
+
+No se modifica la lógica de la aplicación.
+
+deploy-pages.yml: NO necesita actualización.
+firestore.rules: NO necesita actualización.
