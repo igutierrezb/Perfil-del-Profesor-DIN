@@ -8920,3 +8920,76 @@ body.modal-open{overflow:hidden!important}
 .finalized-profile-banner ul{margin:0!important;padding-left:18px!important;font-size:9.5px!important;line-height:1.45!important}
 @media(max-width:680px){.finalize-modal-actions{flex-direction:column-reverse!important}.finalize-modal-actions button{width:100%!important}}
 @media print{.finalize-modal{display:none!important}}
+
+
+/* =========================================================
+   V56 · Corrección puntual de clics fantasma en Comisiones
+   Motivo: el checkbox invisible de cada bloque horario era
+   position:absolute sin contenedor posicionado y conservaba
+   el width:100% global de input, ampliando su zona de clic.
+   ========================================================= */
+.compact-slot{
+  position:relative!important;
+  display:block!important;
+  width:100%!important;
+  min-width:0!important;
+  overflow:hidden!important;
+  cursor:pointer!important;
+}
+
+/* El input sigue siendo accesible mediante su label, pero su
+   caja física deja de extenderse fuera del bloque horario. */
+.compact-slot input[type="checkbox"]{
+  position:absolute!important;
+  left:50%!important;
+  top:50%!important;
+  width:1px!important;
+  height:1px!important;
+  min-width:1px!important;
+  min-height:1px!important;
+  margin:0!important;
+  padding:0!important;
+  opacity:0!important;
+  pointer-events:none!important;
+  transform:translate(-50%,-50%)!important;
+}
+
+/* Cada hora conserva exactamente su propio rectángulo clicable. */
+.compact-slot span{
+  position:relative!important;
+  z-index:1!important;
+  width:100%!important;
+  box-sizing:border-box!important;
+  pointer-events:none!important;
+}
+
+/* Observaciones siempre queda por encima de cualquier elemento
+   de la columna de horarios y recibe el foco normalmente. */
+.commission-right-column,
+.commission-observations{
+  position:relative!important;
+  z-index:2!important;
+}
+.commission-observations .planning-comments{
+  position:relative!important;
+  z-index:3!important;
+  pointer-events:auto!important;
+  isolation:isolate!important;
+}
+
+/* Evita que la columna izquierda invada visual o interactivamente
+   la columna derecha, sin cambiar su distribución. */
+.commission-left-column{
+  position:relative!important;
+  z-index:1!important;
+  min-width:0!important;
+  overflow:visible!important;
+}
+.commission-schedule-grid,
+.compact-schedule,
+.compact-day,
+.compact-slots{
+  min-width:0!important;
+  max-width:100%!important;
+  box-sizing:border-box!important;
+}

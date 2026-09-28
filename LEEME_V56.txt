@@ -1,0 +1,24 @@
+PERFIL PROFESOR DIN · V56 · CORRECCIÓN OBSERVACIONES
+
+Corrección única:
+- Se corrigió la zona de clic de los horarios de Comisiones.
+- La causa era que el checkbox invisible de cada horario tenía position:absolute
+  y heredaba width:100% del estilo global de inputs, por lo que su caja invisible
+  podía extenderse fuera de la columna del horario.
+- Ahora el checkbox físico ocupa 1x1 px dentro de su propio label.
+- El único elemento clicable para seleccionar un horario es su rectángulo visible.
+- Observaciones queda en una capa superior y recibe clic/foco normalmente.
+
+NO SE MODIFICÓ:
+- app.js
+- index.html
+- lógica de guardado
+- Firestore
+- autenticación
+- Excel
+- impresión
+- administración
+- diseño general del módulo
+
+deploy-pages.yml: NO necesita actualización.
+firestore.rules: NO necesita actualización.
