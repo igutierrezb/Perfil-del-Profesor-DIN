@@ -334,6 +334,36 @@ function commonDescription(pid){
   }).join(' · ');
   return `${rule.name}: cuatrimestre${rule.semesters?.length===1?'':'s'} ${sems} · ${names}`;
 }
+function ordinalSemesterList(values=[]){
+  const items=[...values].sort((a,b)=>a-b).map(x=>`${x+1}.°`);
+  if(items.length<=1)return items.join('');
+  if(items.length===2)return `${items[0]} y ${items[1]}`;
+  return `${items.slice(0,-1).join(', ')} y ${items[items.length-1]}`;
+}
+function commonProgramDisplay(id){
+  const pr=allPrograms().find(x=>x.id===id);
+  if(!pr)return id;
+  return `${pr.name}${pr.exit?` — ${pr.exit}`:''}`;
+}
+function commonNoticeHtml(pid){
+  const rule=commonRuleForProgram(pid);
+  if(!rule)return '';
+  const semesterText=ordinalSemesterList(rule.semesters||[]);
+  const peers=(rule.programIds||[])
+    .filter(id=>id!==pid)
+    .map(commonProgramDisplay);
+  const peerHtml=peers.length
+    ? peers.map(x=>`<li>${escapeHtml(x)}</li>`).join('')
+    : '<li>Otros programas vinculados al mismo tronco común.</li>';
+  return `<div class="common-sync-alert">
+    <div class="common-sync-icon">↔</div>
+    <div class="common-sync-copy">
+      <strong>Tronco común sincronizado · ${escapeHtml(semesterText)} cuatrimestre${(rule.semesters||[]).length===1?'':'s'}</strong>
+      <p>Las asignaturas coincidentes de estos cuatrimestres están vinculadas. Si <b>habilita o deshabilita</b> una materia en este programa, el mismo estado se reflejará automáticamente en los demás programas del tronco común.</p>
+      <div class="common-sync-programs"><span>Programas relacionados:</span><ul>${peerHtml}</ul></div>
+    </div>
+  </div>`;
+}
 
 function getAns(pid,s,c,name){
   const k=key(pid,s,c);
@@ -1153,6 +1183,28 @@ window.savePlanning=async function(show=false){
   return true;
 }
 
+
+function captureOrientationSessionKey(){
+  return `PAD_CAPTURE_ORIENTATION_${currentUser?.uid||'guest'}_${String(cfg.periodo||'').replace(/\s+/g,'_')}`;
+}
+function shouldShowCaptureOrientation(){
+  if(isAdmin()||submissionLockedForCurrentPeriod())return false;
+  try{return sessionStorage.getItem(captureOrientationSessionKey())!=='1'}catch(_){return true}
+}
+function showCaptureOrientationIfNeeded(){
+  if(!shouldShowCaptureOrientation())return;
+  const modal=$('captureOrientationModal');
+  if(!modal)return;
+  modal.classList.remove('hidden');
+  document.body.classList.add('capture-orientation-open');
+}
+window.acceptCaptureOrientation=function(){
+  try{sessionStorage.setItem(captureOrientationSessionKey(),'1')}catch(_){}
+  const modal=$('captureOrientationModal');
+  if(modal)modal.classList.add('hidden');
+  document.body.classList.remove('capture-orientation-open');
+}
+
 window.go=function(id,force=false){
   if(id==='admin'&&!isAdmin()){toast('Administración disponible únicamente para ivan.gutierrez@uteq.edu.mx');return}
   if(id==='captura'&&!force){const p=validateProfile({visual:true,focusFirst:true});if(!p.ok){$('profileErrors').innerHTML=statusBox(p.errors,'Complete los datos obligatorios antes de continuar.');return}}
@@ -1165,6 +1217,7 @@ window.go=function(id,force=false){
   if(id==='revision')buildPrint();
   if(id==='admin')renderAdmin();
   scrollTo(0,0);
+  if(id==='captura')requestAnimationFrame(showCaptureOrientationIfNeeded);
 }
 document.querySelectorAll('.main-nav button').forEach(b=>b.onclick=()=>window.go(b.dataset.view));
 
@@ -1302,6 +1355,7 @@ window.continueToCapture=async function(){
   });
 
   updateNavState();
+  requestAnimationFrame(showCaptureOrientationIfNeeded);
   return true;
 }
 
@@ -1581,7 +1635,7 @@ function renderCurrentProgram(){
     <div class="capture-marquee" aria-label="${guideText}">
       <div class="capture-marquee-track"><div class="guide-sequence">${guideTrack}</div><div class="guide-sequence" aria-hidden="true">${guideTrack}</div></div>
     </div>
-    ${commonRuleForProgram(p.id)?`<div class="common-note"><b>↔ Tronco común · sincronizado</b><span>${commonDescription(p.id)}</span></div>`:''}
+    ${commonNoticeHtml(p.id)}
     ${renderCoordinator(p)}
     <div class="program-scroll-wrap">
       <div class="program-progress-strip"><span>${st.done}/${st.total} revisadas${st.missing?` · ${st.missing} pendientes`:''}</span></div>
@@ -2031,6 +2085,31 @@ function formatTeacherCompletion(d){
     minute:'2-digit',
     hour12:true
   }).format(new Date(ms));
+}
+
+
+window.refreshTeacherAdminProgress=async function(){
+  if(!isAdmin())return;
+  const btn=$('refreshTeacherProgressBtn');
+  const previous=btn?.textContent||'↻ Actualizar avance';
+  if(btn){
+    btn.disabled=true;
+    btn.textContent='↻ Actualizando…';
+    btn.classList.add('loading');
+  }
+  try{
+    await renderTeacherAdminList();
+    toast('Avance de profesores actualizado.');
+  }catch(e){
+    console.warn('No fue posible actualizar el avance de profesores',e);
+    toast('No fue posible actualizar el avance.');
+  }finally{
+    if(btn){
+      btn.disabled=false;
+      btn.textContent=previous;
+      btn.classList.remove('loading');
+    }
+  }
 }
 
 function teacherCaptureProgress(remoteAnswers={}){

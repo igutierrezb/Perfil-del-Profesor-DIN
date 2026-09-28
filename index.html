@@ -395,7 +395,10 @@
           <h2>Profesores y cierre de perfil</h2>
           <p>Consulte quién ya concluyó, la fecha de cierre, habilite la edición de un solo profesor o elimine un perfil que ya no deba conservarse.</p>
         </div>
-        <div id="teacherAdminSummary" class="teacher-admin-summary">Cargando…</div>
+        <div class="teacher-admin-head-tools">
+          <button id="refreshTeacherProgressBtn" type="button" class="teacher-refresh-btn" onclick="refreshTeacherAdminProgress()">↻ Actualizar avance</button>
+          <div id="teacherAdminSummary" class="teacher-admin-summary">Cargando…</div>
+        </div>
       </div>
       <div class="teacher-delete-note">Eliminar perfil borra la información académica guardada en esta plataforma; no elimina la cuenta institucional del profesor.</div>
       <div id="teacherAdminList" class="teacher-admin-list"></div>
@@ -456,6 +459,42 @@
 
 <div id="toast" class="toast"></div>
 
+<div id="captureOrientationModal" class="capture-orientation-modal hidden" role="dialog" aria-modal="true" aria-labelledby="captureOrientationTitle">
+  <div class="capture-orientation-card">
+    <div class="capture-orientation-head">
+      <div class="capture-orientation-symbol">✓</div>
+      <div>
+        <h2 id="captureOrientationTitle">Antes de iniciar el Perfil por programa</h2>
+        <p>Lea estas indicaciones breves antes de revisar las asignaturas.</p>
+      </div>
+    </div>
+
+    <div class="capture-orientation-principle">
+      <strong>Ejercicio de autorreflexión y objetividad</strong>
+      <span>Seleccione únicamente las asignaturas que sean congruentes con su formación académica, experiencia docente y experiencia profesional.</span>
+    </div>
+
+    <div class="capture-orientation-grid">
+      <div class="orientation-step"><b>1</b><span><strong>Todas las asignaturas aparecen habilitadas por defecto.</strong> Su tarea principal es deshabilitar aquellas que no sean acordes con su perfil.</span></div>
+      <div class="orientation-step"><b>2</b><span>En cada asignatura que sí puede impartir, indique su nivel: <strong>X = competencia media</strong> o <strong>XX = competencia alta</strong>.</span></div>
+      <div class="orientation-step"><b>3</b><span>Señale de dónde proviene ese conocimiento: <strong>1 Formación académica · 2 Experiencia docente · 3 Experiencia laboral</strong>, o una combinación: 12, 13, 23 o 123.</span></div>
+      <div class="orientation-step"><b>4</b><span>Marque <strong>✓ Coordinador</strong> únicamente si previamente ha coordinado esa asignatura.</span></div>
+      <div class="orientation-step"><b>5</b><span>La <strong>★ Favorita</strong> es opcional y sirve para identificar las asignaturas que considera especialmente adecuadas para impartir según su perfil.</span></div>
+    </div>
+
+    <div class="capture-orientation-reference">
+      <div><strong>Coordinador y Favorita</strong><span>Son referencias para apoyar el diseño de la planeación cuatrimestral; no aparecen en el formato impreso del Perfil del Profesor.</span></div>
+      <div><strong>Comisiones y horarios</strong><span>Los horarios registrados para alguna comisión son una referencia para la planeación. <b>La prioridad es la atención de la clase frente a grupo</b> y cualquier descarga deberá sujetarse a la autorización correspondiente.</span></div>
+    </div>
+
+    <div class="capture-orientation-footer">
+      <span>Los programas con <strong>tronco común</strong> mostrarán un aviso específico cuando existan asignaturas sincronizadas entre programas.</span>
+      <button type="button" class="capture-orientation-accept" onclick="acceptCaptureOrientation()">Aceptar y comenzar</button>
+    </div>
+  </div>
+</div>
+
+
 <div id="finalizeProfileModal" class="finalize-modal hidden" role="dialog" aria-modal="true" aria-labelledby="finalizeModalTitle">
   <div class="finalize-modal-card">
     <div class="finalize-modal-head">
@@ -466,11 +505,11 @@
       </div>
     </div>
     <div class="finalize-lock-warning">
-      <strong>La edición del perfil quedará bloqueada</strong>
-      <span>para el periodo actual después de finalizar.</span>
+      <strong>Importante: al finalizar ya no se permitirá editar el perfil.</strong>
+      <span>La información quedará bloqueada para el periodo actual. Si posteriormente necesita realizar cualquier corrección, deberá solicitar al <strong>JUCA</strong> la habilitación temporal de edición.</span>
     </div>
     <ul class="finalize-checklist">
-      <li><span class="finalize-bullet">🔒</span><span>Si posteriormente necesita realizar alguna corrección, deberá solicitar al <strong>JUCA</strong> la habilitación temporal de edición.</span></li>
+      <li><span class="finalize-bullet">🔒</span><span>Después de confirmar podrá <strong>consultar e imprimir</strong> su información, pero no modificarla. Para editar nuevamente, consulte a su <strong>JUCA</strong>.</span></li>
       <li><span class="finalize-bullet">🖨</span><span>Imprima o guarde <strong>un solo juego</strong> del Perfil del Profesor, siempre en <strong>orientación horizontal</strong>.</span></li>
       <li><span class="finalize-bullet">👁</span><span>Antes de imprimir o guardar el PDF, revise que <strong>todas las hojas</strong> se visualicen correctamente.</span></li>
       <li><span class="finalize-bullet">✍</span><span>Después de imprimir, el documento deberá pasar a <strong>firma del profesor, firma del JUCA y sello correspondiente</strong>.</span></li>

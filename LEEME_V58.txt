@@ -1,0 +1,42 @@
+PERFIL PROFESOR DIN · V58
+
+Mejoras puntuales, sin modificar las funciones existentes:
+
+1. Administración > Profesores y cierre de perfil
+   - Nuevo botón “Actualizar avance”.
+   - Reconsulta Firestore y actualiza porcentajes, estado y lista sin F5.
+
+2. Tronco común
+   - Aviso visible sólo en programas vinculados a un tronco común.
+   - Indica cuatrimestres sincronizados.
+   - Muestra los nombres completos de los otros programas relacionados.
+   - Explica que habilitar/deshabilitar una asignatura coincidente replica el estado.
+
+3. Orientación al entrar a Perfil por programa
+   - Modal amigable, únicamente con “Aceptar y comenzar”.
+   - Se muestra una vez por sesión/periodo.
+   - Resume Cómo capturar y la guía rápida.
+   - Señala que las materias aparecen habilitadas por defecto.
+   - Refuerza autorreflexión y objetividad según formación y experiencia.
+   - Coordinador/Favorita: referencia para planeación.
+   - Comisiones/horarios: referencia; prioridad a clase frente a grupo.
+
+4. Finalizar e imprimir
+   - Se reforzó únicamente la redacción del aviso.
+   - Explica explícitamente que ya no se permitirá editar después de finalizar.
+   - Para cualquier corrección posterior deberá consultarse al JUCA.
+   - No cambia la lógica de bloqueo ni de impresión.
+
+No se modificaron:
+- autenticación;
+- Firestore rules;
+- Excel;
+- cálculo de avance;
+- persistencia/blindaje V55;
+- impresión y calibración del PDF;
+- lógica de tronco común;
+- captura de materias;
+- administración salvo el botón de actualización.
+
+deploy-pages.yml: NO necesita actualización.
+firestore.rules: NO necesita actualización.
