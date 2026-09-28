@@ -1,0 +1,17 @@
+PERFIL PROFESOR DIN · V40
+
+1. Tabla de cuatrimestres:
+   - La columna Asignatura deja de absorber todo el espacio sobrante.
+   - Habilitar queda inmediatamente después de Asignatura.
+   - Asignatura tiene ancho máximo y puede usar dos renglones.
+   - Se preservan dos cuatrimestres hasta viewports efectivos de ~900 px cuando es viable.
+
+2. Acceso institucional:
+   - El mensaje indica expresamente que debe utilizarse una cuenta @uteq.edu.mx.
+   - La plataforma no solicita ni almacena contraseñas.
+   - La autenticación se realiza mediante Google.
+   - Si Google requiere contraseña o segundo factor, se captura únicamente en Google.
+   - Si el navegador bloquea el popup, se ofrece continuar por redirección, más compatible con móvil.
+
+deploy-pages.yml: NO necesita actualización.
+firestore.rules: NO necesita actualización.

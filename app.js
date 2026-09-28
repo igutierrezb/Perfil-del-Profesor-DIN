@@ -1,6 +1,6 @@
 
 import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.13.2/firebase-app.js';
-import { getAuth, GoogleAuthProvider, signInWithPopup, signOut, onAuthStateChanged, setPersistence, browserLocalPersistence } from 'https://www.gstatic.com/firebasejs/10.13.2/firebase-auth.js';
+import { getAuth, GoogleAuthProvider, signInWithPopup, signInWithRedirect, signOut, onAuthStateChanged, setPersistence, browserLocalPersistence } from 'https://www.gstatic.com/firebasejs/10.13.2/firebase-auth.js';
 import { getFirestore, doc, getDoc, setDoc, deleteDoc, collection, getDocs, onSnapshot, serverTimestamp, addDoc } from 'https://www.gstatic.com/firebasejs/10.13.2/firebase-firestore.js';
 
 const $=id=>document.getElementById(id);
@@ -442,11 +442,24 @@ function isInstitutional(email){return !!email&&email.toLowerCase().endsWith('@'
 function isAdmin(){return !!currentUser&&currentUser.email&&currentUser.email.toLowerCase()===adminEmail}
 
 function showApp(visible){document.querySelector('header').style.display=visible?'block':'none';document.querySelector('.main-nav').style.display=visible?'flex':'none';document.querySelector('main').style.display=visible?'block':'none';document.querySelector('.site-footer').style.display=visible?'block':'none';$('loginGate').classList.toggle('hidden',visible)}
+function institutionalAccessMessage(extra=''){
+  const base =
+    `Acceso institucional UTEQ\n\n`+
+    `Debes ingresar con una cuenta @${allowedDomain}.\n\n`+
+    `Esta plataforma NO solicita ni almacena tu contraseña. `+
+    `Únicamente solicita seleccionar tu cuenta institucional mediante Google. `+
+    `Si Google necesita verificar tu identidad, cualquier contraseña o segundo factor `+
+    `se captura únicamente en la pantalla de Google y nunca en esta página.`;
+  return extra?`${base}\n\n${extra}`:base;
+}
+function showInstitutionalAccessMessage(extra=''){
+  alert(institutionalAccessMessage(extra));
+}
 function updateAuthUI(){
   const gateStatus=$('authStatusGate'),topStatus=$('authStatus');
   if(authConfigured()){
-    gateStatus.textContent=currentUser?`${currentUser.email}${isAdmin()?' · administrador':''}`:`Sin sesión · requiere cuenta institucional`;
-    topStatus.textContent=currentUser?`${currentUser.email}${isAdmin()?' · administrador':''}`:`Sin sesión · requiere cuenta institucional`;
+    gateStatus.textContent=currentUser?`${currentUser.email}${isAdmin()?' · administrador':''}`:`Sin sesión · use una cuenta @${allowedDomain}`;
+    topStatus.textContent=currentUser?`${currentUser.email}${isAdmin()?' · administrador':''}`:`Sin sesión · use una cuenta @${allowedDomain}`;
     $('btnLogin').classList.toggle('hidden',!!currentUser);
     $('btnLogout').classList.toggle('hidden',!currentUser);
     $('btnLoginGate').classList.toggle('hidden',!!currentUser);
@@ -461,21 +474,64 @@ function updateAuthUI(){
   showApp(!!currentUser);
 }
 window.signIn=async function(){
-  if(!authConfigured()){alert('Firebase no está configurado correctamente. Revisa firebase-config.js y confirma apiKey, authDomain, projectId y appId.');return}
+  if(!authConfigured()){
+    alert('Firebase no está configurado correctamente. Revisa firebase-config.js y confirma apiKey, authDomain, projectId y appId.');
+    return;
+  }
+
   const provider=new GoogleAuthProvider();
   provider.setCustomParameters({hd:allowedDomain,prompt:'select_account'});
+
   try{
     await setPersistence(auth,browserLocalPersistence);
     const res=await signInWithPopup(auth,provider);
     const email=(res.user.email||'').toLowerCase();
-    if(!isInstitutional(email)){await signOut(auth);alert('Solo se permiten cuentas @'+allowedDomain);return}
+
+    if(!isInstitutional(email)){
+      await signOut(auth);
+      showInstitutionalAccessMessage(
+        `La cuenta seleccionada no pertenece al dominio autorizado. Selecciona una cuenta @${allowedDomain}.`
+      );
+      return;
+    }
   }catch(e){
     const code=e&&e.code?e.code:'';
+
     if(code==='auth/api-key-not-valid.-please-pass-a-valid-api-key.' || code==='auth/invalid-api-key'){
       alert('La configuración de Firebase no es válida. Esta versión ya no guarda la API key en el repositorio: configura los GitHub Actions Secrets indicados en SETUP_FIREBASE_GITHUB.md y vuelve a desplegar.');
-    }else{
-      alert('No fue posible iniciar sesión: '+(e.message||e));
+      return;
     }
+
+    if(code==='auth/popup-blocked'){
+      const useRedirect=confirm(
+        institutionalAccessMessage(
+          'Tu navegador bloqueó la ventana de Google. Pulsa Aceptar para continuar mediante una redirección segura de Google, que suele funcionar mejor en teléfonos y navegadores con bloqueo de ventanas emergentes.'
+        )
+      );
+      if(useRedirect){
+        try{
+          await signInWithRedirect(auth,provider);
+        }catch(redirectError){
+          console.error(redirectError);
+          showInstitutionalAccessMessage(
+            'No fue posible abrir el acceso de Google. Verifica que el navegador permita iniciar sesión y vuelve a intentarlo.'
+          );
+        }
+      }
+      return;
+    }
+
+    if(code==='auth/popup-closed-by-user' || code==='auth/cancelled-popup-request'){
+      showInstitutionalAccessMessage(
+        'El proceso de Google se cerró antes de seleccionar la cuenta institucional.'
+      );
+      return;
+    }
+
+    console.error(e);
+    showInstitutionalAccessMessage(
+      'No fue posible completar el inicio de sesión. Vuelve a intentarlo seleccionando tu cuenta institucional.'
+    );
   }
 }
 window.signOutApp=async function(){
@@ -511,7 +567,11 @@ function initAuth(){
   onAuthStateChanged(auth,async user=>{
     currentUser=user;
     remoteProfileLoaded=false;
-    if(user&&!isInstitutional(user.email||'')){signOut(auth);currentUser=null;alert('Solo se permiten cuentas @'+allowedDomain)}
+    if(user&&!isInstitutional(user.email||'')){
+      signOut(auth);
+      currentUser=null;
+      showInstitutionalAccessMessage(`La cuenta seleccionada no pertenece al dominio autorizado @${allowedDomain}.`);
+    }
     updateAuthUI();
     if(currentUser)await initCloud();
   });
