@@ -744,6 +744,18 @@ window.continueToCapture=async function(){
 }
 
 function originCode(a){return(a.origins||[]).join('')}
+function originTooltip(code){
+  const labels={
+    '1':'1 = Formación académica',
+    '2':'2 = Experiencia docente',
+    '3':'3 = Experiencia laboral',
+    '12':'12 = Formación académica + Experiencia docente',
+    '13':'13 = Formación académica + Experiencia laboral',
+    '23':'23 = Experiencia docente + Experiencia laboral',
+    '123':'123 = Formación académica + Experiencia docente + Experiencia laboral'
+  };
+  return labels[String(code)]||String(code);
+}
 function normalizeOrigins(code){return String(code).split('').map(Number)}
 window.setEnabled=function(pid,s,c,name,on){if(!requireEditing())return;if(isEnglish(name))return;const r=getAns(pid,s,c,name);r.status=on?(r.status==='off'?'pending':r.status):'off';if(!on){r.origins=[];r.ideal=false}answers[key(pid,s,c)]=r;replicateCommon(pid,s,c,r);persist();renderCurrentProgram()}
 window.setCompetence=function(pid,s,c,name,level){if(!requireEditing())return;const r=getAns(pid,s,c,name);if(['off','na'].includes(r.status))return;r.status=level;r.origins=[];answers[key(pid,s,c)]=r;replicateCommon(pid,s,c,r);persist();renderCurrentProgram()}
@@ -946,7 +958,7 @@ function captureGuideHtml(){
     <div class="instruction-grid-five">
       <div class="capture-help-card">
         <b>1. Asignaturas habilitadas</b>
-        <span><strong>Revise cada materia</strong> y márquela como <strong>apagada</strong> si usted no puede impartir esa asignatura. <strong>Al imprimir, la asignatura quedará vacía en el formato.</strong></span>
+        <span><strong>Revise cada materia</strong> y márquela como <strong>apagada</strong> si usted no puede impartir esa asignatura. <strong>Al imprimir, la asignatura quedará vacía en el formato.</strong> Si usted puede impartirla, <strong>déjela habilitada</strong> y seleccione su <strong>nivel de competencia</strong> y su <strong>área de conocimiento</strong>.</span>
       </div>
       <div class="capture-help-card">
         <b>2. Competencia</b>
@@ -1039,7 +1051,7 @@ function renderCurrentProgram(){
             <button class="mini ${a.status==='XX'?'on':''}" aria-label="Competencia alta XX" title="XX = competencia alta" onclick="setCompetence('${p.id}',${s},${c},decodeURIComponent('${enc}'),'XX')">XX</button>
           </div>
           <div class="area-buttons ${needsArea?'attention-target':''}">
-            ${['1','2','3','12','13','23','123'].map(code=>`<button class="mini area ${originCode(a)===code?'on':''}" aria-label="Área de conocimiento ${code}" title="${code.split('').join(' + ')}" ${!['X','XX'].includes(a.status)?'disabled':''} onclick="setOriginCode('${p.id}',${s},${c},decodeURIComponent('${enc}'),'${code}')">${code}</button>`).join('')}
+            ${['1','2','3','12','13','23','123'].map(code=>`<button class="mini area ${originCode(a)===code?'on':''}" aria-label="Área de conocimiento ${code}" title="${originTooltip(code)}" ${!['X','XX'].includes(a.status)?'disabled':''} onclick="setOriginCode('${p.id}',${s},${c},decodeURIComponent('${enc}'),'${code}')">${code}</button>`).join('')}
           </div>
           <label class="coord-row-check ${rowCoordinatorChecked(p.id,s,c)?'on':''}" title="Marque únicamente si ya coordinó esta materia.">
             <input type="checkbox" aria-label="¿Has coordinado ${subjectCase(name)}?" ${rowCoordinatorChecked(p.id,s,c)?'checked':''} ${rowCoordinatorEnabled(p.id,s,c,name)?'':'disabled'} onchange="toggleCoordinator('${p.id}','${s}|${c}',this.checked)">

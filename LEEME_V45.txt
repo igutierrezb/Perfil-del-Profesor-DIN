@@ -1,0 +1,34 @@
+PERFIL PROFESOR DIN · V45
+
+Cambios visuales y de ayuda:
+
+1. Punto 1 de la guía:
+   - agrega que, si el profesor sí puede impartir la asignatura,
+     debe dejarla habilitada y seleccionar nivel de competencia y área de conocimiento.
+
+2. Botones de Área:
+   - al colocar el cursor sobre 1, 2 o 3 aparece una nota:
+     1 = Formación académica
+     2 = Experiencia docente
+     3 = Experiencia laboral
+   - también se agregan descripciones para 12, 13, 23 y 123.
+
+3. Guía “Cómo capturar”:
+   - los cinco encabezados usan exactamente el mismo tamaño;
+   - todo el texto descriptivo usa exactamente el mismo tamaño;
+   - encabezados = 15 px;
+   - contenido = 13 px;
+   - el cintillo azul del Área de conocimiento ya no corta el texto.
+
+4. Tabla:
+   - la columna Asignatura aumenta aproximadamente 5%;
+   - el área total de la página no cambia;
+   - las demás columnas conservan su tamaño.
+
+5. Coordinador / Favorita:
+   - ambas columnas se acercan ligeramente entre sí sin tocarse.
+
+No se modifica autenticación, impresión, Firestore ni lógica de captura.
+
+deploy-pages.yml: NO necesita actualización.
+firestore.rules: NO necesita actualización.

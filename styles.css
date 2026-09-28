@@ -7331,3 +7331,172 @@ body.printing-profile #printArea{
     padding-left:7px!important;
   }
 }
+
+
+/* =========================================================
+   V45 · refinamientos finales solicitados
+   ========================================================= */
+
+/* ---------------------------------------------------------
+   Cómo capturar: jerarquía tipográfica uniforme
+   Encabezados = 15px; texto = 13px.
+   --------------------------------------------------------- */
+.capture-guide-current .capture-help-card>b{
+  font-size:15px!important;
+  line-height:1.18!important;
+  font-weight:850!important;
+}
+
+.capture-guide-current .capture-help-card>span,
+.capture-guide-current .competence-key-lines .help-x,
+.capture-guide-current .competence-key-lines .help-xx,
+.capture-guide-current .knowledge-key-inline{
+  font-size:13px!important;
+  line-height:1.35!important;
+}
+
+.capture-guide-current .capture-help-card>span{
+  display:block!important;
+}
+
+.capture-guide-current .competence-key-lines{
+  gap:4px!important;
+  margin-top:5px!important;
+}
+
+/* El cintillo azul del punto 3 ya no se recorta. */
+.capture-guide-current .knowledge-key-inline,
+.capture-guide-current .single-line-key{
+  white-space:normal!important;
+  overflow:visible!important;
+  text-overflow:clip!important;
+  max-width:none!important;
+  min-height:0!important;
+  height:auto!important;
+  display:block!important;
+  padding:7px 9px!important;
+  box-sizing:border-box!important;
+  word-break:normal!important;
+  overflow-wrap:normal!important;
+}
+
+/* Mantener títulos 1..5 y párrafos alineados visualmente */
+.capture-guide-current .capture-help-card{
+  display:flex!important;
+  flex-direction:column!important;
+  align-items:stretch!important;
+}
+.capture-guide-current .capture-help-card>b{
+  margin-bottom:7px!important;
+}
+.capture-guide-current .reference-help-card .help-alert{
+  font-size:15px!important;
+}
+
+/* ---------------------------------------------------------
+   Columna Asignatura: +5% aprox. SIN ensanchar el área total.
+   Las demás columnas conservan su tamaño.
+   --------------------------------------------------------- */
+@media (min-width:1180px){
+  .course-columns,
+  .course{
+    grid-template-columns:
+      minmax(142px,200px)
+      58px
+      70px
+      166px
+      76px
+      68px!important;
+  }
+
+  .coord-fav-inline-note{
+    grid-template-columns:
+      minmax(142px,200px)
+      58px
+      70px
+      166px
+      76px
+      68px!important;
+  }
+
+  .course .name,
+  .course-columns>span:first-child{
+    max-width:200px!important;
+  }
+}
+
+@media (min-width:1000px) and (max-width:1179px){
+  .course-columns,
+  .course{
+    grid-template-columns:
+      minmax(118px,163px)
+      52px
+      62px
+      145px
+      68px
+      62px!important;
+  }
+
+  .coord-fav-inline-note{
+    grid-template-columns:
+      minmax(118px,163px)
+      52px
+      62px
+      145px
+      68px
+      62px!important;
+  }
+
+  .course .name,
+  .course-columns>span:first-child{
+    max-width:163px!important;
+  }
+}
+
+@media (min-width:900px) and (max-width:999px){
+  .course-columns,
+  .course{
+    grid-template-columns:
+      minmax(94px,126px)
+      46px
+      54px
+      128px
+      38px
+      38px!important;
+  }
+
+  .coord-fav-inline-note{
+    grid-template-columns:
+      minmax(94px,126px)
+      46px
+      54px
+      128px
+      38px
+      38px!important;
+  }
+
+  .course .name,
+  .course-columns>span:first-child{
+    max-width:126px!important;
+  }
+}
+
+/* ---------------------------------------------------------
+   Coordinador / Favorita un poco más próximos, sin tocarse.
+   Se desplazan sólo 2px hacia el centro.
+   --------------------------------------------------------- */
+.course-columns .coord-head,
+.course .coord-row-check{
+  transform:translateX(2px)!important;
+}
+.course-columns .fav-head,
+.course .ideal-btn{
+  transform:translateX(-2px)!important;
+}
+
+/* La nota superior acompaña el ajuste sin pegarse. */
+.coord-fav-inline-note .coord-note-line,
+.coord-fav-inline-note .fav-note-line{
+  padding-left:4px!important;
+  padding-right:4px!important;
+}
