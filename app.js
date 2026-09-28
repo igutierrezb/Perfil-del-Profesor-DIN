@@ -1316,12 +1316,20 @@ function renderCurrentProgram(){
   const st=programStats(p);
   let bg = pastelTitles[currentProgramIndex % pastelTitles.length];
 
-  const guideText='Guía rápida: activa la asignatura que puedes impartir · selecciona tu nivel de dominio (X = medio, XX = alto) · indica el origen del conocimiento (1 formación, 2 experiencia docente, 3 experiencia laboral o 12, 13, 23, 123) · marca ✓ si ya coordinaste esa materia · opcional: marca ★ Favorito si es una de tus asignaturas ideales para impartir.';
+  const guideSteps=[
+    '1. Habilita la asignatura que puedes impartir',
+    '2. Selecciona tu nivel de competencia: X = media · XX = alta',
+    '3. Señala el origen del conocimiento: 1 formación · 2 experiencia docente · 3 experiencia laboral · o sus combinaciones 12, 13, 23, 123',
+    '4. Marca ✓ si ya has coordinado esa asignatura',
+    '5. Opcional: marca ★ si es una de tus asignaturas favoritas'
+  ];
+  const guideText=`Guía rápida: ${guideSteps.join(' · ')}`;
+  const guideTrack=guideSteps.map(step=>`<span class="guide-step">${step}</span>`).join('');
 
   let h=`<article class="program">
     ${captureGuideHtml()}
     <div class="capture-marquee" aria-label="${guideText}">
-      <div class="capture-marquee-track"><span>${guideText}</span><span aria-hidden="true">${guideText}</span></div>
+      <div class="capture-marquee-track"><div class="guide-sequence">${guideTrack}</div><div class="guide-sequence" aria-hidden="true">${guideTrack}</div></div>
     </div>
     ${commonRuleForProgram(p.id)?`<div class="common-note"><b>↔ Tronco común · sincronizado</b><span>${commonDescription(p.id)}</span></div>`:''}
     ${renderCoordinator(p)}
@@ -2220,13 +2228,17 @@ function renderCustomPrograms(){
 
 function renderRules(){
   const root=$('commonRules');if(!root)return;
-  root.innerHTML=commonRules.length?commonRules.map(r=>{
+  root.innerHTML=commonRules.length?commonRules.map((r,i)=>{
     const programsText=(r.programIds||[]).map(id=>{
       const p=allPrograms().find(x=>x.id===id);
       return p?programAcronym(p):id;
     }).join(' · ');
-    const sems=(r.semesters||[]).map(x=>`${x+1}.°`).join(', ');
-    return `<div class="common-rule-summary"><b>${r.name}</b><span>${programsText}</span><span>Cuatrimestres: ${sems}</span></div>`;
+    const sems=(r.semesters||[]).map(x=>`${x+1}.°`).join(' · ');
+    return `<div class="common-rule-summary common-rule-tone-${(i%4)+1}">
+      <b>${r.name}</b>
+      <span class="common-programs">${programsText}</span>
+      <span class="common-semesters">${sems}</span>
+    </div>`;
   }).join(''):'<div class="coord-empty">No hay troncos comunes configurados.</div>';
 }
 

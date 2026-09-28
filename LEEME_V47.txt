@@ -1,0 +1,17 @@
+PERFIL PROFESOR DIN · V47
+
+Cambios visuales únicamente:
+1. Cintillo de guía:
+   - ahora está numerado del 1 al 5;
+   - cada paso tiene separación amplia;
+   - el desplazamiento horizontal se conserva.
+
+2. Troncos comunes configurados:
+   - bloque más compacto;
+   - título a la izquierda y configuraciones alineadas a la derecha;
+   - cada tronco se presenta como una pequeña tarjeta/chip;
+   - programas y cuatrimestres se distinguen con colores suaves;
+   - la funcionalidad de troncos comunes no cambia.
+
+deploy-pages.yml: NO necesita actualización.
+firestore.rules: NO necesita actualización.

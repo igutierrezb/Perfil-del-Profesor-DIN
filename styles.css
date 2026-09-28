@@ -7962,3 +7962,132 @@ body.printing-profile #printArea{
     min-height:44px!important;
   }
 }
+
+
+/* =========================================================
+   V47 · Cintillo numerado y troncos comunes compactos
+   ========================================================= */
+
+/* Cintillo: pasos numerados con separación clara */
+.capture-marquee-track{
+  display:flex!important;
+  width:max-content!important;
+  align-items:center!important;
+}
+.capture-marquee-track .guide-sequence{
+  display:flex!important;
+  align-items:center!important;
+  flex:none!important;
+  white-space:nowrap!important;
+}
+.capture-marquee-track .guide-step{
+  display:inline-flex!important;
+  align-items:center!important;
+  white-space:nowrap!important;
+  padding:10px 72px 10px 0!important;
+  font-size:11.7px!important;
+  font-weight:800!important;
+  line-height:1.2!important;
+  letter-spacing:.008em!important;
+}
+.capture-marquee-track .guide-step::before{
+  content:"";
+  width:5px!important;
+  height:5px!important;
+  margin:0 13px 0 16px!important;
+  border-radius:50%!important;
+  background:#ffd36b!important;
+  flex:none!important;
+}
+.capture-marquee-track .guide-step:first-child::before{
+  margin-left:30px!important;
+}
+@media(max-width:780px){
+  .capture-marquee-track .guide-step{
+    padding-right:54px!important;
+    font-size:10.6px!important;
+  }
+}
+
+/* Troncos comunes: asociación visual compacta a la derecha */
+.common-rules-integrated{
+  display:grid!important;
+  grid-template-columns:auto minmax(0,1fr)!important;
+  gap:12px!important;
+  align-items:center!important;
+  padding:8px 10px!important;
+  margin-top:10px!important;
+  border:1px solid #d6e2e8!important;
+  border-radius:10px!important;
+  background:#f8fbfc!important;
+}
+.common-rules-integrated h3{
+  margin:0!important;
+  color:#173f59!important;
+  font-size:10.5px!important;
+  white-space:nowrap!important;
+}
+.common-rules-compact{
+  display:flex!important;
+  justify-content:flex-end!important;
+  align-items:center!important;
+  flex-wrap:wrap!important;
+  gap:6px!important;
+  min-width:0!important;
+}
+.common-rule-summary{
+  display:inline-grid!important;
+  grid-template-columns:auto auto auto!important;
+  align-items:center!important;
+  gap:6px!important;
+  min-height:30px!important;
+  padding:5px 8px!important;
+  margin:0!important;
+  border:1px solid #c9d9e0!important;
+  border-left-width:4px!important;
+  border-radius:9px!important;
+  background:#fff!important;
+  box-shadow:none!important;
+  color:#36515f!important;
+  font-size:8.3px!important;
+  line-height:1.1!important;
+  white-space:nowrap!important;
+}
+.common-rule-summary b{
+  font-size:8.7px!important;
+  color:#173f59!important;
+}
+.common-rule-summary .common-programs{
+  padding:3px 6px!important;
+  border-radius:999px!important;
+  background:rgba(33,111,142,.08)!important;
+  color:#275c73!important;
+  font-weight:800!important;
+}
+.common-rule-summary .common-semesters{
+  padding:3px 6px!important;
+  border-radius:999px!important;
+  background:rgba(225,164,74,.12)!important;
+  color:#80602c!important;
+  font-weight:800!important;
+}
+.common-rule-tone-1{border-left-color:#5ba8c4!important}
+.common-rule-tone-2{border-left-color:#6fb58d!important}
+.common-rule-tone-3{border-left-color:#d5a250!important}
+.common-rule-tone-4{border-left-color:#9f8bc2!important}
+
+@media(max-width:900px){
+  .common-rules-integrated{
+    grid-template-columns:1fr!important;
+  }
+  .common-rules-compact{
+    justify-content:flex-start!important;
+  }
+}
+@media(max-width:600px){
+  .common-rule-summary{
+    grid-template-columns:1fr!important;
+    white-space:normal!important;
+    width:100%!important;
+  }
+}
