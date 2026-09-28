@@ -1,6 +1,6 @@
 
 import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.13.2/firebase-app.js';
-import { getAuth, GoogleAuthProvider, signInWithPopup, signInWithRedirect, signOut, onAuthStateChanged, setPersistence, browserLocalPersistence } from 'https://www.gstatic.com/firebasejs/10.13.2/firebase-auth.js';
+import { getAuth, GoogleAuthProvider, signInWithPopup, signOut, onAuthStateChanged, setPersistence, browserLocalPersistence } from 'https://www.gstatic.com/firebasejs/10.13.2/firebase-auth.js';
 import { getFirestore, doc, getDoc, setDoc, deleteDoc, collection, getDocs, onSnapshot, serverTimestamp, addDoc } from 'https://www.gstatic.com/firebasejs/10.13.2/firebase-firestore.js';
 
 const $=id=>document.getElementById(id);
@@ -473,31 +473,6 @@ function updateAuthUI(){
   $('adminTab').classList.toggle('hidden',!isAdmin());
   showApp(!!currentUser);
 }
-function isIOSAuthClient(){
-  const ua=navigator.userAgent||'';
-  return /iPad|iPhone|iPod/i.test(ua)
-    || (navigator.platform==='MacIntel' && Number(navigator.maxTouchPoints)>1);
-}
-function shouldUseRedirectAuth(){
-  const ua=navigator.userAgent||'';
-  const mobileUA=/Android|Mobile|IEMobile|Opera Mini/i.test(ua);
-  const narrow=window.matchMedia?window.matchMedia('(max-width: 780px)').matches:false;
-  return isIOSAuthClient() || mobileUA || narrow;
-}
-async function redirectInstitutionalSignIn(provider){
-  try{
-    const gate=$('authStatusGate');
-    if(gate)gate.textContent='Abriendo acceso seguro de Google…';
-    await signInWithRedirect(auth,provider);
-    return true;
-  }catch(e){
-    console.error('Redirect auth error',e);
-    showInstitutionalAccessMessage(
-      'No fue posible abrir el acceso seguro de Google. Verifica que Safari/tu navegador permita navegar a Google y vuelve a intentarlo.'
-    );
-    return false;
-  }
-}
 window.signIn=async function(){
   if(!authConfigured()){
     alert('Firebase no está configurado correctamente. Revisa firebase-config.js y confirma apiKey, authDomain, projectId y appId.');
@@ -505,21 +480,22 @@ window.signIn=async function(){
   }
 
   const provider=new GoogleAuthProvider();
-  provider.setCustomParameters({hd:allowedDomain,prompt:'select_account'});
+  provider.setCustomParameters({
+    hd:allowedDomain,
+    prompt:'select_account'
+  });
 
   try{
-    // En iPhone/iPad y móviles se evita la ventana emergente.
-    // Safari antiguo puede bloquearla aun cuando el usuario toca el botón.
-    if(shouldUseRedirectAuth()){
-      await redirectInstitutionalSignIn(provider);
-      return;
-    }
-
-    // En escritorio el popup sigue siendo la experiencia principal.
-    // Importante: no hay ningún await antes de abrirlo, para conservar
-    // la activación del clic del usuario y evitar auth/popup-blocked.
+    /*
+      IMPORTANTE PARA iPhone/Safari:
+      el popup se abre directamente desde el clic del usuario.
+      No se ejecuta ningún await antes de signInWithPopup().
+      Esto evita perder la activación del usuario y, a diferencia
+      de signInWithRedirect(), no depende de recuperar estado
+      cross-site entre github.io y firebaseapp.com.
+    */
     const res=await signInWithPopup(auth,provider);
-    const email=(res.user.email||'').toLowerCase();
+    const email=(res.user?.email||'').toLowerCase();
 
     if(!isInstitutional(email)){
       await signOut(auth);
@@ -536,27 +512,35 @@ window.signIn=async function(){
       return;
     }
 
-    // Si un navegador de escritorio bloquea el popup, cambia
-    // automáticamente a redirect. No muestra una confirmación intermedia.
-    if(
-      code==='auth/popup-blocked'
-      || code==='auth/operation-not-supported-in-this-environment'
-      || code==='auth/web-storage-unsupported'
-    ){
-      await redirectInstitutionalSignIn(provider);
+    if(code==='auth/popup-blocked'){
+      const ios=/iPad|iPhone|iPod/i.test(navigator.userAgent||'')
+        || (navigator.platform==='MacIntel' && Number(navigator.maxTouchPoints)>1);
+
+      showInstitutionalAccessMessage(
+        ios
+          ? 'Safari/iPhone bloqueó la ventana segura de Google. Pulsa nuevamente “Ingresar con cuenta institucional” directamente desde esta página. Si persiste, en Ajustes de Safari desactiva temporalmente “Bloquear ventanas emergentes” y vuelve a intentarlo.'
+          : 'El navegador bloqueó la ventana segura de Google. Permite ventanas emergentes para este sitio y vuelve a pulsar “Ingresar con cuenta institucional”.'
+      );
       return;
     }
 
     if(code==='auth/popup-closed-by-user' || code==='auth/cancelled-popup-request'){
       showInstitutionalAccessMessage(
-        'El proceso de Google se cerró antes de seleccionar la cuenta institucional.'
+        'El acceso de Google se cerró antes de seleccionar la cuenta institucional.'
+      );
+      return;
+    }
+
+    if(code==='auth/account-exists-with-different-credential'){
+      showInstitutionalAccessMessage(
+        `La cuenta debe validarse con Google usando el correo institucional @${allowedDomain}.`
       );
       return;
     }
 
     console.error(e);
     showInstitutionalAccessMessage(
-      'No fue posible completar el inicio de sesión. Vuelve a intentarlo seleccionando tu cuenta @uteq.edu.mx.'
+      `No fue posible completar el inicio de sesión. Vuelve a intentarlo seleccionando tu cuenta @${allowedDomain}.`
     );
   }
 }

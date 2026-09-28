@@ -1,0 +1,34 @@
+PERFIL PROFESOR DIN · V44
+
+CORRECCIÓN DE ACCESO EN iPHONE / SAFARI
+
+El video muestra este flujo:
+1. Perfil DIN abre Google.
+2. Google permite elegir la cuenta institucional de Elías.
+3. Regresa a GitHub Pages.
+4. La sesión no queda establecida y vuelve a pedir acceso.
+
+La causa probable es el flujo signInWithRedirect entre dos dominios distintos:
+- igutierrezb.github.io
+- perfil-profesor-din.firebaseapp.com
+
+Safari/iOS aplica restricciones fuertes de almacenamiento y seguimiento entre sitios,
+por lo que el resultado del redirect puede no recuperarse correctamente.
+
+V44 cambia únicamente la autenticación:
+- En iPhone, iPad, Android y escritorio se usa signInWithPopup directamente.
+- No hay ningún await antes de abrir el popup.
+- Se conserva la persistencia local configurada al inicializar Firebase.
+- Se elimina el redirect automático que estaba provocando el ciclo observado.
+- Si Safari bloquea realmente el popup, se muestra una indicación específica.
+
+NO se modifican:
+- captura;
+- administración;
+- Firestore;
+- impresión;
+- estilos;
+- versión de escritorio fuera del flujo de autenticación.
+
+deploy-pages.yml: NO necesita actualización.
+firestore.rules: NO necesita actualización.
