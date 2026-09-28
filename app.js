@@ -4,8 +4,22 @@ import { getAuth, GoogleAuthProvider, signInWithCredential, signOut, onAuthState
 import { getFirestore, doc, getDoc, setDoc, deleteDoc, collection, getDocs, onSnapshot, serverTimestamp, addDoc } from 'https://www.gstatic.com/firebasejs/10.13.2/firebase-firestore.js';
 
 const $=id=>document.getElementById(id);
+
+const GLOBAL_SETTINGS_CACHE_KEY='PAD_UTEQ_GLOBAL_SETTINGS';
+function readGlobalSettingsCache(){
+  try{
+    const raw=localStorage.getItem(GLOBAL_SETTINGS_CACHE_KEY);
+    return raw?JSON.parse(raw):{};
+  }catch(_){return {}}
+}
+const cachedGlobalSettings=readGlobalSettingsCache();
 const store=JSON.parse(localStorage.getItem('PAD_UTEQ')||'{}');
-const cfg=Object.assign({jefe:'Iván Gutiérrez Bautista',codigo:'EA-F-86',revision:'Rev.01',fechaRevision:'21-sep-2018',periodo:'SEP 2026 - AGO 2027',editingLocked:false,captureDeadline:null,planningEnabled:false},store.cfg||{});
+const cfg=Object.assign(
+  {jefe:'Iván Gutiérrez Bautista',codigo:'EA-F-86',revision:'Rev.01',fechaRevision:'21-sep-2018',periodo:'SEP 2026 - AGO 2027',editingLocked:false,captureDeadline:null,planningEnabled:false},
+  cachedGlobalSettings.cfg||{},
+  store.cfg||{}
+);
+let globalSettingsKnown=!!cachedGlobalSettings.cfg;
 const DEFAULT_COMMON_RULES=[
   {id:'TC_IND',name:'Tronco común Industrial',programIds:['ind_plasticos','ind_procesos'],semesters:[0,1,2]},
   {id:'TC_MEC',name:'Tronco común Mecánica',programIds:['mec_ind','mec_moldes','mec_auto'],semesters:[0,1,2]}
@@ -210,7 +224,12 @@ function remainingParts(ms){
   return {d,h,m,s};
 }
 function deadlineText(){
-  if(!cfg.captureDeadline)return {text:'Captura sin fecha límite definida',level:'neutral'};
+  if(!cfg.captureDeadline){
+    if(!currentUser && !globalSettingsKnown){
+      return {text:'Inicie sesión para consultar la fecha límite de captura',level:'neutral'};
+    }
+    return {text:'Captura sin fecha límite definida',level:'neutral'};
+  }
   const ms=Number(cfg.captureDeadline)-Date.now();
   if(ms<=0)return {text:`CAPTURA FUERA DE TIEMPO · cerró ${formatDateTime(cfg.captureDeadline)}`,level:'expired'};
   const x=remainingParts(ms);
@@ -225,8 +244,17 @@ function updateCountdownUI(){
     el.className=`deadline-card ${id==='deadlineHeader'?'header-deadline ':id==='deadlineCapture'?'capture-deadline ':'compact '}${info.level}`;
   });
   const st=$('deadlineAdminStatus'),prev=$('deadlineAdminPreview');
-  if(st){st.textContent=cfg.captureDeadline?(deadlinePassed()?'Fuera de tiempo':'Captura abierta'):'Sin fecha límite';st.className=`deadline-admin-status ${deadlinePassed()?'expired':cfg.captureDeadline?'open':'neutral'}`}
-  if(prev)prev.innerHTML=cfg.captureDeadline?`<b>${formatDateTime(cfg.captureDeadline)}</b><span>${info.text}</span>`:'<b>Sin fecha límite</b><span>La edición dependerá únicamente del interruptor general.</span>';
+  if(st){
+    st.textContent=cfg.captureDeadline
+      ?(deadlinePassed()?'Fuera de tiempo':'Captura abierta')
+      :(globalSettingsKnown?'Sin fecha límite':'Cargando configuración');
+    st.className=`deadline-admin-status ${deadlinePassed()?'expired':cfg.captureDeadline?'open':'neutral'}`
+  }
+  if(prev)prev.innerHTML=cfg.captureDeadline
+    ?`<b>${formatDateTime(cfg.captureDeadline)}</b><span>${info.text}</span>`
+    :(globalSettingsKnown
+      ?'<b>Sin fecha límite</b><span>La edición dependerá únicamente del interruptor general.</span>'
+      :'<b>Cargando configuración</b><span>La fecha límite se confirmará al iniciar sesión.</span>');
   applyEditState();
 }
 function startCountdown(){
@@ -389,6 +417,7 @@ function profileBackupSnapshot(){
     localUpdatedAt:Number(store.localUpdatedAt)||Number(store.lastSavedAt)||Date.now(),
     cloudUpdatedAt:Number(store.cloudUpdatedAt)||0,
     syncPending:!!store.syncPending,
+    dataRevision:Number(store.dataRevision)||0,
     savedAt:Date.now()
   };
 }
@@ -422,6 +451,17 @@ function backupHasTeacherData(backup){
   const hasPlanning=Object.keys(backup.planningByPeriod||{}).length>0;
   return hasProfile||hasAnswers||hasMeta||hasPlanning||!!backup.submittedPeriod||!!backup.finalizedAtMs;
 }
+function cloudHasTeacherData(data){
+  return backupHasTeacherData({
+    profile:data?.profile||{},
+    answers:data?.answers||{},
+    programMeta:data?.programMeta||{},
+    planningByPeriod:data?.planningByPeriod||{},
+    submittedPeriod:data?.submittedPeriod||null,
+    finalizedAtMs:Number(data?.finalizedAtMs)||null
+  });
+}
+
 function persist(options={}){
   const {touch=true,schedule=true}=options;
   cfg.periodo=cfg.periodo||'SEP 2026 - AGO 2027';
@@ -438,8 +478,11 @@ function persist(options={}){
   store.planningByPeriod=planningByPeriod;
   store.currentProgramIndex=currentProgramIndex;
   store.lastSavedAt=now;
-  if(touch)store.localUpdatedAt=now;
-  if(touch)store.syncPending=true;
+  if(touch){
+    store.localUpdatedAt=now;
+    store.dataRevision=(Number(store.dataRevision)||0)+1;
+    store.syncPending=true;
+  }
   lastSavedAt=store.lastSavedAt;
   try{
     localStorage.setItem('PAD_UTEQ',JSON.stringify(store));
@@ -474,9 +517,23 @@ function globalSettingsPayload(){
     transversalRules:JSON.parse(JSON.stringify(transversalRules))
   };
 }
+function cacheGlobalSettings(){
+  try{
+    localStorage.setItem(GLOBAL_SETTINGS_CACHE_KEY,JSON.stringify({
+      cfg:{...cfg},
+      savedAt:Date.now()
+    }));
+    globalSettingsKnown=true;
+  }catch(e){
+    console.warn('No fue posible conservar la configuración global en caché',e);
+  }
+}
+
 function applyGlobalSettings(data){
   if(!data)return;
   if(data.cfg)Object.assign(cfg,data.cfg);
+  globalSettingsKnown=true;
+  cacheGlobalSettings();
   if(Array.isArray(data.disabledPrograms))disabledPrograms=data.disabledPrograms;
   if(Array.isArray(data.customPrograms))customPrograms=data.customPrograms;
   if(data.programOverrides&&typeof data.programOverrides==='object')programOverrides=data.programOverrides;
@@ -489,6 +546,7 @@ function applyGlobalSettings(data){
 }
 async function saveGlobalSettings(action='Configuración global actualizada'){
   if(!db||!isAdmin())return;
+  cacheGlobalSettings();
   try{
     await setDoc(doc(db,'settings','app'),{...globalSettingsPayload(),updatedAt:serverTimestamp(),updatedBy:currentUser.email},{merge:true});
     updateCloudStatus('Configuración global sincronizada','ok');
@@ -550,6 +608,7 @@ function profileCloudPayload(){
     deletedByAdmin:false,
     planningByPeriod:JSON.parse(JSON.stringify(planningByPeriod)),
     clientUpdatedAt:Number(store.localUpdatedAt)||Date.now(),
+    dataRevision:Number(store.dataRevision)||0,
     updatedAt:serverTimestamp()
   };
 }
@@ -594,6 +653,30 @@ function scheduleCloudProfileSave(){
   clearTimeout(cloudSaveTimer);
   cloudSaveTimer=setTimeout(()=>syncProfileToCloud({reason:'guardado progresivo'}),700);
 }
+async function forceProfileCheckpointToCloud(reason='checkpoint de seguridad'){
+  if(!db||!currentUser)return false;
+  try{
+    await setDoc(doc(db,'profiles',currentUser.uid),profileCloudPayload(),{merge:true});
+    store.cloudUpdatedAt=Number(store.localUpdatedAt)||Date.now();
+    store.syncPending=false;
+    try{
+      localStorage.setItem('PAD_UTEQ',JSON.stringify(store));
+      saveUserBackup();
+    }catch(_){}
+    updateCloudStatus('Sincronizado','ok');
+    return true;
+  }catch(e){
+    console.warn(`No fue posible confirmar ${reason}`,e);
+    store.syncPending=true;
+    try{
+      localStorage.setItem('PAD_UTEQ',JSON.stringify(store));
+      saveUserBackup();
+    }catch(_){}
+    updateCloudStatus('Guardado local seguro · nube pendiente','warn');
+    return false;
+  }
+}
+
 function applyProfileContent(data){
   if(data.profile)store.profile=JSON.parse(JSON.stringify(data.profile));
   if(data.answers)answers=JSON.parse(JSON.stringify(data.answers));
@@ -619,6 +702,27 @@ function renderLoadedProfile(){
   applyEditState();
   updateNavState();
 }
+function restoreUserBackupBeforeCloud(){
+  if(!currentUser)return false;
+  const backup=readUserBackup();
+  if(!backupHasTeacherData(backup))return false;
+
+  applyProfileContent(backup);
+  if('submittedPeriod' in backup)store.submittedPeriod=backup.submittedPeriod||null;
+  if('finalizedAtMs' in backup)store.finalizedAtMs=Number(backup.finalizedAtMs)||null;
+  if('profileResetToken' in backup)store.profileResetToken=backup.profileResetToken||null;
+  if('profileDeletionToken' in backup)store.profileDeletionToken=backup.profileDeletionToken||null;
+  store.localUpdatedAt=Number(backup.localUpdatedAt)||Number(store.localUpdatedAt)||Date.now();
+  store.cloudUpdatedAt=Number(backup.cloudUpdatedAt)||Number(store.cloudUpdatedAt)||0;
+  store.dataRevision=Number(backup.dataRevision)||Number(store.dataRevision)||0;
+  store.syncPending=!!backup.syncPending;
+  currentProgramIndex=Number.isInteger(backup.currentProgramIndex)?backup.currentProgramIndex:currentProgramIndex;
+
+  renderLoadedProfile();
+  updateCloudStatus('Respaldo local cargado · verificando nube…','warn');
+  return true;
+}
+
 async function loadRemoteProfile(){
   if(!db||!currentUser)return;
   try{
@@ -644,6 +748,8 @@ async function loadRemoteProfile(){
 
       const remoteUpdatedAt=Number(d.clientUpdatedAt)||timestampToMs(d.updatedAt)||0;
       const localUpdatedAt=Number(backup?.localUpdatedAt)||0;
+      const remoteRevision=Number(d.dataRevision)||0;
+      const localRevision=Number(backup?.dataRevision)||0;
       const remoteResetToken=d.profileResetToken||null;
       const backupResetToken=backup?.profileResetToken||null;
       const remoteAnswers=d.answers&&typeof d.answers==='object'?d.answers:{};
@@ -653,13 +759,33 @@ async function loadRemoteProfile(){
         remoteResetToken!==backupResetToken &&
         Object.keys(remoteAnswers).length===0 &&
         Object.keys(remoteProgramMeta).length===0;
-      const localIsNewer=!!backup && !explicitResetIsNew && localUpdatedAt>remoteUpdatedAt;
+
+      const localHasData=backupHasTeacherData(backup);
+      const remoteHasData=cloudHasTeacherData(d);
+
+      // Prioridad de recuperación:
+      // 1. Una eliminación administrativa explícita ya fue tratada arriba.
+      // 2. Un reset administrativo explícito y realmente vacío sí debe respetarse.
+      // 3. Una copia local válida NUNCA puede ser reemplazada por una nube vacía accidental.
+      // 4. Si ambos lados tienen revisión V62, gana la revisión mayor.
+      // 5. Para datos previos a V62, se conserva la comparación por fecha.
+      const localIsNewer=!!backup && !explicitResetIsNew && (
+        (localHasData && !remoteHasData) ||
+        (localRevision>0 && remoteRevision>0 && localRevision>remoteRevision) ||
+        (!(localRevision>0 && remoteRevision>0) && localUpdatedAt>remoteUpdatedAt)
+      );
+      const preserveLocalAgainstEmptyCloud=
+        !!backup &&
+        localHasData &&
+        !remoteHasData &&
+        d.deletedByAdmin!==true &&
+        !explicitResetIsNew;
 
       if('individualEditEnabled' in d)store.individualEditEnabled=!!d.individualEditEnabled;
       if('individualEditDisabled' in d)store.individualEditDisabled=!!d.individualEditDisabled;
       if('profileResetToken' in d)store.profileResetToken=d.profileResetToken||null;
 
-      if(localIsNewer){
+      if(localIsNewer || preserveLocalAgainstEmptyCloud){
         applyProfileContent(backup);
         currentProgramIndex=Number.isInteger(backup.currentProgramIndex)?backup.currentProgramIndex:currentProgramIndex;
         const localFinal=Number(backup.finalizedAtMs)||0;
@@ -672,6 +798,7 @@ async function loadRemoteProfile(){
           store.finalizedAtMs=remoteFinal||null;
         }
         store.localUpdatedAt=localUpdatedAt;
+        store.dataRevision=localRevision||Number(store.dataRevision)||0;
         store.syncPending=true;
         renderLoadedProfile();
         remoteProfileLoaded=true;
@@ -683,6 +810,7 @@ async function loadRemoteProfile(){
         if('finalizedAtMs' in d)store.finalizedAtMs=Number(d.finalizedAtMs)||null;
         store.localUpdatedAt=remoteUpdatedAt||Date.now();
         store.cloudUpdatedAt=remoteUpdatedAt||store.localUpdatedAt;
+        store.dataRevision=remoteRevision||Number(store.dataRevision)||0;
         store.syncPending=false;
         renderLoadedProfile();
         remoteProfileLoaded=true;
@@ -705,11 +833,12 @@ async function loadRemoteProfile(){
         store.profileDeletionToken=backup.profileDeletionToken||null;
         store.localUpdatedAt=Number(backup.localUpdatedAt)||Date.now();
         store.cloudUpdatedAt=Number(backup.cloudUpdatedAt)||0;
+        store.dataRevision=Number(backup.dataRevision)||Number(store.dataRevision)||0;
         store.syncPending=true;
         renderLoadedProfile();
         remoteProfileLoaded=true;
-        updateCloudStatus('Recuperando respaldo local · sincronización pendiente','warn');
-        await syncProfileToCloud({reason:'recuperación después de cierre de sesión'});
+        updateCloudStatus('Perfil recuperado · reconstruyendo copia en nube…','warn');
+        await forceProfileCheckpointToCloud('reconstrucción de perfil remoto desde respaldo local');
       }else{
         resetLocalTeacherData({keepProfile:false});
         remoteProfileLoaded=true;
@@ -725,6 +854,7 @@ async function loadRemoteProfile(){
       store.submittedPeriod=backup.submittedPeriod||store.submittedPeriod||null;
       store.finalizedAtMs=Number(backup.finalizedAtMs)||store.finalizedAtMs||null;
       store.localUpdatedAt=Number(backup.localUpdatedAt)||Number(store.localUpdatedAt)||Date.now();
+      store.dataRevision=Number(backup.dataRevision)||Number(store.dataRevision)||0;
       store.syncPending=true;
       renderLoadedProfile();
     }
@@ -750,10 +880,17 @@ async function initCloud(){
   if(cloudProfileMetaUnsub)cloudProfileMetaUnsub();
   cloudProfileMetaUnsub=onSnapshot(doc(db,'profiles',currentUser.uid),s=>{
     if(!s.exists()){
+      // IMPORTANTE:
+      // Un snapshot inexistente puede ser temporal (caché vacía, reconexión, latencia o
+      // documento todavía no creado). NO debe borrar información local.
+      // La única eliminación válida se identifica mediante deletedByAdmin=true.
       if(remoteProfileLoaded&&!isAdmin()){
-        clearUserBackup(currentUser?.uid);
-        resetLocalTeacherData({keepProfile:false});
-        toast('Administración eliminó este perfil. La captura iniciará desde cero.');
+        const backup=readUserBackup();
+        if(backupHasTeacherData(backup)){
+          updateCloudStatus('Respaldo local conservado · esperando sincronización','warn');
+          store.syncPending=true;
+          scheduleCloudRetry();
+        }
       }
       return;
     }
@@ -962,8 +1099,13 @@ async function signInWithGoogleIdentity(){
 function updateAuthUI(){
   const gateStatus=$('authStatusGate'),topStatus=$('authStatus');
   if(authConfigured()){
-    gateStatus.textContent=currentUser?`${currentUser.email}${isAdmin()?' · administrador':''}`:`Sin sesión · use una cuenta @${allowedDomain}`;
-    topStatus.textContent=currentUser?`${currentUser.email}${isAdmin()?' · administrador':''}`:`Sin sesión · use una cuenta @${allowedDomain}`;
+    const loadingProfile=!!currentUser&&!authReady;
+    gateStatus.textContent=loadingProfile
+      ?`${currentUser.email} · recuperando perfil…`
+      :(currentUser?`${currentUser.email}${isAdmin()?' · administrador':''}`:`Sin sesión · use una cuenta @${allowedDomain}`);
+    topStatus.textContent=loadingProfile
+      ?`${currentUser.email} · recuperando perfil…`
+      :(currentUser?`${currentUser.email}${isAdmin()?' · administrador':''}`:`Sin sesión · use una cuenta @${allowedDomain}`);
     $('btnLogin').classList.toggle('hidden',!!currentUser);
     $('btnLogout').classList.toggle('hidden',!currentUser);
     $('btnLoginGate').classList.toggle('hidden',!!currentUser);
@@ -975,7 +1117,7 @@ function updateAuthUI(){
     $('btnLoginGate').classList.remove('hidden');
   }
   $('adminTab').classList.toggle('hidden',!isAdmin());
-  showApp(!!currentUser);
+  showApp(!!currentUser && authReady);
 }
 window.signIn=async function(){
   if(!authConfigured()){
@@ -989,25 +1131,69 @@ window.signIn=async function(){
 }
 window.signOutApp=async function(){
   const uid=currentUser?.uid||null;
-  try{
-    // Guardado local redundante ANTES de cerrar Auth. La copia PAD_UTEQ_PROFILE_<UID>
-    // es independiente de la sesión y nunca se elimina por un cierre normal.
-    try{persist({touch:false,schedule:false})}catch(e){console.warn('Respaldo previo al cierre',e)}
-    saveUserBackup();
 
-    if(db&&currentUser&&remoteProfileLoaded){
-      const synced=await syncProfileToCloud({reason:'guardado final antes de cerrar sesión'});
-      if(!synced)console.warn('La sesión se cerrará con respaldo local por UID pendiente de nube.');
+  try{
+    if(uid){
+      // Capturar texto visible aún pendiente del debounce.
+      try{
+        if($('apPat')){
+          const extra={};
+          document.querySelectorAll('[data-g]').forEach(x=>extra[x.dataset.g]=x.value.trim());
+          store.profile={
+            apPat:$('apPat')?.value.trim()||store.profile?.apPat||'',
+            apMat:$('apMat')?.value.trim()||store.profile?.apMat||'',
+            nombres:$('nombres')?.value.trim()||store.profile?.nombres||'',
+            categoria:$('categoria')?.value||store.profile?.categoria||'',
+            gradoAcademico:$('gradoAcademico')?.value||store.profile?.gradoAcademico||'',
+            extra
+          };
+        }
+        if(planningEnabled()&&$('commissionsBlock')){
+          try{collectPlanning()}catch(_){}
+        }
+      }catch(e){
+        console.warn('No fue posible capturar el último estado visual antes del cierre',e);
+      }
+
+      // Nueva revisión local del estado final.
+      try{persist({touch:true,schedule:false})}
+      catch(e){console.warn('Checkpoint local previo al cierre',e)}
+      saveUserBackup();
+
+      // Guardado directo a Firestore; no depende de remoteProfileLoaded.
+      if(db&&currentUser){
+        let timeoutId;
+        try{
+          await Promise.race([
+            forceProfileCheckpointToCloud('checkpoint final antes de cerrar sesión'),
+            new Promise(resolve=>{
+              timeoutId=setTimeout(()=>{
+                console.warn('La confirmación de nube excedió 5 s; se conserva el respaldo por UID.');
+                resolve(false);
+              },5000);
+            })
+          ]);
+        }finally{
+          if(timeoutId)clearTimeout(timeoutId);
+        }
+      }
+
+      // Reafirmar respaldo persistente del UID.
+      saveUserBackup();
     }
 
-    // Reafirmar el respaldo después del intento de nube.
-    saveUserBackup();
     if(auth)await signOut(auth);
   }finally{
-    // PAD_UTEQ es sólo la copia de trabajo compartida del navegador. Se retira para que
-    // otra cuenta no vea datos ajenos; el respaldo privado por UID permanece intacto.
+    // Se elimina sólo la copia de trabajo compartida por privacidad.
+    // Se conservan PAD_UTEQ_PROFILE_<UID> y PAD_UTEQ_GLOBAL_SETTINGS.
     localStorage.removeItem('PAD_UTEQ');
-    sessionStorage.clear();
+
+    try{
+      [...Object.keys(sessionStorage)]
+        .filter(k=>k.startsWith('PAD_CAPTURE_ORIENTATION_'))
+        .forEach(k=>sessionStorage.removeItem(k));
+    }catch(_){}
+
     location.reload();
   }
 }
@@ -1027,13 +1213,33 @@ function initAuth(){
   onAuthStateChanged(auth,async user=>{
     currentUser=user;
     remoteProfileLoaded=false;
+    authReady=false;
+
     if(user&&!isInstitutional(user.email||'')){
-      signOut(auth);
+      await signOut(auth);
       currentUser=null;
+      updateAuthUI();
       showInstitutionalAccessMessage(`La cuenta seleccionada no pertenece al dominio autorizado @${allowedDomain}.`);
+      return;
     }
+
+    if(!currentUser){
+      updateAuthUI();
+      updateCountdownUI();
+      return;
+    }
+
+    // Recuperar primero la última copia local del MISMO UID.
+    restoreUserBackupBeforeCloud();
     updateAuthUI();
-    if(currentUser)await initCloud();
+
+    try{
+      await initCloud();
+    }finally{
+      authReady=true;
+      updateAuthUI();
+      updateCountdownUI();
+    }
   });
 }
 
@@ -2323,7 +2529,7 @@ window.saveDeadline=function(){
   if(!v){toast('Seleccione fecha y hora.');return}
   const ts=new Date(v).getTime();
   if(!Number.isFinite(ts)){toast('Fecha u hora no válida.');return}
-  cfg.captureDeadline=ts;persist();updateCountdownUI();saveGlobalSettings('Fecha límite de captura actualizada');toast('Fecha límite guardada.');
+  cfg.captureDeadline=ts;cacheGlobalSettings();persist();updateCountdownUI();saveGlobalSettings('Fecha límite de captura actualizada');toast('Fecha límite guardada.');
 }
 window.closeCaptureNow=function(){
   if(!isAdmin())return;
@@ -2332,7 +2538,7 @@ window.closeCaptureNow=function(){
 }
 window.clearDeadline=function(){
   if(!isAdmin())return;
-  cfg.captureDeadline=null;persist();updateCountdownUI();saveGlobalSettings('Fecha límite eliminada');toast('Fecha límite eliminada.');
+  cfg.captureDeadline=null;cacheGlobalSettings();persist();updateCountdownUI();saveGlobalSettings('Fecha límite eliminada');toast('Fecha límite eliminada.');
 }
 
 window.saveAdmin=function(){
@@ -2352,7 +2558,7 @@ window.saveAdmin=function(){
   }
 
   // El cambio de periodo nunca borra profile, answers, programMeta ni planeaciones de periodos anteriores.
-  updatePeriodBadges();persist();updatePlanningAvailability();renderPlanning();
+  updatePeriodBadges();cacheGlobalSettings();persist();updatePlanningAvailability();renderPlanning();
   saveGlobalSettings(previousPeriod===cfg.periodo?'Configuración institucional actualizada':`Periodo actualizado de ${previousPeriod} a ${cfg.periodo} sin borrar perfiles`);
   toast(previousPeriod===cfg.periodo?'Configuración guardada.':`Periodo actualizado. Comisiones ${cfg.planningEnabled?'habilitadas':'deshabilitadas'} para el nuevo periodo.`);
 }
@@ -3745,6 +3951,11 @@ function setupResilienceGuards(){
         localStorage.setItem('PAD_UTEQ',JSON.stringify(store));
         saveUserBackup();
       }
+    }catch(_){}
+  });
+  window.addEventListener('beforeunload',()=>{
+    try{
+      if(currentUser)saveUserBackup();
     }catch(_){}
   });
 }

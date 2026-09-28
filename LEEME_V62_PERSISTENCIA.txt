@@ -1,0 +1,64 @@
+PERFIL PROFESOR DIN · V62 · CORRECCIÓN DE PERSISTENCIA ENTRE SESIONES
+
+CAUSA RAÍZ DETECTADA
+La V61 todavía contenía una ruta destructiva en el listener en tiempo real de Firestore:
+si onSnapshot() recibía temporalmente un documento inexistente (!s.exists()), el código
+borraba el respaldo local por UID y ejecutaba resetLocalTeacherData().
+
+Un snapshot inexistente NO equivale necesariamente a una eliminación administrativa:
+puede aparecer por caché vacía, reconexión, latencia o porque el documento aún no se ha
+reconstruido en la nube. Esa ruta podía destruir precisamente el respaldo que debía
+recuperar al profesor después de cerrar sesión.
+
+La eliminación administrativa completa ya dispone de una señal inequívoca:
+deletedByAdmin=true. Por tanto, sólo esa señal puede provocar un borrado total.
+
+CORRECCIONES V62
+1. onSnapshot(!exists) deja de borrar información.
+   - conserva el respaldo local;
+   - marca sincronización pendiente;
+   - reintenta cuando sea posible.
+
+2. Reconciliación local / Firestore reforzada.
+   - una nube vacía accidental nunca reemplaza un respaldo local con información;
+   - se introduce dataRevision para futuras ediciones;
+   - cuando ambas copias tienen revisión, gana la revisión mayor;
+   - perfiles antiguos siguen siendo compatibles mediante fechas.
+
+3. Cierre de sesión reforzado.
+   - captura los últimos datos visibles;
+   - genera checkpoint local;
+   - guarda PAD_UTEQ_PROFILE_<UID>;
+   - intenta sincronizar Firestore antes de cerrar Auth;
+   - vuelve a guardar el respaldo después del intento;
+   - PAD_UTEQ_PROFILE_<UID> NO se elimina.
+
+4. Privacidad.
+   - PAD_UTEQ general sigue eliminándose al cerrar sesión para que otro usuario
+     del mismo navegador no vea la captura anterior.
+   - sólo se conservan respaldos privados identificados por UID.
+
+5. Recuperación futura.
+   - al volver a entrar se compara la copia de Firestore con la copia por UID;
+   - si Firestore está vacío accidentalmente y el respaldo contiene información,
+     se recupera la última captura y se vuelve a sincronizar;
+   - cambiar de periodo o reabrir edición no borra el perfil.
+
+6. Eliminaciones explícitas.
+   - deletedByAdmin=true continúa teniendo prioridad.
+   - profileResetToken continúa respetándose únicamente cuando el reset es real.
+   - no se modificó ni borró información existente durante esta actualización.
+
+NO MODIFICADO
+- interfaz;
+- impresión;
+- Excel;
+- materias transversales;
+- troncos comunes;
+- Comisiones;
+- autenticación Google;
+- reglas de Firestore;
+- workflow de GitHub.
+
+deploy-pages.yml: NO necesita actualización.
+firestore.rules: NO necesita actualización.

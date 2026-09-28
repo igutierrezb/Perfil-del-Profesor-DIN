@@ -1,0 +1,77 @@
+PERFIL PROFESOR DIN · V63 · PERSISTENCIA DEFINITIVA
+
+DIAGNÓSTICO
+-----------
+Se detectaron dos problemas distintos que visualmente parecían uno solo:
+
+1. FECHA LÍMITE DESPUÉS DE CERRAR SESIÓN
+PAD_UTEQ se elimina al cerrar sesión para evitar que otra persona vea información ajena.
+Ese mismo objeto contenía cfg.captureDeadline. Al recargar, antes de autenticar, la app
+arrancaba con captureDeadline=null. Como settings/app se lee sólo después del login,
+la pantalla pública afirmaba “Captura sin fecha límite definida”, aunque Firestore sí
+tuviera una fecha registrada.
+
+Solución:
+- settings globales se guardan aparte en PAD_UTEQ_GLOBAL_SETTINGS;
+- ese cache no contiene respuestas del profesor;
+- sobrevive al logout;
+- si el dispositivo aún no conoce la configuración, la página dice:
+  “Inicie sesión para consultar la fecha límite de captura”, en vez de afirmar algo falso;
+- al autenticar se refresca con Firestore.
+
+2. RIESGO DE PERFIL VACÍO ENTRE LOGOUT Y RECUPERACIÓN
+Después del logout PAD_UTEQ ya no existe, por lo que el script arranca con un perfil vacío.
+La app podía mostrarse tan pronto Firebase autenticaba, antes de terminar la recuperación
+del documento del profesor. Además, el guardado normal dependía de remoteProfileLoaded.
+
+Solución:
+- al autenticar se mantiene authReady=false;
+- se restaura primero PAD_UTEQ_PROFILE_<UID>;
+- se reconcilia después con Firestore;
+- sólo al finalizar ese proceso se muestra la aplicación;
+- una pantalla vacía no puede convertirse accidentalmente en la nueva versión;
+- un documento remoto vacío no reemplaza un respaldo local válido salvo eliminación/reset
+  administrativo explícito;
+- el cierre de sesión usa un checkpoint directo a Firestore que NO depende de
+  remoteProfileLoaded;
+- antes de salir se capturan los últimos datos visibles y Comisiones;
+- PAD_UTEQ_PROFILE_<UID> jamás se elimina por un cierre normal.
+
+FUENTE DE VERDAD A LARGO PLAZO
+------------------------------
+Firestore continúa siendo la copia permanente entre computadoras y años.
+El respaldo UID es una segunda capa de seguridad del dispositivo.
+
+Cuando el profesor vuelva el próximo año:
+- Firestore carga su última versión;
+- si el dispositivo tiene una versión local más nueva, ésta se reconcilia;
+- habilitar edición no reinicia el perfil;
+- cambiar el periodo no borra respuestas;
+- sólo los botones administrativos explícitos de eliminación pueden iniciar desde cero.
+
+COMPATIBILIDAD
+--------------
+No se borran perfiles actuales.
+No hay migración destructiva.
+Los perfiles que todavía no tienen dataRevision siguen funcionando mediante timestamps.
+
+PUBLICACIÓN
+-----------
+Durante el análisis se comprobó que la copia actualmente presente en el repositorio
+público todavía corresponde a una lógica anterior y no incorpora todas las protecciones
+de persistencia preparadas posteriormente. Para que la solución opere, debe publicarse
+este app.js V63 (o sustituir el paquete completo).
+
+NO SE MODIFICA
+--------------
+- diseño general;
+- impresión;
+- Excel;
+- materias y transversalidad;
+- Comisiones;
+- autenticación Google;
+- deploy-pages.yml;
+- firestore.rules.
+
+deploy-pages.yml: NO necesita actualización.
+firestore.rules: NO necesita actualización.
