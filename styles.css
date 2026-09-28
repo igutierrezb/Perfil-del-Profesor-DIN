@@ -8811,3 +8811,87 @@ body.printing-profile #printArea{
 .coord-fav-inline-note{margin-bottom:0!important;min-height:22px!important;grid-template-rows:11px 11px!important;}
 .coord-fav-inline-note .coord-note-line,.coord-fav-inline-note .fav-note-line{height:11px!important;min-height:11px!important;line-height:11px!important;padding-top:0!important;padding-bottom:0!important;font-size:6.8px!important;}
 .coord-fav-inline-note + .course-columns{margin-top:0!important;}
+
+
+/* =========================================================
+   V54 · Ajustes sutiles solicitados
+   ========================================================= */
+
+/* Datos del profesor: todo en una sola línea en escritorio */
+@media (min-width:901px){
+  #perfil .teacher-line{
+    display:grid!important;
+    grid-template-columns:
+      minmax(150px,1fr)
+      minmax(150px,1fr)
+      minmax(170px,1.12fr)
+      minmax(270px,1.55fr)
+      minmax(100px,.52fr)!important;
+    gap:10px!important;
+    align-items:end!important;
+  }
+  #perfil .teacher-line .degree-field{
+    min-width:100px!important;
+    max-width:125px!important;
+    width:100%!important;
+  }
+  #perfil .teacher-line label{
+    min-width:0!important;
+  }
+}
+
+/* Botones Sí/No: radio circular + texto, sin óvalo vertical */
+.commission-schedule-question .mini-choice{
+  display:inline-flex!important;
+  align-items:center!important;
+  justify-content:center!important;
+  gap:4px!important;
+  min-height:24px!important;
+  height:24px!important;
+  padding:0 4px!important;
+  border:0!important;
+  border-radius:0!important;
+  background:transparent!important;
+  box-shadow:none!important;
+  white-space:nowrap!important;
+}
+.commission-schedule-question .mini-choice input{
+  width:18px!important;
+  height:18px!important;
+  min-width:18px!important;
+  min-height:18px!important;
+  margin:0!important;
+  accent-color:#2d9b78!important;
+}
+.commission-schedule-question .mini-choice.no input{
+  accent-color:#c96359!important;
+}
+.commission-schedule-question .mini-choice.yes,
+.commission-schedule-question .mini-choice.no{
+  background:transparent!important;
+  color:inherit!important;
+}
+
+/* Botón de impresión administrativa */
+.teacher-print-profile-btn{
+  background:linear-gradient(180deg,#1f6f93,#185a79)!important;
+  border:1px solid #164f6a!important;
+  color:#fff!important;
+  font-weight:850!important;
+  box-shadow:0 2px 0 #123f55!important;
+  white-space:nowrap!important;
+}
+.teacher-print-profile-btn:hover{
+  filter:brightness(1.06)!important;
+}
+
+/* Mantener acciones en una sola línea cuando haya espacio */
+.teacher-admin-actions{
+  gap:5px!important;
+  flex-wrap:nowrap!important;
+}
+@media(max-width:1280px){
+  .teacher-admin-actions{
+    flex-wrap:wrap!important;
+  }
+}

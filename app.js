@@ -1035,8 +1035,8 @@ function updateNavState(){
 function buildProfileRows(){
   const f=['Licenciatura o TSU','Posgrado 1','Posgrado 2','Posgrado 3','Posgrado 4','Posgrado 5','Posgrado 6'];
   $('formacion').innerHTML=f.map((lab,i)=>`<div class="form-row two"><div class="row-label">${lab}${i===0?' *':''}</div><input placeholder="${i===0?'Ej. Licenciatura en Ingeniería Industrial':'Ej. Maestría en Educación'}" data-g="f${i+1}a"><input placeholder="Ej. Universidad Tecnológica de Querétaro" data-g="f${i+1}b"></div>`).join('');
-  $('docencia').innerHTML=Array.from({length:4},(_,i)=>`<div class="form-row two"><div class="row-label">Institución ${i+1}${i===0?' *':''}</div><input placeholder="Ej. UTEQ" data-g="d${i+1}a"><input placeholder="Ej. sep 2023 - ago 2025" data-g="d${i+1}c"></div>`).join('');
-  $('laboral').innerHTML=Array.from({length:5},(_,i)=>`<div class="form-row"><div class="row-label">Organización ${i+1}${i===0?' *':''}</div><input placeholder="Ej. Empresa / institución" data-g="l${i+1}a"><input placeholder="Ej. Jefe de área" data-g="l${i+1}b"><input placeholder="Ej. ene 2020 - dic 2023" data-g="l${i+1}c"></div>`).join('');
+  $('docencia').innerHTML=Array.from({length:4},(_,i)=>`<div class="form-row two"><div class="row-label">Institución ${i+1}${i===0?' *':''}</div><input placeholder="Ej. UTEQ" data-g="d${i+1}a"><input placeholder="Ej. 2023 - 2025" data-g="d${i+1}c"></div>`).join('');
+  $('laboral').innerHTML=Array.from({length:5},(_,i)=>`<div class="form-row"><div class="row-label">Organización ${i+1}${i===0?' *':''}</div><input placeholder="Ej. Empresa / institución" data-g="l${i+1}a"><input placeholder="Ej. Jefe de área" data-g="l${i+1}b"><input placeholder="Ej. 2020 - 2023" data-g="l${i+1}c"></div>`).join('');
 }
 function loadProfileValuesOnly(){
   if($('gradoAcademico'))$('gradoAcademico').value=store.profile?.gradoAcademico||'';
@@ -1049,7 +1049,7 @@ function loadProfile(){
   buildProfileRows();
   loadProfileValuesOnly();
 }
-function collectProfile(){let extra={};document.querySelectorAll('[data-g]').forEach(x=>extra[x.dataset.g]=x.value.trim());store.profile={apPat:$('apPat').value.trim(),apMat:$('apMat').value.trim(),nombres:$('nombres').value.trim(),categoria:$('categoria').value,extra};persist();return store.profile}
+function collectProfile(){let extra={};document.querySelectorAll('[data-g]').forEach(x=>extra[x.dataset.g]=x.value.trim());store.profile={apPat:$('apPat').value.trim(),apMat:$('apMat').value.trim(),nombres:$('nombres').value.trim(),categoria:$('categoria').value,gradoAcademico:$('gradoAcademico')?.value||'',extra};persist();return store.profile}
 function requiredProfileChecks(p,e){
   return [
     {el:$('apPat'),missing:!p.apPat,msg:'Capture el apellido paterno.'},
@@ -1606,11 +1606,11 @@ function printHeader(){
     <div class="quality-plain"><span>${cfg.codigo}</span><span>${cfg.revision}</span><span>Fecha ${cfg.fechaRevision}</span>${closedAt?`<span class="quality-finalized">Cierre ${closedAt}</span>`:''}</div>
   </div>`;
 }
-function metaCentered(){return `<div class="meta center compactline"><span><b>Nombre:</b> ${fullName()}</span><span><b>Categoría:</b> ${store.profile?.categoria||''}</span><span><b>Competencia:</b> X = Medio · XX = Alto</span><span><b>Área de conocimiento:</b> 1 Formación · 2 Docencia · 3 Laboral</span></div>`}
-function signatures(){return `<div class="sign"><div class="signature-line">${fullName()}<br>Firma del Profesor</div><div class="stamp-box">SELLO</div><div class="signature-line">${cfg.jefe}<br>Jefe de Unidad de Coordinación Académica</div></div>`}
+function metaCentered(){return `<div class="meta center compactline"><span><b>Nombre:</b> ${printedProfessorName()}</span><span><b>Categoría:</b> ${store.profile?.categoria||''}</span><span><b>Competencia:</b> X = Medio · XX = Alto</span><span><b>Área de conocimiento:</b> 1 Formación · 2 Docencia · 3 Laboral</span></div>`}
+function signatures(){return `<div class="sign"><div class="signature-line">${printedProfessorName()}<br>Firma del Profesor</div><div class="stamp-box">SELLO</div><div class="signature-line">${cfg.jefe}<br>Jefe de Unidad de Coordinación Académica</div></div>`}
 function preambleSheet(){
   const p=store.profile||{},e=p.extra||{},f=['Licenciatura o TSU','Posgrado 1','Posgrado 2','Posgrado 3','Posgrado 4','Posgrado 5','Posgrado 6'];
-  return `<div class="sheet profile-first-sheet">${printHeader()}<div class="meta center compactline first-profile-meta"><span class="first-meta-item"><b class="first-meta-label">Nombre:</b><strong class="first-meta-value">${fullName()}</strong></span><span class="first-meta-item"><b class="first-meta-label">Categoría:</b><strong class="first-meta-value">${store.profile?.categoria||''}</strong></span></div><table class="profileTable"><tr><th colspan="4">1. FORMACIÓN PROFESIONAL</th></tr>${f.map((lab,i)=>`<tr><td><b>${lab}</b></td><td>${e[`f${i+1}a`]||''}</td><td><b>Institución</b></td><td>${e[`f${i+1}b`]||''}</td></tr>`).join('')}<tr><th colspan="4">2. EXPERIENCIA DOCENTE</th></tr>${[1,2,3,4].map(i=>`<tr><td><b>Institución ${i}</b></td><td colspan="2">${e[`d${i}a`]||''}</td><td><b>Periodo:</b> ${e[`d${i}c`]||''}</td></tr>`).join('')}<tr><th colspan="4">3. EXPERIENCIA LABORAL</th></tr>${[1,2,3,4,5].map(i=>`<tr><td><b>Organización ${i}</b></td><td>${e[`l${i}a`]||''}</td><td><b>Cargo:</b> ${e[`l${i}b`]||''}</td><td><b>Periodo:</b> ${e[`l${i}c`]||''}</td></tr>`).join('')}</table>${signatures()}</div>`
+  return `<div class="sheet profile-first-sheet">${printHeader()}<div class="meta center compactline first-profile-meta"><span class="first-meta-item"><b class="first-meta-label">Nombre:</b><strong class="first-meta-value">${printedProfessorName()}</strong></span><span class="first-meta-item"><b class="first-meta-label">Categoría:</b><strong class="first-meta-value">${store.profile?.categoria||''}</strong></span></div><table class="profileTable"><tr><th colspan="4">1. FORMACIÓN PROFESIONAL</th></tr>${f.map((lab,i)=>`<tr><td><b>${lab}</b></td><td>${e[`f${i+1}a`]||''}</td><td><b>Institución</b></td><td>${e[`f${i+1}b`]||''}</td></tr>`).join('')}<tr><th colspan="4">2. EXPERIENCIA DOCENTE</th></tr>${[1,2,3,4].map(i=>`<tr><td><b>Institución ${i}</b></td><td colspan="2">${e[`d${i}a`]||''}</td><td><b>Periodo:</b> ${e[`d${i}c`]||''}</td></tr>`).join('')}<tr><th colspan="4">3. EXPERIENCIA LABORAL</th></tr>${[1,2,3,4,5].map(i=>`<tr><td><b>Organización ${i}</b></td><td>${e[`l${i}a`]||''}</td><td><b>Cargo:</b> ${e[`l${i}b`]||''}</td><td><b>Periodo:</b> ${e[`l${i}c`]||''}</td></tr>`).join('')}</table>${signatures()}</div>`
 }
 function pastelColor(index){
   return ['#dcecf8','#f5e3d2','#dfeee2','#e8e1f2','#f8e7d7','#dceff0','#f2dde3','#e1ecd7'][index % 8]
@@ -1633,8 +1633,8 @@ function printProgram(pr, idx){
   }
   return `<div class="print-program" style="--program-pastel:${pastel}"><div class="print-program-title" style="background:${pastel}">${pr.name.toUpperCase()} · SALIDA LATERAL: ${pr.exit.toUpperCase()}</div><table class="currTable">${colgroup}<tr>${th}</tr><tr>${sub}</tr>${rows}</table></div>`
 }
-function buildPrint(){
-  collectProfile();
+function buildPrint(collectCurrent=true){
+  if(collectCurrent)collectProfile();
   const ps=programs();
   let html=preambleSheet();
   for(let i=0;i<ps.length;i+=3){
@@ -1909,6 +1909,7 @@ async function renderTeacherAdminList(){
             const label=enableNext?'Habilitar edición':'Deshabilitar edición';
             return `<button class="teacher-reopen-btn ${enableNext?'':'active'}" onclick="setTeacherEditAccess('${r.uid}',${enableNext?'true':'false'})">${label}</button>`;
           })()}
+          <button class="teacher-print-profile-btn" onclick="printTeacherProfile('${r.uid}')">Imprimir perfil</button>
           <button class="teacher-reset-program-btn" onclick="resetTeacherProgramProfile('${r.uid}')">Eliminar asignaturas capturadas</button>
           <button class="teacher-delete-btn" onclick="deleteTeacherProfile('${r.uid}')">Eliminar perfil completo</button>
         </div>
@@ -1923,6 +1924,44 @@ async function renderTeacherAdminList(){
 function escapeHtml(value){
   return String(value??'').replace(/[&<>"']/g,ch=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#039;'}[ch]));
 }
+
+window.printTeacherProfile=async function(uid){
+  if(!isAdmin()||!db)return;
+  const cached=teacherAdminCache[uid]||{};
+  try{
+    const snap=await getDoc(doc(db,'profiles',uid));
+    if(!snap.exists()){
+      alert('El perfil seleccionado ya no existe.');
+      return;
+    }
+    const d=snap.data()||{};
+
+    const previousProfile=store.profile;
+    const previousAnswers=answers;
+    const previousProgramMeta=programMeta;
+    const previousFinalizedAtMs=store.finalizedAtMs;
+
+    try{
+      store.profile=JSON.parse(JSON.stringify(d.profile||{}));
+      answers=JSON.parse(JSON.stringify(d.answers||{}));
+      programMeta=JSON.parse(JSON.stringify(d.programMeta||{}));
+      store.finalizedAtMs=Number(d.finalizedAtMs)||null;
+
+      buildPrint(false);
+      await openProfilePrintDialog();
+      await writeAudit(`Perfil impreso por Administración: ${d.email||cached.email||uid}`);
+    }finally{
+      store.profile=previousProfile;
+      answers=previousAnswers;
+      programMeta=previousProgramMeta;
+      store.finalizedAtMs=previousFinalizedAtMs;
+    }
+  }catch(e){
+    console.error('No fue posible imprimir el perfil del profesor',e);
+    alert('No fue posible preparar el perfil para impresión. Revise la conexión con Firestore.');
+  }
+}
+
 window.setTeacherEditAccess=async function(uid,enable){
   if(!isAdmin()||!db)return;
   const r=teacherAdminCache[uid]||{};

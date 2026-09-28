@@ -1,0 +1,31 @@
+PERFIL PROFESOR DIN · V54
+
+Cambios puntuales:
+1. Comisiones:
+   - Sí/No del bloque específico dejan de verse como óvalos verticales.
+   - Se muestran como radio circular compacto con texto a un lado.
+
+2. Periodos:
+   - Ejemplos ahora usan únicamente años:
+     2023 - 2025
+     2020 - 2023
+
+3. Datos del profesor:
+   - Apellido paterno, Apellido materno, Nombres, Categoría y Grado Académico
+     permanecen en la misma línea en escritorio.
+   - Categoría y Grado conservan anchos compactos.
+
+4. Impresión:
+   - Nombre del profesor: Grado académico + Nombres + Apellido paterno + Apellido materno.
+   - Se aplica en encabezados y firmas del formato.
+   - No se modifica la ubicación vertical de firmas, sello ni tablas.
+
+5. Administración:
+   - En Profesores y cierre de perfil se agrega botón “Imprimir perfil”.
+   - Permite al administrador generar el formato del profesor seleccionado
+     sin modificar ni finalizar su información.
+
+No se modifica autenticación, Firestore, captura por programa ni Excel.
+
+deploy-pages.yml: NO necesita actualización.
+firestore.rules: NO necesita actualización.
