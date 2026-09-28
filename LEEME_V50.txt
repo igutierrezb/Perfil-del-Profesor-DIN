@@ -1,0 +1,36 @@
+PERFIL PROFESOR DIN · V50
+
+Cambios aplicados:
+
+1. Administración
+- Tres bloques horizontales y compactos:
+  Control de captura | Comisiones | Configuración institucional.
+- En pantallas angostas se apilan automáticamente.
+
+2. Comisiones
+- El módulo vuelve a mostrarse dentro de Datos del profesor cuando está habilitado.
+- Al deshabilitarlo se oculta y deja de ser obligatorio.
+- Título simplificado a “Comisiones”.
+- Preguntas 1 y 2 se presentan en horizontal.
+- Botones Sí / No aplica se mantienen en una sola línea.
+- Cada comisión permite seleccionar varios bloques horarios.
+- Los horarios ahora se muestran como:
+  7 a 8, 8 a 9, 9 a 10 ... 15 a 16.
+
+3. Cintillo azul
+- “1 Formación académica · 2 Experiencia docente · 3 Experiencia laboral”
+  se muestra completo; en anchos menores reduce ligeramente la fuente
+  y sólo en pantallas realmente angostas permite salto de línea.
+
+4. Excel
+- Categoría se abrevia únicamente en exportación:
+  PTC TC, PTC TB, PTC TA, PTC AC, PTC AB, PTC AA, TA C, PA, Honorarios.
+- Los datos almacenados y mostrados en la página no se modifican.
+- Desde la fila 6 se aplica formato visual tipo tabla:
+  encabezado, filtros, bordes y bandas alternas.
+- Colores estandarizados con la página:
+  coordinación = verde;
+  favorita = amarillo.
+
+deploy-pages.yml: NO necesita actualización.
+firestore.rules: NO necesita actualización.

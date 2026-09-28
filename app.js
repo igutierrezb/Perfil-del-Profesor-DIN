@@ -722,7 +722,10 @@ function updateStepLabels(){
 function updatePlanningAvailability(){
   const enabled=planningEnabled();
   const block=$('commissionsBlock');
-  if(block)block.classList.toggle('hidden',!enabled);
+  if(block){
+    block.classList.toggle('hidden',!enabled);
+    block.style.display=enabled?'':'none';
+  }
   updateStepLabels();
 
   const st=$('planningAdminStatus');
@@ -766,7 +769,7 @@ function renderCommissionScheduleGrid(commission,index){
             const key=planningSlotKey(day.key,start,end);
             return `<label class="compact-slot ${slotIndex===PLANNING_SLOTS.length-1?'late':''}" title="${day.label} ${start}-${end}">
               <input type="checkbox" data-commission-index="${index}" data-commission-slot="${key}" ${selected.has(key)?'checked':''}>
-              <span>${start.replace(':00','')}</span>
+              <span>${start.replace(':00','')} a ${end.replace(':00','')}</span>
             </label>`;
           }).join('')}
         </div>
@@ -2281,6 +2284,29 @@ function renderRules(){
   }).join(''):'<div class="coord-empty">No hay troncos comunes configurados.</div>';
 }
 
+
+function excelCategoryAbbreviation(category){
+  const raw=String(category||'').trim();
+  const norm=raw.toLowerCase()
+    .normalize('NFD').replace(/[\u0300-\u036f]/g,'')
+    .replace(/\s+/g,' ');
+  const map=[
+    [/profesor de tiempo completo titular c/, 'PTC TC'],
+    [/profesor de tiempo completo titular b/, 'PTC TB'],
+    [/profesor de tiempo completo titular a/, 'PTC TA'],
+    [/profesor de tiempo completo asociado c/, 'PTC AC'],
+    [/profesor de tiempo completo asociado b/, 'PTC AB'],
+    [/profesor de tiempo completo asociado a/, 'PTC AA'],
+    [/tecnico academico c/, 'TA C'],
+    [/profesor de asignatura.*honorarios|honorarios/, 'Honorarios'],
+    [/profesor de asignatura/, 'PA']
+  ];
+  for(const [rx,abbr] of map){
+    if(rx.test(norm))return abbr;
+  }
+  return raw;
+}
+
 async function exportWorkbook(){
   const XLSX=window.XLSX;
   if(!XLSX || !XLSX.utils){
@@ -2297,7 +2323,7 @@ async function exportWorkbook(){
   const headerRows=6;
   const aoa=Array.from({length:headerRows+teachers.length},()=>[]);
   aoa[0][0]='PROGRAMA EDUCATIVO';
-  aoa[0][1]='Leyenda: ★ = Favorito · rojo y negrita = Coordinó la asignatura';
+  aoa[0][1]='Leyenda: ★ Favorita · ✓ Coordinó la asignatura';
   aoa[1][0]='ASIGNATURA';
   aoa[2][0]='HORAS AL CUATRIMESTRE';
   aoa[3][0]='HORAS A LA SEMANA';
@@ -2321,7 +2347,7 @@ async function exportWorkbook(){
         const fav=!!a.ideal;
         const coord=teacherCoordinator(t,pr.id,s,c);
         aoa[headerRows+ti][0]=t.name;
-        aoa[headerRows+ti][1]=t.category;
+        aoa[headerRows+ti][1]=excelCategoryAbbreviation(t.category);
         aoa[headerRows+ti][col]=level?`${level}${fav?' ★':''}`:'';
       });
       col++;
@@ -2359,6 +2385,45 @@ async function exportWorkbook(){
       alignment:{vertical:'center',horizontal:r<6?'center':'left',wrapText:true},
       border:{top:{style:'thin',color:{rgb:'AAB7C4'}},bottom:{style:'thin',color:{rgb:'AAB7C4'}},left:{style:'thin',color:{rgb:'AAB7C4'}},right:{style:'thin',color:{rgb:'AAB7C4'}}}
     }));
+  }
+
+
+  // Formato tipo tabla desde la fila 6 (encabezado) hacia abajo.
+  // XLSX-JS-Style no crea el objeto nativo "Tabla" de Excel de forma estable,
+  // por lo que se replica visual y funcionalmente: encabezado, filtros,
+  // bandas alternas y bordes.
+  const tableHeaderRow=5;
+  const tableEndRow=aoa.length-1;
+  for(let c=0;c<col;c++){
+    const addr=XLSX.utils.encode_cell({r:tableHeaderRow,c});
+    styleCell(addr,{
+      font:{name:'Aptos',sz:10,bold:true,color:{rgb:'FFFFFF'}},
+      fill:{patternType:'solid',fgColor:{rgb:'1D5A78'}},
+      alignment:{horizontal:'center',vertical:'center',wrapText:true},
+      border:{
+        top:{style:'thin',color:{rgb:'B5C7D1'}},
+        bottom:{style:'thin',color:{rgb:'B5C7D1'}},
+        left:{style:'thin',color:{rgb:'B5C7D1'}},
+        right:{style:'thin',color:{rgb:'B5C7D1'}}
+      }
+    });
+  }
+  for(let r=6;r<=tableEndRow;r++){
+    const band=(r%2===0)?'F7FBFC':'FFFFFF';
+    for(let c=0;c<col;c++){
+      const addr=XLSX.utils.encode_cell({r,c});
+      const existing=ws[addr]?.s||{};
+      styleCell(addr,{
+        ...existing,
+        fill:existing.fill||{patternType:'solid',fgColor:{rgb:band}},
+        border:{
+          top:{style:'thin',color:{rgb:'D8E3E8'}},
+          bottom:{style:'thin',color:{rgb:'D8E3E8'}},
+          left:{style:'thin',color:{rgb:'D8E3E8'}},
+          right:{style:'thin',color:{rgb:'D8E3E8'}}
+        }
+      });
+    }
   }
 
   // Programas y materias
@@ -2415,9 +2480,9 @@ async function exportWorkbook(){
             name:'Aptos',
             sz:10,
             bold:favorite || coordinated,
-            color:{rgb:coordinated?'FF0000':'243746'}
+            color:{rgb:coordinated?'1F714B':(favorite?'8B6100':'243746')}
           },
-          fill:{patternType:'solid',fgColor:{rgb:'FFFFFF'},bgColor:{rgb:'FFFFFF'}},
+          fill:{patternType:'solid',fgColor:{rgb:coordinated?'E2F3E9':(favorite?'FFF1C7':'FFFFFF')},bgColor:{rgb:'FFFFFF'}},
           alignment:{horizontal:'center',vertical:'center'},
           border:{
             top:{style:'thin',color:{rgb:'D4DCE3'}},
@@ -2437,7 +2502,7 @@ async function exportWorkbook(){
     const a=teacherAnswer(t,pr.id,s,c,name);
     base.push({
       Profesor:t.name,
-      Categoria:t.category||'',
+      Categoria:excelCategoryAbbreviation(t.category),
       Correo:t.email||'',
       Periodo:cfg.periodo,
       Programa:pr.name,
@@ -2468,8 +2533,8 @@ async function exportWorkbook(){
         const addr=XLSX.utils.encode_cell({r,c:coordCol});
         if(wsBase[addr] && String(wsBase[addr].v||'').toLowerCase()==='sí'){
           wsBase[addr].s={
-            font:{name:'Aptos',sz:10,bold:true,color:{rgb:'FF0000'}},
-            fill:{patternType:'solid',fgColor:{rgb:'FFFFFF'}},
+            font:{name:'Aptos',sz:10,bold:true,color:{rgb:'1F714B'}},
+            fill:{patternType:'solid',fgColor:{rgb:'E2F3E9'}},
             alignment:{horizontal:'center',vertical:'center'}
           };
         }
@@ -2539,7 +2604,7 @@ async function exportWorkbook(){
         }).join(' | ');
     return {
       Profesor:t.name,
-      Categoria:t.category||'',
+      Categoria:excelCategoryAbbreviation(t.category),
       Correo:t.email||'',
       Periodo:cfg.periodo,
       'Comisiones autorizadas':rec.commissionMode==='na'?'No aplica':rec.commissionMode==='yes'?'Sí':'Sin captura',

@@ -132,7 +132,7 @@
     <div id="commissionsBlock" class="card section-card commissions-section hidden">
       <div class="section-head commissions-section-head">
         <div>
-          <h2>4. Comisiones y consideraciones académicas</h2>
+          <h2>4. Comisiones</h2>
           <p>Información operativa para apoyar la planeación cuatrimestral del periodo.</p>
         </div>
         <span class="required-note">Obligatorio cuando está habilitado · admite No aplica</span>
@@ -146,7 +146,8 @@
 
       <div id="commissionsLockedBanner" class="capture-lock-banner hidden"></div>
 
-      <article id="planningCommissionsCard" class="commission-question">
+      <div class="commission-main-grid">
+<article id="planningCommissionsCard" class="commission-question">
         <div class="commission-question-head">
           <span class="planning-number">1</span>
           <div>
@@ -156,7 +157,7 @@
         </div>
 
         <div class="planning-choice-row commission-choice">
-          <label class="choice-card option-yes"><input type="radio" name="planningCommissionMode" value="yes" onchange="planningModeChanged()"> Sí, tengo comisión(es)</label>
+          <label class="choice-card option-yes"><input type="radio" name="planningCommissionMode" value="yes" onchange="planningModeChanged()"> Sí</label>
           <label class="choice-card option-no"><input type="radio" name="planningCommissionMode" value="na" onchange="planningModeChanged()"> No aplica</label>
         </div>
 
@@ -179,7 +180,7 @@
         </div>
 
         <div class="planning-choice-row commission-choice">
-          <label class="choice-card option-yes"><input type="radio" name="planningProjectMode" value="yes" onchange="planningModeChanged()"> Sí, participo</label>
+          <label class="choice-card option-yes"><input type="radio" name="planningProjectMode" value="yes" onchange="planningModeChanged()"> Sí</label>
           <label class="choice-card option-no"><input type="radio" name="planningProjectMode" value="na" onchange="planningModeChanged()"> No aplica</label>
         </div>
 
@@ -202,7 +203,8 @@
         </div>
       </article>
 
-      <article id="planningCommentsCard" class="commission-question commission-observations">
+      </div>
+<article id="planningCommentsCard" class="commission-question commission-observations">
         <div class="commission-question-head">
           <span class="planning-number optional">3</span>
           <div>
@@ -299,7 +301,7 @@
     </div>
 
     <div class="admin-core-grid">
-      <section id="captureControlCard" class="card admin-core-card capture-control-card">
+<section id="captureControlCard" class="card admin-core-card capture-control-card">
         <div class="admin-core-head">
           <div>
             <h2>Control de captura</h2>
@@ -320,8 +322,22 @@
           <button id="editModeBtn" class="edit-mode-btn" onclick="toggleEditingLock()"></button>
         </div>
       </section>
-
-      <section id="institutionalConfig" class="card admin-core-card">
+<section id="commissionsAdminCard" class="card admin-core-card commissions-admin-card">
+        <div class="admin-core-head">
+          <div>
+            <h2>Comisiones</h2>
+            <p>Habilita o deshabilita el apartado 4 de Datos del profesor.</p>
+          </div>
+          <span id="planningAdminStatus" class="planning-admin-status"></span>
+        </div>
+        <div class="commissions-admin-reference">
+          La información no se imprime; se utiliza únicamente como referencia para la elaboración de las planeaciones cuatrimestrales del periodo.
+        </div>
+        <div class="mini-actions admin-core-actions">
+          <button id="planningToggleBtn" type="button" class="planning-toggle-btn" onclick="togglePlanningPage()"></button>
+        </div>
+      </section>
+<section id="institutionalConfig" class="card admin-core-card">
         <div class="admin-core-head">
           <div>
             <h2>Configuración institucional</h2>
@@ -342,23 +358,9 @@
           <button class="primary institutional-save-btn" onclick="saveAdmin()">✓ Guardar configuración</button>
         </div>
       </section>
+</div>
 
-      <section id="commissionsAdminCard" class="card admin-core-card commissions-admin-card">
-        <div class="admin-core-head">
-          <div>
-            <h2>Comisiones</h2>
-            <p>Habilita o deshabilita el apartado 4 de Datos del profesor.</p>
-          </div>
-          <span id="planningAdminStatus" class="planning-admin-status"></span>
-        </div>
-        <div class="commissions-admin-reference">
-          La información no se imprime; se utiliza únicamente como referencia para la elaboración de las planeaciones cuatrimestrales del periodo.
-        </div>
-        <div class="mini-actions admin-core-actions">
-          <button id="planningToggleBtn" type="button" class="planning-toggle-btn" onclick="togglePlanningPage()"></button>
-        </div>
-      </section>
-    </div>
+</div>
 
     <div class="card teacher-admin-card">
       <div class="section-head teacher-admin-head">
