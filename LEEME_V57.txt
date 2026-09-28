@@ -1,0 +1,18 @@
+PERFIL PROFESOR DIN · V57 · AVANCE DE CAPTURA EN ADMINISTRACIÓN
+
+Cambio único solicitado:
+- En Administración > Profesores y cierre de perfil se agrega:
+  Profesor | Avance de captura | Estado | Acciones.
+- Cada profesor muestra porcentaje y barra de avance.
+- El porcentaje NO considera datos personales, Comisiones ni otros campos.
+- Sólo considera las asignaturas de los programas educativos activos:
+  * Deshabilitada = revisada/completa.
+  * X o XX + área de conocimiento seleccionada = revisada/completa.
+  * Habilitada pero pendiente de X/XX o de área = incompleta.
+  * Inglés / NO APLICA no entra en el denominador.
+- Debajo de la barra se muestra:
+  asignaturas completas/total y programas completos/total.
+
+No se modificó ninguna otra función.
+deploy-pages.yml: NO necesita actualización.
+firestore.rules: NO necesita actualización.

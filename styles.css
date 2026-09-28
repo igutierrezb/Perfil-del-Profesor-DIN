@@ -8993,3 +8993,103 @@ body.modal-open{overflow:hidden!important}
   max-width:100%!important;
   box-sizing:border-box!important;
 }
+
+
+/* =========================================================
+   V57 · Administración: avance académico por profesor
+   ========================================================= */
+.teacher-admin-table-head{
+  display:grid!important;
+  grid-template-columns:minmax(220px,1.35fr) minmax(170px,.75fr) minmax(185px,.9fr) minmax(470px,auto)!important;
+  gap:9px!important;
+  align-items:center!important;
+  padding:0 9px 4px!important;
+  color:#607580!important;
+  font-size:8px!important;
+  font-weight:850!important;
+  text-transform:uppercase!important;
+  letter-spacing:.035em!important;
+}
+.teacher-admin-table-head span:last-child{
+  text-align:right!important;
+  padding-right:4px!important;
+}
+
+.teacher-admin-row{
+  grid-template-columns:minmax(220px,1.35fr) minmax(170px,.75fr) minmax(185px,.9fr) minmax(470px,auto)!important;
+}
+
+.teacher-admin-progress{
+  min-width:0!important;
+  display:flex!important;
+  flex-direction:column!important;
+  gap:3px!important;
+}
+.teacher-progress-top{
+  display:flex!important;
+  align-items:baseline!important;
+  justify-content:space-between!important;
+  gap:8px!important;
+}
+.teacher-progress-top strong{
+  color:#185d77!important;
+  font-size:10.5px!important;
+  font-weight:900!important;
+}
+.teacher-progress-top span{
+  color:#6b7f8b!important;
+  font-size:7.8px!important;
+  white-space:nowrap!important;
+}
+.teacher-progress-track{
+  width:100%!important;
+  height:7px!important;
+  overflow:hidden!important;
+  border-radius:999px!important;
+  background:#e7eef2!important;
+  box-shadow:inset 0 0 0 1px #d4e0e6!important;
+}
+.teacher-progress-track i{
+  display:block!important;
+  height:100%!important;
+  border-radius:999px!important;
+  background:linear-gradient(90deg,#2a8d82,#58bea2)!important;
+  transition:width .25s ease!important;
+}
+.teacher-admin-progress small{
+  color:#738690!important;
+  font-size:7.4px!important;
+  line-height:1.1!important;
+}
+
+/* Mantener legibilidad cuando el ancho disminuye */
+@media(max-width:1450px){
+  .teacher-admin-table-head,
+  .teacher-admin-row{
+    grid-template-columns:minmax(210px,1.25fr) minmax(155px,.72fr) minmax(180px,.85fr) minmax(420px,auto)!important;
+  }
+}
+@media(max-width:1180px){
+  .teacher-admin-table-head{
+    display:none!important;
+  }
+  .teacher-admin-row{
+    grid-template-columns:1fr 1fr!important;
+  }
+  .teacher-admin-progress,
+  .teacher-admin-status{
+    min-width:0!important;
+  }
+  .teacher-admin-actions{
+    grid-column:1/-1!important;
+    justify-content:flex-end!important;
+  }
+}
+@media(max-width:760px){
+  .teacher-admin-row{
+    grid-template-columns:1fr!important;
+  }
+  .teacher-admin-actions{
+    grid-column:auto!important;
+  }
+}

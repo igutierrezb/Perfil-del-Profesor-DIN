@@ -2032,6 +2032,40 @@ function formatTeacherCompletion(d){
     hour12:true
   }).format(new Date(ms));
 }
+
+function teacherCaptureProgress(remoteAnswers={}){
+  let totalSubjects=0,completedSubjects=0,totalPrograms=0,completedPrograms=0;
+
+  programs().forEach(pr=>{
+    let programTotal=0,programCompleted=0;
+
+    pr.semesters.forEach((sem,s)=>sem.forEach((name,c)=>{
+      if(isEnglish(name))return;
+
+      programTotal++;
+      totalSubjects++;
+
+      const a=remoteAnswers?.[key(pr.id,s,c)]||{status:'pending',origins:[]};
+      const complete=
+        a.status==='off' ||
+        (['X','XX'].includes(a.status) && Array.isArray(a.origins) && a.origins.length>0);
+
+      if(complete){
+        programCompleted++;
+        completedSubjects++;
+      }
+    }));
+
+    if(programTotal>0){
+      totalPrograms++;
+      if(programCompleted===programTotal)completedPrograms++;
+    }
+  });
+
+  const pct=totalSubjects?Math.round((completedSubjects/totalSubjects)*100):0;
+  return {pct,totalSubjects,completedSubjects,totalPrograms,completedPrograms};
+}
+
 async function renderTeacherAdminList(){
   const root=$('teacherAdminList'),summary=$('teacherAdminSummary');
   if(!root||!summary||!isAdmin())return;
@@ -2044,14 +2078,33 @@ async function renderTeacherAdminList(){
     snap.forEach(ds=>{
       const d=ds.data()||{},p=d.profile||{};
       const name=[p.apPat,p.apMat,p.nombres].filter(Boolean).join(' ')||d.displayName||d.email||'(Sin nombre)';
-      const row={uid:ds.id,name,email:d.email||'',categoria:p.categoria||'',submittedPeriod:d.submittedPeriod||null,finalizedAtMs:Number(d.finalizedAtMs)||0,individualEditEnabled:!!d.individualEditEnabled,individualEditDisabled:!!d.individualEditDisabled,updatedAt:d.updatedAt,profileResetToken:d.profileResetToken||null};
+      const captureProgress=teacherCaptureProgress(d.answers||{});
+      const row={
+        uid:ds.id,
+        name,
+        email:d.email||'',
+        categoria:p.categoria||'',
+        submittedPeriod:d.submittedPeriod||null,
+        finalizedAtMs:Number(d.finalizedAtMs)||0,
+        individualEditEnabled:!!d.individualEditEnabled,
+        individualEditDisabled:!!d.individualEditDisabled,
+        updatedAt:d.updatedAt,
+        profileResetToken:d.profileResetToken||null,
+        captureProgress
+      };
       rows.push(row);teacherAdminCache[row.uid]=row;
     });
     rows.sort((a,b)=>a.name.localeCompare(b.name,'es',{sensitivity:'base'}));
     const done=rows.filter(x=>x.submittedPeriod===cfg.periodo).length;
     summary.innerHTML=`<b>${rows.length}</b> profesor${rows.length===1?'':'es'} con información · <b>${done}</b> concluido${done===1?'':'s'} en ${cfg.periodo}`;
     if(!rows.length){root.innerHTML='<div class="teacher-empty">Aún no hay perfiles de profesores guardados.</div>';return}
-    root.innerHTML=rows.map(r=>{
+    const tableHeader=`<div class="teacher-admin-table-head" aria-hidden="true">
+      <span>Profesor</span>
+      <span>Avance de captura</span>
+      <span>Estado</span>
+      <span>Acciones</span>
+    </div>`;
+    root.innerHTML=tableHeader+rows.map(r=>{
       const doneNow=r.submittedPeriod===cfg.periodo;
       const override=!!r.individualEditEnabled;
       const individuallyDisabled=!!r.individualEditDisabled;
@@ -2075,6 +2128,14 @@ async function renderTeacherAdminList(){
         <div class="teacher-admin-main">
           <b>${escapeHtml(r.name)}</b>
           <span>${escapeHtml(r.email||'Sin correo registrado')}${r.categoria?` · ${escapeHtml(r.categoria)}`:''}</span>
+        </div>
+        <div class="teacher-admin-progress" title="${r.captureProgress.completedSubjects} de ${r.captureProgress.totalSubjects} asignaturas revisadas">
+          <div class="teacher-progress-top">
+            <strong>${r.captureProgress.pct}%</strong>
+            <span>${r.captureProgress.completedSubjects}/${r.captureProgress.totalSubjects} asignaturas</span>
+          </div>
+          <div class="teacher-progress-track"><i style="width:${r.captureProgress.pct}%"></i></div>
+          <small>${r.captureProgress.completedPrograms}/${r.captureProgress.totalPrograms} programas completos</small>
         </div>
         <div class="teacher-admin-status ${override?'individual-open':doneNow?'finished':'open'}">
           <strong>${escapeHtml(statusTitle)}</strong>
