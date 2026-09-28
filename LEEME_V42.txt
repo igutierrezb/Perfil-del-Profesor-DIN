@@ -1,0 +1,27 @@
+PERFIL PROFESOR DIN · V42
+
+CAMBIOS PUNTUALES
+
+1. Impresión:
+   Área
+   de
+   conoc.
+   Sustituye “Área / de / comp.” únicamente en el formato impreso.
+
+2. Acceso móvil / Safari / iPhone:
+   - iPhone, iPad, Android y pantallas móviles usan directamente
+     la redirección segura de Google/Firebase.
+   - Ya no se intenta abrir primero una ventana emergente en móvil.
+   - Se elimina el cuadro de confirmación intermedio por popup bloqueado.
+   - Escritorio conserva signInWithPopup.
+   - Si un popup de escritorio es bloqueado, cambia automáticamente
+     a signInWithRedirect.
+   - La persistencia de Firebase se configura al cargar la aplicación,
+     no después de pulsar el botón. Esto evita perder el gesto de usuario
+     que Safari necesita para permitir el acceso.
+
+El dominio autorizado sigue siendo @uteq.edu.mx.
+La plataforma no solicita ni almacena contraseñas.
+
+deploy-pages.yml: NO necesita actualización.
+firestore.rules: NO necesita actualización.

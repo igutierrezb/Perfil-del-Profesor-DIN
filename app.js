@@ -473,6 +473,31 @@ function updateAuthUI(){
   $('adminTab').classList.toggle('hidden',!isAdmin());
   showApp(!!currentUser);
 }
+function isIOSAuthClient(){
+  const ua=navigator.userAgent||'';
+  return /iPad|iPhone|iPod/i.test(ua)
+    || (navigator.platform==='MacIntel' && Number(navigator.maxTouchPoints)>1);
+}
+function shouldUseRedirectAuth(){
+  const ua=navigator.userAgent||'';
+  const mobileUA=/Android|Mobile|IEMobile|Opera Mini/i.test(ua);
+  const narrow=window.matchMedia?window.matchMedia('(max-width: 780px)').matches:false;
+  return isIOSAuthClient() || mobileUA || narrow;
+}
+async function redirectInstitutionalSignIn(provider){
+  try{
+    const gate=$('authStatusGate');
+    if(gate)gate.textContent='Abriendo acceso seguro de Google…';
+    await signInWithRedirect(auth,provider);
+    return true;
+  }catch(e){
+    console.error('Redirect auth error',e);
+    showInstitutionalAccessMessage(
+      'No fue posible abrir el acceso seguro de Google. Verifica que Safari/tu navegador permita navegar a Google y vuelve a intentarlo.'
+    );
+    return false;
+  }
+}
 window.signIn=async function(){
   if(!authConfigured()){
     alert('Firebase no está configurado correctamente. Revisa firebase-config.js y confirma apiKey, authDomain, projectId y appId.');
@@ -483,7 +508,16 @@ window.signIn=async function(){
   provider.setCustomParameters({hd:allowedDomain,prompt:'select_account'});
 
   try{
-    await setPersistence(auth,browserLocalPersistence);
+    // En iPhone/iPad y móviles se evita la ventana emergente.
+    // Safari antiguo puede bloquearla aun cuando el usuario toca el botón.
+    if(shouldUseRedirectAuth()){
+      await redirectInstitutionalSignIn(provider);
+      return;
+    }
+
+    // En escritorio el popup sigue siendo la experiencia principal.
+    // Importante: no hay ningún await antes de abrirlo, para conservar
+    // la activación del clic del usuario y evitar auth/popup-blocked.
     const res=await signInWithPopup(auth,provider);
     const email=(res.user.email||'').toLowerCase();
 
@@ -498,26 +532,18 @@ window.signIn=async function(){
     const code=e&&e.code?e.code:'';
 
     if(code==='auth/api-key-not-valid.-please-pass-a-valid-api-key.' || code==='auth/invalid-api-key'){
-      alert('La configuración de Firebase no es válida. Esta versión ya no guarda la API key en el repositorio: configura los GitHub Actions Secrets indicados en SETUP_FIREBASE_GITHUB.md y vuelve a desplegar.');
+      alert('La configuración de Firebase no es válida. Revisa los GitHub Actions Secrets y vuelve a desplegar.');
       return;
     }
 
-    if(code==='auth/popup-blocked'){
-      const useRedirect=confirm(
-        institutionalAccessMessage(
-          'Tu navegador bloqueó la ventana de Google. Pulsa Aceptar para continuar mediante una redirección segura de Google, que suele funcionar mejor en teléfonos y navegadores con bloqueo de ventanas emergentes.'
-        )
-      );
-      if(useRedirect){
-        try{
-          await signInWithRedirect(auth,provider);
-        }catch(redirectError){
-          console.error(redirectError);
-          showInstitutionalAccessMessage(
-            'No fue posible abrir el acceso de Google. Verifica que el navegador permita iniciar sesión y vuelve a intentarlo.'
-          );
-        }
-      }
+    // Si un navegador de escritorio bloquea el popup, cambia
+    // automáticamente a redirect. No muestra una confirmación intermedia.
+    if(
+      code==='auth/popup-blocked'
+      || code==='auth/operation-not-supported-in-this-environment'
+      || code==='auth/web-storage-unsupported'
+    ){
+      await redirectInstitutionalSignIn(provider);
       return;
     }
 
@@ -530,7 +556,7 @@ window.signIn=async function(){
 
     console.error(e);
     showInstitutionalAccessMessage(
-      'No fue posible completar el inicio de sesión. Vuelve a intentarlo seleccionando tu cuenta institucional.'
+      'No fue posible completar el inicio de sesión. Vuelve a intentarlo seleccionando tu cuenta @uteq.edu.mx.'
     );
   }
 }
@@ -564,6 +590,13 @@ function initAuth(){
   const fbApp=initializeApp(window.FIREBASE_CONFIG);
   auth=getAuth(fbApp);
   db=getFirestore(fbApp);
+
+  // Se configura al iniciar la aplicación. Así el clic de acceso queda
+  // libre para abrir Google inmediatamente, algo importante en Safari/iOS.
+  setPersistence(auth,browserLocalPersistence).catch(e=>{
+    console.warn('No fue posible establecer persistencia local de Auth',e);
+  });
+
   onAuthStateChanged(auth,async user=>{
     currentUser=user;
     remoteProfileLoaded=false;
@@ -1162,7 +1195,7 @@ function printProgram(pr, idx){
   const nSem=Math.max(1,pr.semesters.length),levelW=1.55,areaW=2.05,subjectW=(100/nSem)-levelW-areaW;
   const colgroup=`<colgroup>${Array.from({length:nSem},()=>`<col class="subject" style="width:${subjectW}%"><col class="level" style="width:${levelW}%"><col class="area" style="width:${areaW}%">`).join('')}</colgroup>`;
   const th=pr.semesters.map((s,i)=>`<th colspan="3" style="background:${pastel}">${i+1}.° CUATRIMESTRE</th>`).join('');
-  const sub=pr.semesters.map(()=>`<th style="background:${pastel}">Asignatura</th><th class="vhead" style="background:${pastel}">Nivel</th><th class="area-print-head" style="background:${pastel}"><span>Área</span><span>de</span><span>comp.</span></th>`).join('');
+  const sub=pr.semesters.map(()=>`<th style="background:${pastel}">Asignatura</th><th class="vhead" style="background:${pastel}">Nivel</th><th class="area-print-head" style="background:${pastel}"><span>Área</span><span>de</span><span>conoc.</span></th>`).join('');
   let rows='';
   for(let r=0;r<max;r++){
     rows+='<tr>'+pr.semesters.map((sem,s)=>{
