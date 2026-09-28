@@ -267,6 +267,32 @@ async function writeAudit(action){
     await addDoc(collection(db,'audit'),{action,email:currentUser.email||'',uid:currentUser.uid,at:serverTimestamp(),period:cfg.periodo});
   }catch(e){console.warn('Auditoría no disponible',e)}
 }
+function resetLocalTeacherData({keepProfile=false}={}){
+  const previousProfile=store.profile||{};
+  store.profile=keepProfile?JSON.parse(JSON.stringify(previousProfile)):{};
+  answers={};
+  programMeta={};
+  store.answers=answers;
+  store.programMeta=programMeta;
+  store.submittedPeriod=null;
+  store.finalizedAtMs=null;
+  store.individualEditEnabled=false;
+  store.profileResetToken=null;
+  currentProgramIndex=0;
+  lastSavedAt=null;
+
+  localStorage.setItem('PAD_UTEQ',JSON.stringify({
+    ...store,cfg,answers,programMeta,customPrograms,programOverrides,
+    disabledPrograms,programAcronyms,commonRules,currentProgramIndex,lastSavedAt
+  }));
+
+  buildProfileRows();
+  loadProfileValuesOnly();
+  renderCurrentProgram();
+  updateProgress();
+  applyEditState();
+  updateNavState();
+}
 function profileCloudPayload(){
   return {
     uid:currentUser?.uid||'',
@@ -279,6 +305,7 @@ function profileCloudPayload(){
     submittedPeriod:store.submittedPeriod||null,
     finalizedAtMs:store.finalizedAtMs||null,
     individualEditEnabled:!!store.individualEditEnabled,
+    profileResetToken:store.profileResetToken||null,
     updatedAt:serverTimestamp()
   };
 }
@@ -307,14 +334,17 @@ async function loadRemoteProfile(){
       if('submittedPeriod' in d)store.submittedPeriod=d.submittedPeriod||null;
       if('finalizedAtMs' in d)store.finalizedAtMs=Number(d.finalizedAtMs)||null;
       if('individualEditEnabled' in d)store.individualEditEnabled=!!d.individualEditEnabled;
+      if('profileResetToken' in d)store.profileResetToken=d.profileResetToken||null;
       store.answers=answers;store.programMeta=programMeta;
       localStorage.setItem('PAD_UTEQ',JSON.stringify({...store,cfg,customPrograms,programOverrides,disabledPrograms,programAcronyms,commonRules,currentProgramIndex,lastSavedAt}));
       loadProfileValuesOnly();
       renderCurrentProgram();
       updateProgress();
     }
+    if(!snap.exists()){
+      resetLocalTeacherData({keepProfile:false});
+    }
     remoteProfileLoaded=true;
-    if(!snap.exists())scheduleCloudProfileSave();
     updateCloudStatus('Sincronización activa','ok');
   }catch(e){
     remoteProfileLoaded=true;
@@ -339,13 +369,42 @@ async function initCloud(){
   await loadRemoteProfile();
   if(cloudProfileMetaUnsub)cloudProfileMetaUnsub();
   cloudProfileMetaUnsub=onSnapshot(doc(db,'profiles',currentUser.uid),s=>{
-    if(!s.exists())return;
+    if(!s.exists()){
+      if(remoteProfileLoaded&&!isAdmin()){
+        resetLocalTeacherData({keepProfile:false});
+        toast('Administración eliminó este perfil. La captura iniciará desde cero.');
+      }
+      return;
+    }
     const d=s.data()||{};
     const priorPeriod=store.submittedPeriod||null;
     const priorOverride=!!store.individualEditEnabled;
+    const priorResetToken=store.profileResetToken||null;
     store.submittedPeriod=d.submittedPeriod||null;
     store.finalizedAtMs=Number(d.finalizedAtMs)||null;
     store.individualEditEnabled=!!d.individualEditEnabled;
+    store.profileResetToken=d.profileResetToken||null;
+
+    if(store.profileResetToken&&priorResetToken!==store.profileResetToken&&!isAdmin()){
+      answers={};
+      programMeta={};
+      store.answers=answers;
+      store.programMeta=programMeta;
+      currentProgramIndex=0;
+      if(d.profile)store.profile=d.profile;
+      localStorage.setItem('PAD_UTEQ',JSON.stringify({
+        ...store,cfg,answers,programMeta,customPrograms,programOverrides,
+        disabledPrograms,programAcronyms,commonRules,currentProgramIndex,lastSavedAt
+      }));
+      loadProfileValuesOnly();
+      renderCurrentProgram();
+      updateProgress();
+      applyEditState();
+      updateNavState();
+      toast('Administración reinició la captura por asignaturas. Puede editar nuevamente su perfil.');
+      return;
+    }
+
     if(priorPeriod!==store.submittedPeriod || priorOverride!==store.individualEditEnabled){
       localStorage.setItem('PAD_UTEQ',JSON.stringify({...store,cfg,answers,programMeta,customPrograms,programOverrides,disabledPrograms,programAcronyms,commonRules,currentProgramIndex,lastSavedAt}));
       applyEditState();updateNavState();
@@ -419,7 +478,30 @@ window.signIn=async function(){
     }
   }
 }
-window.signOutApp=async function(){if(auth)await signOut(auth)}
+window.signOutApp=async function(){
+  try{
+    if(db&&currentUser&&remoteProfileLoaded){
+      try{
+        await setDoc(doc(db,'profiles',currentUser.uid),profileCloudPayload(),{merge:true});
+      }catch(e){
+        console.warn('No fue posible hacer el guardado final antes de cerrar sesión',e);
+      }
+    }
+    if(auth)await signOut(auth);
+  }finally{
+    localStorage.removeItem('PAD_UTEQ');
+    sessionStorage.clear();
+    try{
+      if('caches' in window){
+        const keys=await caches.keys();
+        await Promise.all(keys.map(k=>caches.delete(k)));
+      }
+    }catch(e){
+      console.warn('No fue posible limpiar Cache Storage',e);
+    }
+    location.reload();
+  }
+}
 
 function initAuth(){
   if(!authConfigured()){updateAuthUI();return}
@@ -725,11 +807,31 @@ function captureGuideHtml(){
   return `<div class="instruction-band card capture-guide-band capture-guide-current">
     <div class="instruction-title">Cómo capturar cada asignatura</div>
     <div class="instruction-grid-five">
-      <div class="capture-help-card"><b>1. Asignatura y habilitación</b><span>Revise cada materia. Si el interruptor está <strong>apagado</strong>, significa que <strong>no puede impartirla</strong> y esa materia <strong>se imprimirá en blanco</strong>.</span></div>
-      <div class="capture-help-card"><b>2. Competencia</b><span>Seleccione el nivel de dominio: <strong class="help-x">X = Competencia media</strong> y <strong class="help-xx">XX = Competencia alta</strong>.</span></div>
-      <div class="capture-help-card"><b>3. Área de conocimiento</b><span>Seleccione una sola opción: 1 · 2 · 3 · 12 · 13 · 23 · 123.</span><div class="knowledge-key knowledge-key-inline single-line-key"><b>1</b> Formación académica · <b>2</b> Experiencia docente · <b>3</b> Experiencia laboral</div></div>
-      <div class="capture-help-card reference-help-card"><b><span class="help-alert">!</span> 4. Coordinación</b><span>Marque <strong class="help-check">✓</strong> solo si ha coordinado previamente esa asignatura. <strong>No aparece en la impresión</strong>; es una referencia para el coordinador.</span></div>
-      <div class="capture-help-card reference-help-card"><b><span class="help-alert">!</span> 5. Favorita</b><span>De forma <strong>opcional</strong>, marque <strong class="help-star">★</strong> si considera que esa asignatura es ideal para impartir de acuerdo con su perfil profesional. <strong>No aparece en la impresión</strong>.</span></div>
+      <div class="capture-help-card">
+        <b>1. Asignaturas habilitadas</b>
+        <span><strong>Revise cada materia</strong> y márquela como <strong>apagada</strong> si usted no puede impartir esa asignatura. <strong>Al imprimir, la asignatura quedará vacía en el formato.</strong></span>
+      </div>
+      <div class="capture-help-card">
+        <b>2. Competencia</b>
+        <span>Seleccione el <strong>nivel que posee para impartir la asignatura</strong>.</span>
+        <div class="competence-key-lines">
+          <strong class="help-x">X = Competencia media</strong>
+          <strong class="help-xx">XX = Competencia alta</strong>
+        </div>
+      </div>
+      <div class="capture-help-card">
+        <b>3. Área de conocimiento</b>
+        <span>Seleccione una opción según corresponda al <strong>área de la cual proviene su conocimiento</strong>: <strong>1, 2 o 3</strong>, o una combinación de ellas.</span>
+        <div class="knowledge-key knowledge-key-inline single-line-key"><b>1</b> Formación académica · <b>2</b> Experiencia docente · <b>3</b> Experiencia laboral</div>
+      </div>
+      <div class="capture-help-card reference-help-card">
+        <b><span class="help-alert">!</span> 4. Coordinación</b>
+        <span>Marque <strong class="help-check">✓</strong> solo si <strong>ha coordinado previamente esa asignatura</strong>. <strong>No aparece en la impresión</strong>; es una referencia para el coordinador.</span>
+      </div>
+      <div class="capture-help-card reference-help-card">
+        <b><span class="help-alert">!</span> 5. Favorita</b>
+        <span>De forma <strong>opcional</strong>, marque <strong class="help-star">★</strong> si considera que esa asignatura es <strong>ideal para impartir de acuerdo con su perfil profesional</strong>. <strong>No aparece en la impresión</strong>.</span>
+      </div>
     </div>
   </div>`;
 }
@@ -1101,7 +1203,7 @@ async function renderTeacherAdminList(){
     snap.forEach(ds=>{
       const d=ds.data()||{},p=d.profile||{};
       const name=[p.apPat,p.apMat,p.nombres].filter(Boolean).join(' ')||d.displayName||d.email||'(Sin nombre)';
-      const row={uid:ds.id,name,email:d.email||'',categoria:p.categoria||'',submittedPeriod:d.submittedPeriod||null,finalizedAtMs:Number(d.finalizedAtMs)||0,individualEditEnabled:!!d.individualEditEnabled,updatedAt:d.updatedAt};
+      const row={uid:ds.id,name,email:d.email||'',categoria:p.categoria||'',submittedPeriod:d.submittedPeriod||null,finalizedAtMs:Number(d.finalizedAtMs)||0,individualEditEnabled:!!d.individualEditEnabled,updatedAt:d.updatedAt,profileResetToken:d.profileResetToken||null};
       rows.push(row);teacherAdminCache[row.uid]=row;
     });
     rows.sort((a,b)=>a.name.localeCompare(b.name,'es',{sensitivity:'base'}));
@@ -1132,7 +1234,8 @@ async function renderTeacherAdminList(){
         </div>
         <div class="teacher-admin-actions">
           ${doneNow||override?`<button class="teacher-reopen-btn ${override?'active':''}" onclick="toggleTeacherEditOverride('${r.uid}',${override?'false':'true'})">${override?'Deshabilitar edición':'Habilitar edición'}</button>`:''}
-          <button class="teacher-delete-btn" onclick="deleteTeacherProfile('${r.uid}')">Eliminar perfil</button>
+          <button class="teacher-reset-program-btn" onclick="resetTeacherProgramProfile('${r.uid}')">Eliminar asignaturas capturadas</button>
+          <button class="teacher-delete-btn" onclick="deleteTeacherProfile('${r.uid}')">Eliminar perfil completo</button>
         </div>
       </div>`;
     }).join('');
@@ -1169,20 +1272,62 @@ window.toggleTeacherEditOverride=async function(uid,enable){
   }
 }
 window.reopenTeacherProfile=function(uid){return window.toggleTeacherEditOverride(uid,true)}
+window.resetTeacherProgramProfile=async function(uid){
+  if(!isAdmin()||!db)return;
+  const r=teacherAdminCache[uid]||{};
+  const who=r.name||r.email||'este profesor';
+
+  const ok=confirm(
+    `¿CONFIRMAR eliminación de las asignaturas capturadas de ${who}?\n\n`+
+    `Se borrarán respuestas por asignatura, niveles X/XX, áreas de conocimiento, coordinaciones, favoritas y el estado de finalización.\n\n`+
+    `Se conservarán los datos del profesor, pero la edición quedará habilitada para corregirlos y comenzar desde cero el Perfil por programa.\n\n`+
+    `Esta acción no se puede deshacer desde esta pantalla.`
+  );
+  if(!ok)return;
+
+  try{
+    const resetToken=`${Date.now()}-${uid}`;
+    await setDoc(doc(db,'profiles',uid),{
+      answers:{},
+      programMeta:{},
+      submittedPeriod:null,
+      finalizedAtMs:null,
+      individualEditEnabled:true,
+      profileResetToken:resetToken,
+      programProfileResetAt:serverTimestamp(),
+      programProfileResetBy:currentUser?.email||'',
+      updatedAt:serverTimestamp()
+    },{merge:true});
+    await writeAudit(`Asignaturas capturadas eliminadas por Administración: ${r.email||uid}`);
+    toast('Asignaturas eliminadas. El profesor iniciará nuevamente el Perfil por programa.');
+    await renderTeacherAdminList();
+  }catch(e){
+    console.error(e);
+    alert('No fue posible eliminar las asignaturas capturadas. Verifique la conexión y las reglas de Firestore.');
+  }
+}
+
 window.deleteTeacherProfile=async function(uid){
   if(!isAdmin()||!db)return;
   const r=teacherAdminCache[uid]||{};
   const who=r.name||r.email||'este profesor';
-  const ok=confirm(`¿Eliminar el perfil de ${who}?\\n\\nSe borrarán de la nube sus datos del perfil, respuestas por asignatura, materias favoritas y marcas de coordinación. Esta acción NO elimina su cuenta institucional y no se puede deshacer desde esta pantalla.`);
+
+  const ok=confirm(
+    `¿CONFIRMAR eliminación COMPLETA del perfil de ${who}?\n\n`+
+    `Se eliminarán datos del profesor, formación, experiencia, respuestas por asignatura, niveles, áreas, coordinaciones, favoritas y el estado de finalización.\n\n`+
+    `En su próximo ingreso comenzará desde cero. Esta acción NO elimina su cuenta institucional.\n\n`+
+    `Esta acción no se puede deshacer desde esta pantalla.`
+  );
   if(!ok)return;
+
   try{
     await deleteDoc(doc(db,'profiles',uid));
-    await writeAudit(`Perfil académico eliminado por Administración: ${r.email||uid}`);
-    toast('Perfil eliminado de la base de profesores.');
+    await writeAudit(`Perfil completo eliminado por Administración: ${r.email||uid}`);
+    toast('Perfil completo eliminado. En su próximo ingreso el profesor comenzará desde cero.');
     await renderTeacherAdminList();
   }catch(e){
     console.error(e);
-    alert('No fue posible eliminar el perfil. Verifique las reglas de Firestore.');
+    alert('No fue posible eliminar el perfil completo. Verifique las reglas de Firestore.');
   }
 }
 

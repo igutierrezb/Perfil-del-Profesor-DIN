@@ -1,0 +1,27 @@
+PERFIL PROFESOR DIN · V36 FINAL
+
+1. Administración:
+   - Eliminar asignaturas capturadas: conserva datos del profesor, borra la captura por asignaturas,
+     elimina el cierre y habilita nuevamente la edición.
+   - Eliminar perfil completo: elimina todo el documento del profesor.
+   - Ambas acciones piden confirmación explícita antes de borrar.
+
+2. Protección contra datos antiguos:
+   - Un perfil eliminado ya no se reconstruye con datos viejos del caché local.
+   - Al cerrar sesión se limpia PAD_UTEQ, sessionStorage y Cache Storage.
+
+3. Guía:
+   - Redacción y ortografía corregidas.
+   - Palabras clave destacadas.
+   - Tipografía mayor.
+   - X y XX en líneas separadas.
+
+4. Coordinador/Favorita:
+   - Controles compactos y centrados.
+   - Encabezados en rojo armónico.
+
+5. Logo DIN:
+   - Se amplía el emblema para mostrar completa la N.
+
+deploy-pages.yml: NO necesita actualización si ya usa V30+.
+firestore.rules: NO necesita actualización.

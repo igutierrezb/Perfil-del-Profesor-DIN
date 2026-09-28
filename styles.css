@@ -6042,3 +6042,155 @@ body.printing-profile #printArea{
     width:100%!important;
   }
 }
+
+
+/* =========================================================
+   V36 FINAL
+   ========================================================= */
+
+/* Guía de captura: mayor tamaño y palabras clave */
+.capture-guide-current .capture-help-card>b{
+  font-size:12.8px!important;
+  line-height:1.18!important;
+}
+.capture-guide-current .capture-help-card>span{
+  font-size:11.5px!important;
+  line-height:1.42!important;
+}
+.capture-guide-current .capture-help-card strong{font-weight:850!important}
+.capture-guide-current .competence-key-lines{
+  display:flex!important;
+  flex-direction:column!important;
+  gap:5px!important;
+  margin-top:4px!important;
+}
+.capture-guide-current .competence-key-lines .help-x,
+.capture-guide-current .competence-key-lines .help-xx{
+  display:block!important;
+  font-size:12.8px!important;
+  line-height:1.15!important;
+}
+.capture-guide-current .knowledge-key-inline{
+  margin-top:6px!important;
+  font-size:11px!important;
+  line-height:1.15!important;
+  padding:7px 9px!important;
+}
+.capture-guide-current .help-check,
+.capture-guide-current .help-star{font-size:18px!important}
+
+/* Acciones del profesor */
+.teacher-admin-actions{
+  display:flex!important;
+  align-items:center!important;
+  justify-content:flex-end!important;
+  gap:6px!important;
+  flex-wrap:nowrap!important;
+}
+.teacher-admin-actions button{
+  min-height:32px!important;
+  height:32px!important;
+  padding:5px 9px!important;
+  font-size:8.7px!important;
+  white-space:nowrap!important;
+}
+.teacher-reset-program-btn{
+  background:#fff8e9!important;
+  color:#805712!important;
+  border:1px solid #e5c47c!important;
+}
+.teacher-delete-btn{
+  background:#fff2ef!important;
+  color:#9c382e!important;
+  border-color:#e6aba4!important;
+}
+
+/* Programas educativos: todas las acciones en la misma línea */
+@media(min-width:900px){
+  .program-admin-item{
+    display:grid!important;
+    grid-template-columns:minmax(0,1fr) 118px 98px 132px 110px!important;
+    gap:7px!important;
+    align-items:center!important;
+  }
+}
+
+/* Coordinador / Favorita */
+.course-columns .coord-head,
+.course-columns .fav-head{
+  display:grid!important;
+  place-items:center!important;
+  text-align:center!important;
+  padding:0 4px!important;
+  background:#a8473e!important;
+  color:#fff!important;
+  border-left:1px solid rgba(255,255,255,.25)!important;
+}
+.course-columns .coord-head{border-radius:5px 0 0 5px!important}
+.course-columns .fav-head{border-radius:0 5px 5px 0!important}
+
+.coord-row-check{
+  width:25px!important;
+  height:25px!important;
+  min-width:25px!important;
+  min-height:25px!important;
+  max-width:25px!important;
+  max-height:25px!important;
+  margin:0 auto!important;
+  padding:0!important;
+  display:grid!important;
+  place-items:center!important;
+  border-radius:6px!important;
+  box-sizing:border-box!important;
+  overflow:visible!important;
+}
+.coord-row-check span{
+  display:grid!important;
+  place-items:center!important;
+  width:100%!important;
+  height:100%!important;
+  margin:0!important;
+  padding:0!important;
+  font-size:15px!important;
+  line-height:1!important;
+  transform:none!important;
+}
+.ideal-btn{
+  width:25px!important;
+  height:25px!important;
+  min-width:25px!important;
+  min-height:25px!important;
+  max-width:25px!important;
+  max-height:25px!important;
+  margin:0 auto!important;
+  padding:0!important;
+  display:grid!important;
+  place-items:center!important;
+  border-radius:6px!important;
+  box-sizing:border-box!important;
+  overflow:visible!important;
+  font-size:17px!important;
+  line-height:1!important;
+}
+.ideal-btn.on{font-size:17px!important}
+
+/* Emblema DIN completo */
+.hero-icon{
+  object-fit:contain!important;
+  object-position:center!important;
+  overflow:visible!important;
+  max-width:none!important;
+}
+
+@media(max-width:780px){
+  .teacher-admin-actions{
+    display:grid!important;
+    grid-template-columns:1fr!important;
+  }
+  .teacher-admin-actions button{
+    width:100%!important;
+    height:auto!important;
+    min-height:42px!important;
+    white-space:normal!important;
+  }
+}
