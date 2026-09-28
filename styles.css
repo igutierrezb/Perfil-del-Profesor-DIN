@@ -8783,3 +8783,31 @@ body.printing-profile #printArea{
   white-space:nowrap!important;
   letter-spacing:0!important;
 }
+
+
+/* V52 · Datos profesor: categoría y grado compactos */
+#perfil .profile-main-row,
+#perfil .profile-grid,
+#perfil .teacher-main-grid{
+  grid-template-columns:minmax(150px,1fr) minmax(150px,1fr) minmax(170px,1.15fr) minmax(220px,1.45fr) minmax(95px,.55fr)!important;
+  gap:10px!important;
+}
+#perfil .degree-field{min-width:95px!important;max-width:120px!important;}
+#perfil .degree-field select{width:100%!important;}
+@media(max-width:900px){
+  #perfil .profile-main-row,#perfil .profile-grid,#perfil .teacher-main-grid{grid-template-columns:1fr 1fr!important;}
+}
+
+/* V52 · Comisiones compactas */
+.commission-schedule-question{display:flex!important;align-items:center!important;gap:7px!important;flex-wrap:nowrap!important;}
+.commission-inline-add-btn{min-height:28px!important;padding:4px 9px!important;border-radius:999px!important;border:1px solid #75aa8f!important;background:#eef8f3!important;color:#246a4b!important;font-size:8px!important;font-weight:800!important;white-space:nowrap!important;margin-left:6px!important;}
+.commission-remove-btn{min-height:28px!important;height:28px!important;padding:4px 9px!important;border-radius:999px!important;font-size:8px!important;white-space:nowrap!important;}
+.mini-choice{min-height:28px!important;padding:4px 8px!important;border-radius:999px!important;}
+.compact-slot input:checked + span{background:#fde5e3!important;border-color:#d45b50!important;color:#9c2f27!important;}
+.compact-day:has(input:checked){border-color:#e6a19a!important;background:#fff8f7!important;}
+.compact-day:has(input:checked)>b{color:#a3362e!important;}
+
+/* V52 · Nota coordinador/favorita más compacta */
+.coord-fav-inline-note{margin-bottom:0!important;min-height:22px!important;grid-template-rows:11px 11px!important;}
+.coord-fav-inline-note .coord-note-line,.coord-fav-inline-note .fav-note-line{height:11px!important;min-height:11px!important;line-height:11px!important;padding-top:0!important;padding-bottom:0!important;font-size:6.8px!important;}
+.coord-fav-inline-note + .course-columns{margin-top:0!important;}

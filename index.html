@@ -98,6 +98,13 @@
         <label>Apellido materno *<input id="apMat" placeholder="Ej. López"></label>
         <label>Nombres *<input id="nombres" placeholder="Ej. Ana Patricia"></label>
         <label>Categoría *<select id="categoria"></select></label>
+      <label class="degree-field">Grado Académico
+        <select id="gradoAcademico">
+          <option value="">Sin grado</option>
+          <option>TSU</option><option>Lic.</option><option>Ing.</option><option>Esp.</option>
+          <option>Mtra.</option><option>Mtro.</option><option>Dr.</option><option>Dra.</option><option>Posdr.</option>
+        </select>
+      </label>
       </div>
       <div class="save-row"><button class="save-btn" onclick="saveSection()">Guardar datos del profesor</button></div>
     </div>
@@ -167,7 +174,7 @@
             Por cada comisión capture su nombre y las horas autorizadas. Si requiere un bloque específico para su atención, seleccione los días y horarios correspondientes.
           </div>
           <div id="planningCommissionList" class="commission-entry-list"></div>
-          <button type="button" class="planning-add-btn commission-add-btn" onclick="addPlanningCommission()">＋ Guardar y agregar nueva comisión</button>
+          
         </div>
       </article>
   </div>

@@ -1,6 +1,6 @@
 
 import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.13.2/firebase-app.js';
-import { getAuth, GoogleAuthProvider, signInWithPopup, signOut, onAuthStateChanged, setPersistence, browserLocalPersistence } from 'https://www.gstatic.com/firebasejs/10.13.2/firebase-auth.js';
+import { getAuth, GoogleAuthProvider, signInWithPopup, signInWithRedirect, signOut, onAuthStateChanged, setPersistence, browserLocalPersistence } from 'https://www.gstatic.com/firebasejs/10.13.2/firebase-auth.js';
 import { getFirestore, doc, getDoc, setDoc, deleteDoc, collection, getDocs, onSnapshot, serverTimestamp, addDoc } from 'https://www.gstatic.com/firebasejs/10.13.2/firebase-firestore.js';
 
 const $=id=>document.getElementById(id);
@@ -130,6 +130,13 @@ function allPrograms(){
 }
 function programs(){return allPrograms().filter(p=>!disabledPrograms.includes(p.id))}
 function key(pid,s,c){return `${pid}|${s}|${c}`}
+function academicDegree(){return String(store.profile?.gradoAcademico||'').trim();}
+function printedProfessorName(){
+  const p=store.profile||{};
+  const degree=String(p.gradoAcademico||'').trim();
+  const name=[p.nombres,p.apPat,p.apMat].filter(Boolean).join(' ').trim();
+  return [degree,name].filter(Boolean).join(' ').trim();
+}
 function fullName(){return [$('apPat').value.trim(),$('apMat').value.trim(),$('nombres').value.trim()].filter(Boolean).join(' ')}
 function isEnglish(name){return /^INGLÉS\b/i.test(name.trim())}
 function subjectCase(text){
@@ -464,6 +471,8 @@ async function loadRemoteProfile(){
       renderPlanning();
       updatePlanningAvailability();
       updateProgress();
+      if(store.submittedPeriod===cfg.periodo){toast('Perfil finalizado. Puede consultar e imprimir su información. Si requiere editar algo, consulte a su JUCA.');}
+
     }
     if(!snap.exists()){
       resetLocalTeacherData({keepProfile:false});
@@ -606,70 +615,39 @@ window.signIn=async function(){
     alert('Firebase no está configurado correctamente. Revisa firebase-config.js y confirma apiKey, authDomain, projectId y appId.');
     return;
   }
-
   const provider=new GoogleAuthProvider();
-  provider.setCustomParameters({
-    hd:allowedDomain,
-    prompt:'select_account'
-  });
-
+  provider.setCustomParameters({hd:allowedDomain,prompt:'select_account'});
+  const ua=navigator.userAgent||'';
+  const isIOS=/iPad|iPhone|iPod/i.test(ua)||(navigator.platform==='MacIntel'&&Number(navigator.maxTouchPoints)>1);
+  const isMobile=isIOS||/Android|Mobile|IEMobile|Opera Mini/i.test(ua)||(window.matchMedia&&window.matchMedia('(max-width: 780px)').matches);
   try{
-    /*
-      IMPORTANTE PARA iPhone/Safari:
-      el popup se abre directamente desde el clic del usuario.
-      No se ejecuta ningún await antes de signInWithPopup().
-      Esto evita perder la activación del usuario y, a diferencia
-      de signInWithRedirect(), no depende de recuperar estado
-      cross-site entre github.io y firebaseapp.com.
-    */
+    if(isMobile){
+      await signInWithRedirect(auth,provider);
+      return;
+    }
     const res=await signInWithPopup(auth,provider);
     const email=(res.user?.email||'').toLowerCase();
-
     if(!isInstitutional(email)){
       await signOut(auth);
-      showInstitutionalAccessMessage(
-        `La cuenta seleccionada no pertenece al dominio autorizado. Selecciona una cuenta @${allowedDomain}.`
-      );
+      showInstitutionalAccessMessage(`La cuenta seleccionada no pertenece al dominio autorizado. Selecciona una cuenta @${allowedDomain}.`);
       return;
     }
   }catch(e){
     const code=e&&e.code?e.code:'';
-
-    if(code==='auth/api-key-not-valid.-please-pass-a-valid-api-key.' || code==='auth/invalid-api-key'){
-      alert('La configuración de Firebase no es válida. Revisa los GitHub Actions Secrets y vuelve a desplegar.');
-      return;
-    }
-
+    console.error('Error de autenticación',e);
     if(code==='auth/popup-blocked'){
-      const ios=/iPad|iPhone|iPod/i.test(navigator.userAgent||'')
-        || (navigator.platform==='MacIntel' && Number(navigator.maxTouchPoints)>1);
-
-      showInstitutionalAccessMessage(
-        ios
-          ? 'Safari/iPhone bloqueó la ventana segura de Google. Pulsa nuevamente “Ingresar con cuenta institucional” directamente desde esta página. Si persiste, en Ajustes de Safari desactiva temporalmente “Bloquear ventanas emergentes” y vuelve a intentarlo.'
-          : 'El navegador bloqueó la ventana segura de Google. Permite ventanas emergentes para este sitio y vuelve a pulsar “Ingresar con cuenta institucional”.'
-      );
+      showInstitutionalAccessMessage(`El navegador bloqueó la ventana segura de Google. Permite ventanas emergentes para este sitio y vuelve a intentarlo con tu cuenta @${allowedDomain}.`);
       return;
     }
-
-    if(code==='auth/popup-closed-by-user' || code==='auth/cancelled-popup-request'){
-      showInstitutionalAccessMessage(
-        'El acceso de Google se cerró antes de seleccionar la cuenta institucional.'
-      );
+    if(code==='auth/popup-closed-by-user'||code==='auth/cancelled-popup-request'){
+      showInstitutionalAccessMessage('El acceso de Google se cerró antes de seleccionar la cuenta institucional.');
       return;
     }
-
-    if(code==='auth/account-exists-with-different-credential'){
-      showInstitutionalAccessMessage(
-        `La cuenta debe validarse con Google usando el correo institucional @${allowedDomain}.`
-      );
+    if(code==='auth/network-request-failed'){
+      showInstitutionalAccessMessage(`No fue posible conectar con Google para iniciar sesión. Verifica la conexión o las restricciones de red y vuelve a intentarlo. La cuenta debe ser @${allowedDomain}.`);
       return;
     }
-
-    console.error(e);
-    showInstitutionalAccessMessage(
-      `No fue posible completar el inicio de sesión. Vuelve a intentarlo seleccionando tu cuenta @${allowedDomain}.`
-    );
+    showInstitutionalAccessMessage(`No fue posible completar el inicio de sesión. Vuelve a intentarlo seleccionando tu cuenta @${allowedDomain}.`);
   }
 }
 window.signOutApp=async function(){
@@ -803,6 +781,7 @@ function renderCommissionList(record){
       <span>¿Requiere un bloque específico de horas en la semana?</span>
       <label class="mini-choice yes"><input type="radio" name="commissionSchedule_${i}" value="yes" ${c.scheduleRequired==='yes'?'checked':''} onchange="commissionScheduleChanged(${i},'yes')"> Sí</label>
       <label class="mini-choice no"><input type="radio" name="commissionSchedule_${i}" value="no" ${c.scheduleRequired!=='yes'?'checked':''} onchange="commissionScheduleChanged(${i},'no')"> No</label>
+      <button type="button" class="commission-inline-add-btn" onclick="addPlanningCommission()">＋ Guardar y agregar nueva comisión</button>
     </div>
     ${renderCommissionScheduleGrid(c,i)}
   </div>`).join('');
@@ -993,6 +972,7 @@ function buildProfileRows(){
   $('laboral').innerHTML=Array.from({length:5},(_,i)=>`<div class="form-row"><div class="row-label">Organización ${i+1}${i===0?' *':''}</div><input placeholder="Ej. Empresa / institución" data-g="l${i+1}a"><input placeholder="Ej. Jefe de área" data-g="l${i+1}b"><input placeholder="Ej. ene 2020 - dic 2023" data-g="l${i+1}c"></div>`).join('');
 }
 function loadProfileValuesOnly(){
+  if($('gradoAcademico'))$('gradoAcademico').value=store.profile?.gradoAcademico||'';
   const p=store.profile||{};
   ['apPat','apMat','nombres','categoria'].forEach(x=>{if($(x))$(x).value=p[x]||''});
   document.querySelectorAll('[data-g]').forEach(x=>x.value=(p.extra||{})[x.dataset.g]||'');
@@ -1696,6 +1676,11 @@ window.printProfile=async function(){
     }
   }
 
+  if(!submissionLockedForCurrentPeriod()){
+    const ok=confirm('¿Finalizar e imprimir / guardar PDF?\n\nAl finalizar, la edición quedará bloqueada para este periodo. Podrá consultar e imprimir nuevamente su información, pero si requiere hacer alguna corrección deberá solicitar a su JUCA que habilite la edición de su perfil.');
+    if(!ok)return;
+  }
+
   // Si ya estaba finalizado, únicamente reconstruye e imprime.
   if(submissionLockedForCurrentPeriod() || isAdmin()){
     buildPrint();
@@ -2389,7 +2374,7 @@ async function exportWorkbook(){
   const headerRows=6;
   const aoa=Array.from({length:headerRows+teachers.length},()=>[]);
   aoa[0][0]='PROGRAMA EDUCATIVO';
-  aoa[0][1]='Leyenda: ★ Favorita · ✓ Coordinó la asignatura';
+  aoa[0][1]='Leyenda: ★ = Favorita (negrita) · fuente roja y negrita = Coordinó la asignatura';
   aoa[1][0]='ASIGNATURA';
   aoa[2][0]='HORAS AL CUATRIMESTRE';
   aoa[3][0]='HORAS A LA SEMANA';
@@ -2546,9 +2531,9 @@ async function exportWorkbook(){
             name:'Aptos',
             sz:10,
             bold:favorite || coordinated,
-            color:{rgb:coordinated?'1F714B':(favorite?'8B6100':'243746')}
+            color:{rgb:coordinated?'C62828':'243746'}
           },
-          fill:{patternType:'solid',fgColor:{rgb:coordinated?'E2F3E9':(favorite?'FFF1C7':'FFFFFF')},bgColor:{rgb:'FFFFFF'}},
+          fill:{patternType:'solid',fgColor:{rgb:'FFFFFF'},bgColor:{rgb:'FFFFFF'}},
           alignment:{horizontal:'center',vertical:'center'},
           border:{
             top:{style:'thin',color:{rgb:'D4DCE3'}},
@@ -2599,8 +2584,8 @@ async function exportWorkbook(){
         const addr=XLSX.utils.encode_cell({r,c:coordCol});
         if(wsBase[addr] && String(wsBase[addr].v||'').toLowerCase()==='sí'){
           wsBase[addr].s={
-            font:{name:'Aptos',sz:10,bold:true,color:{rgb:'1F714B'}},
-            fill:{patternType:'solid',fgColor:{rgb:'E2F3E9'}},
+            font:{name:'Aptos',sz:10,bold:true,color:{rgb:'C62828'}},
+            fill:{patternType:'solid',fgColor:{rgb:'FFFFFF'}},
             alignment:{horizontal:'center',vertical:'center'}
           };
         }

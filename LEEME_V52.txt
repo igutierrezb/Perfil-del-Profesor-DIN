@@ -1,0 +1,12 @@
+PERFIL PROFESOR DIN · V52
+
+- Excel: favorita = estrella + negrita, sin fondo; coordinada = rojo + negrita, sin fondo.
+- Comisiones: Sí/No horizontales, Eliminar ovalado más pequeño, Guardar y agregar nueva comisión junto a Sí/No, bloques seleccionados en rojo suave.
+- Datos del profesor: agrega Grado Académico (TSU, Lic., Ing., Esp., Mtra., Mtro., Dr., Dra., Posdr.).
+- Impresión: nombre = Grado + Nombres + Apellido paterno + Apellido materno.
+- Nota Coordinador/Favorita más compacta.
+- Finalización: advertencia explícita de bloqueo y aviso al reingresar.
+- Login: móvil por redirección; escritorio por popup con manejo de bloqueo/red.
+
+deploy-pages.yml: NO necesita actualización.
+firestore.rules: NO necesita actualización.
