@@ -1,6 +1,6 @@
 
 import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.13.2/firebase-app.js';
-import { getAuth, GoogleAuthProvider, signInWithPopup, signInWithRedirect, signOut, onAuthStateChanged, setPersistence, browserLocalPersistence } from 'https://www.gstatic.com/firebasejs/10.13.2/firebase-auth.js';
+import { getAuth, GoogleAuthProvider, signInWithCredential, signOut, onAuthStateChanged, setPersistence, browserLocalPersistence } from 'https://www.gstatic.com/firebasejs/10.13.2/firebase-auth.js';
 import { getFirestore, doc, getDoc, setDoc, deleteDoc, collection, getDocs, onSnapshot, serverTimestamp, addDoc } from 'https://www.gstatic.com/firebasejs/10.13.2/firebase-firestore.js';
 
 const $=id=>document.getElementById(id);
@@ -15,6 +15,7 @@ let currentProgramIndex=Number.isInteger(store.currentProgramIndex)?store.curren
 let newSemesterCount=5,programEditorSemesters=[],auth=null,currentUser=null,authReady=false,db=null,cloudSettingsUnsub=null,cloudProfileMetaUnsub=null,remoteProfileLoaded=false,cloudAvailable=false,cloudSaveTimer=null,countdownTimer=null,lastSavedAt=store.lastSavedAt||null,editingCommonRuleId=null,editingProgramId=null,teacherAdminCache={};
 const allowedDomain=(window.PAD_ALLOWED_DOMAIN||'uteq.edu.mx').toLowerCase();
 const adminEmail=(window.PAD_ADMIN_EMAIL||'ivan.gutierrez@uteq.edu.mx').toLowerCase();
+const googleClientId=String(window.PAD_GOOGLE_CLIENT_ID||'').trim();
 
 const PLANNING_DAYS=[
   {key:'lunes',label:'Lunes'},
@@ -341,7 +342,7 @@ function persist(){
 }
 function statusBox(errors,title){return `<div class="status-box bad"><b>${title}</b><ul>${errors.map(x=>`<li>${x}</li>`).join('')}</ul></div>`}
 function updatePeriodBadges(){ $('periodBadgeGate').textContent=`Periodo de vigencia · ${cfg.periodo}`; $('periodBadgeInline').textContent=`Periodo de vigencia · ${cfg.periodo}`; }
-function authConfigured(){return !!(window.FIREBASE_CONFIG&&window.FIREBASE_CONFIG.apiKey&&window.FIREBASE_CONFIG.authDomain&&window.FIREBASE_CONFIG.projectId&&window.FIREBASE_CONFIG.appId)}
+function authConfigured(){return !!(window.FIREBASE_CONFIG&&window.FIREBASE_CONFIG.apiKey&&window.FIREBASE_CONFIG.projectId&&window.FIREBASE_CONFIG.appId)}
 
 function updateCloudStatus(text,kind='neutral'){
   const el=$('cloudStatus');if(!el)return;el.textContent=text;el.className=`cloud-status ${kind}`;
@@ -592,6 +593,102 @@ function institutionalAccessMessage(extra=''){
 function showInstitutionalAccessMessage(extra=''){
   alert(institutionalAccessMessage(extra));
 }
+/* V53 · Google Identity Services directo: evita por completo /__/auth/handler de firebaseapp.com */
+function googleIdentityReady(){
+  return !!(window.google?.accounts?.oauth2?.initTokenClient);
+}
+function waitForGoogleIdentity(timeoutMs=10000){
+  if(googleIdentityReady())return Promise.resolve(true);
+  return new Promise(resolve=>{
+    const start=Date.now();
+    const timer=setInterval(()=>{
+      if(googleIdentityReady()){
+        clearInterval(timer);resolve(true);return;
+      }
+      if(Date.now()-start>=timeoutMs){clearInterval(timer);resolve(false)}
+    },100);
+  });
+}
+function googleAuthErrorMessage(detail=''){
+  const suffix=detail?`\n\n${detail}`:'';
+  return `Acceso institucional UTEQ\n\n`+
+    `Debes ingresar con una cuenta @${allowedDomain}.\n\n`+
+    `Esta plataforma no solicita ni almacena tu contraseña. El acceso se realiza directamente con Google y la sesión se valida en Firebase mediante una credencial de Google; no se utiliza la página de acceso de firebaseapp.com.${suffix}`;
+}
+async function signInWithGoogleIdentity(){
+  if(!googleClientId){
+    alert(
+      'Falta configurar GOOGLE_CLIENT_ID para el acceso institucional.\\n\\n'+
+      'Administración: agregue el Client ID de Google como secreto GOOGLE_CLIENT_ID en GitHub y publique nuevamente.'
+    );
+    return false;
+  }
+  const ready=await waitForGoogleIdentity();
+  if(!ready){
+    alert(googleAuthErrorMessage('No fue posible cargar el servicio de acceso de Google (accounts.google.com). Verifique la conexión o las restricciones de red y vuelva a intentarlo.'));
+    return false;
+  }
+
+  return await new Promise(resolve=>{
+    let settled=false;
+    const finish=v=>{if(!settled){settled=true;resolve(v)}};
+    try{
+      const tokenClient=window.google.accounts.oauth2.initTokenClient({
+        client_id:googleClientId,
+        scope:'openid email profile',
+        include_granted_scopes:true,
+        hosted_domain:allowedDomain,
+        prompt:'select_account',
+        callback:async response=>{
+          if(!response||response.error||!response.access_token){
+            console.error('Google OAuth response',response);
+            alert(googleAuthErrorMessage('Google no devolvió una credencial válida. Vuelva a seleccionar su cuenta institucional.'));
+            finish(false);return;
+          }
+          try{
+            const credential=GoogleAuthProvider.credential(null,response.access_token);
+            const result=await signInWithCredential(auth,credential);
+            const email=String(result.user?.email||'').toLowerCase();
+            if(!isInstitutional(email)){
+              await signOut(auth);
+              alert(googleAuthErrorMessage(`La cuenta seleccionada no pertenece al dominio autorizado @${allowedDomain}.`));
+              finish(false);return;
+            }
+            finish(true);
+          }catch(e){
+            console.error('Firebase credential sign-in error',e);
+            const code=e?.code||'';
+            if(code==='auth/network-request-failed'){
+              alert(googleAuthErrorMessage('No fue posible validar la credencial con Firebase. Verifique la conexión y vuelva a intentarlo.'));
+            }else{
+              alert(googleAuthErrorMessage(`No fue posible completar el acceso (${code||'error de autenticación'}).`));
+            }
+            finish(false);
+          }
+        },
+        error_callback:error=>{
+          console.error('Google popup error',error);
+          const type=error?.type||'';
+          if(type==='popup_failed_to_open'){
+            alert(googleAuthErrorMessage('El navegador bloqueó la ventana de Google. Permita ventanas emergentes para igutierrezb.github.io y vuelva a intentarlo.'));
+          }else if(type==='popup_closed'){
+            // El usuario cerró la ventana; no convertirlo en un error técnico.
+          }else{
+            alert(googleAuthErrorMessage('No fue posible abrir el selector de cuenta de Google. Vuelva a intentarlo.'));
+          }
+          finish(false);
+        }
+      });
+      // Debe ejecutarse desde el clic del usuario para que Safari/Chrome no lo bloqueen.
+      tokenClient.requestAccessToken({prompt:'select_account'});
+    }catch(e){
+      console.error('Google Identity Services init error',e);
+      alert(googleAuthErrorMessage('No fue posible iniciar el selector de cuenta de Google.'));
+      finish(false);
+    }
+  });
+}
+
 function updateAuthUI(){
   const gateStatus=$('authStatusGate'),topStatus=$('authStatus');
   if(authConfigured()){
@@ -612,43 +709,13 @@ function updateAuthUI(){
 }
 window.signIn=async function(){
   if(!authConfigured()){
-    alert('Firebase no está configurado correctamente. Revisa firebase-config.js y confirma apiKey, authDomain, projectId y appId.');
+    alert('Firebase no está configurado correctamente. Revise apiKey, projectId y appId.');
     return;
   }
-  const provider=new GoogleAuthProvider();
-  provider.setCustomParameters({hd:allowedDomain,prompt:'select_account'});
-  const ua=navigator.userAgent||'';
-  const isIOS=/iPad|iPhone|iPod/i.test(ua)||(navigator.platform==='MacIntel'&&Number(navigator.maxTouchPoints)>1);
-  const isMobile=isIOS||/Android|Mobile|IEMobile|Opera Mini/i.test(ua)||(window.matchMedia&&window.matchMedia('(max-width: 780px)').matches);
-  try{
-    if(isMobile){
-      await signInWithRedirect(auth,provider);
-      return;
-    }
-    const res=await signInWithPopup(auth,provider);
-    const email=(res.user?.email||'').toLowerCase();
-    if(!isInstitutional(email)){
-      await signOut(auth);
-      showInstitutionalAccessMessage(`La cuenta seleccionada no pertenece al dominio autorizado. Selecciona una cuenta @${allowedDomain}.`);
-      return;
-    }
-  }catch(e){
-    const code=e&&e.code?e.code:'';
-    console.error('Error de autenticación',e);
-    if(code==='auth/popup-blocked'){
-      showInstitutionalAccessMessage(`El navegador bloqueó la ventana segura de Google. Permite ventanas emergentes para este sitio y vuelve a intentarlo con tu cuenta @${allowedDomain}.`);
-      return;
-    }
-    if(code==='auth/popup-closed-by-user'||code==='auth/cancelled-popup-request'){
-      showInstitutionalAccessMessage('El acceso de Google se cerró antes de seleccionar la cuenta institucional.');
-      return;
-    }
-    if(code==='auth/network-request-failed'){
-      showInstitutionalAccessMessage(`No fue posible conectar con Google para iniciar sesión. Verifica la conexión o las restricciones de red y vuelve a intentarlo. La cuenta debe ser @${allowedDomain}.`);
-      return;
-    }
-    showInstitutionalAccessMessage(`No fue posible completar el inicio de sesión. Vuelve a intentarlo seleccionando tu cuenta @${allowedDomain}.`);
-  }
+  // V53: Google autentica directamente y entrega un access token.
+  // Firebase recibe esa credencial mediante signInWithCredential().
+  // Por diseño NO se abre perfil-profesor-din.firebaseapp.com/__/auth/handler.
+  await signInWithGoogleIdentity();
 }
 window.signOutApp=async function(){
   try{

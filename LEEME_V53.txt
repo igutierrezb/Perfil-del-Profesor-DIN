@@ -1,0 +1,15 @@
+PERFIL PROFESOR DIN · V53 — CORRECCIÓN DEFINITIVA DEL ACCESO
+
+Único cambio funcional: autenticación institucional.
+
+- Se elimina del flujo de inicio de sesión Firebase Popup/Redirect Handler.
+- Ya no se abre perfil-profesor-din.firebaseapp.com/__/auth/handler.
+- Google Identity Services autentica directamente en accounts.google.com.
+- Firebase recibe la credencial con signInWithCredential.
+- Se conserva la restricción @uteq.edu.mx.
+- No se modifica captura, administración, Excel, impresión, Comisiones, Firestore ni estilos.
+
+IMPORTANTE:
+- deploy-pages.yml SÍ debe actualizarse.
+- Debe agregarse un único GitHub Actions Secret nuevo: GOOGLE_CLIENT_ID.
+- firestore.rules NO cambia.
