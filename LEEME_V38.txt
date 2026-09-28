@@ -1,0 +1,25 @@
+PERFIL PROFESOR DIN · V38
+
+Cambios puntuales:
+1. Móvil:
+   - corregido Guardar y continuar al perfil por programa;
+   - guardado explícito antes del cambio de vista;
+   - botón con listener robusto y sin dependencia del onclick inline.
+2. Validación móvil:
+   - si falta un dato, desplaza la pantalla al campo;
+   - lo resalta con un recuadro naranja/rojo visible.
+3. Impresión móvil:
+   - se fuerza el mismo formato legal horizontal usado en escritorio mediante @page y ancho de impresión.
+4. Tabla:
+   - columna Asignatura más compacta;
+   - permite dos líneas en escritorio;
+   - Área/Competencia más compactas.
+5. Coordinador/Favorita:
+   - círculos perfectos;
+   - palomita y estrella centradas;
+   - controles sin cortes.
+
+La versión de escritorio mantiene la lógica existente.
+
+deploy-pages.yml: NO necesita actualización.
+firestore.rules: NO necesita actualización.

@@ -604,7 +604,67 @@ function validateProfile(opts={}){
   return{ok:!errors.length,errors,checks}
 }
 window.saveSection=function(){if(!requireEditing())return;collectProfile();writeAudit('Sección de perfil guardada');toast('Avances guardados.')}
-window.continueToCapture=function(){if(!requireEditing())return;const v=validateProfile({visual:true,focusFirst:true});$('profileErrors').innerHTML=v.ok?'':statusBox(v.errors,'Complete los datos obligatorios antes de continuar.');if(!v.ok)return;clearRequiredHighlights();renderCurrentProgram();window.go('captura',true)}
+window.continueToCapture=async function(){
+  if(!requireEditing())return false;
+
+  // Cierra teclado móvil antes de validar/cambiar de vista.
+  try{document.activeElement?.blur()}catch(_){}
+
+  const v=validateProfile({visual:true,focusFirst:false});
+  const errorBox=$('profileErrors');
+  if(errorBox)errorBox.innerHTML=v.ok?'':statusBox(v.errors,'Complete los datos obligatorios antes de continuar.');
+
+  if(!v.ok){
+    const missing=v.checks.filter(x=>x.missing&&x.el);
+    const first=missing[0]?.el;
+
+    if(first){
+      // En móvil: llevar de forma inequívoca al dato faltante.
+      const mobile=window.matchMedia('(max-width: 780px)').matches;
+      if(mobile){
+        document.querySelectorAll('#perfil .mobile-required-focus').forEach(el=>el.classList.remove('mobile-required-focus'));
+        first.classList.add('mobile-required-focus');
+        const wrap=first.closest('label,.form-row,.section-card')||first;
+        requestAnimationFrame(()=>{
+          wrap.scrollIntoView({behavior:'smooth',block:'center'});
+          setTimeout(()=>{
+            try{first.focus({preventScroll:true})}catch(_){try{first.focus()}catch(__){}}
+          },420);
+        });
+      }else{
+        first.scrollIntoView({behavior:'smooth',block:'center'});
+        setTimeout(()=>{try{first.focus({preventScroll:true})}catch(_){first.focus()}},320);
+      }
+    }
+    return false;
+  }
+
+  clearRequiredHighlights();
+  document.querySelectorAll('#perfil .mobile-required-focus').forEach(el=>el.classList.remove('mobile-required-focus'));
+
+  // Guardar antes de cambiar de vista.
+  collectProfile();
+  persist();
+  if(cloudAvailable&&currentUser){
+    try{await saveProfileToCloud(false)}catch(e){console.warn('Guardado previo al avance',e)}
+  }
+
+  renderCurrentProgram();
+
+  // Cambio de vista directo y seguro para móviles.
+  document.querySelectorAll('.view').forEach(x=>x.classList.remove('active'));
+  const capture=$('captura');
+  if(capture)capture.classList.add('active');
+  document.querySelectorAll('.main-nav button').forEach(b=>b.classList.toggle('active',b.dataset.view==='captura'));
+
+  requestAnimationFrame(()=>{
+    const top=(capture?.offsetTop||0)-48;
+    window.scrollTo({top:Math.max(0,top),behavior:'smooth'});
+  });
+
+  updateNavState();
+  return true;
+}
 
 function originCode(a){return(a.origins||[]).join('')}
 function normalizeOrigins(code){return String(code).split('').map(Number)}
@@ -1963,3 +2023,22 @@ function init(){
   updateNavState();
 }
 init();
+
+
+/* V38: enlace robusto del botón de avance en escritorio y móvil */
+document.addEventListener('DOMContentLoaded',()=>{
+  const btn=document.getElementById('continueProfileBtn');
+  if(!btn||btn.dataset.boundContinue==='1')return;
+  btn.dataset.boundContinue='1';
+  btn.addEventListener('click',async ev=>{
+    ev.preventDefault();
+    ev.stopPropagation();
+    if(btn.disabled)return;
+    btn.disabled=true;
+    try{
+      await window.continueToCapture();
+    }finally{
+      btn.disabled=false;
+    }
+  },{passive:false});
+});
