@@ -5819,3 +5819,49 @@ body.printing-profile #printArea{
     margin-right:0!important;
   }
 }
+
+
+/* =========================================================
+   V34 · jerarquía visual, impresión y trazabilidad
+   ========================================================= */
+.program-name-flow strong{font-size:19px!important;line-height:1.08!important;letter-spacing:-.012em!important}
+.program-name-flow span{font-size:10.5px!important;margin-top:2px!important}
+.capture-guide-current{margin:0!important;border-radius:0!important;border-left:0!important;border-right:0!important;box-shadow:none!important}
+.capture-guide-current .instruction-title{font-size:13px!important}
+.capture-marquee{background:linear-gradient(90deg,#9b4037,#b95548,#9b4037)!important;border-color:#87362f!important}
+.capture-marquee-track{animation-duration:42s!important}
+.capture-marquee-track span{padding:10px 100px 10px 0!important;font-size:10.2px!important;letter-spacing:.012em!important;word-spacing:.08em!important}
+.capture-marquee-track span::before{margin-left:30px!important;margin-right:12px!important}
+
+.coord-fav-inline-note{display:grid;grid-template-columns:minmax(220px,1.85fr) 72px 78px 188px 78px 64px;gap:4px;margin:0 0 4px!important;min-height:18px;align-items:center}
+.coord-fav-inline-note span{grid-column:5/7;padding:3px 6px!important;border-left:3px solid #c94c40;background:#fff7f5;color:#99352c;font-size:7.8px!important;font-weight:800!important;line-height:1.15!important;text-align:center;border-radius:0 5px 5px 0}
+.course-columns,.course{grid-template-columns:minmax(220px,1.85fr) 72px 78px 188px 78px 64px!important}
+.course-columns .coord-head,.course-columns .fav-head{display:flex!important;align-items:center!important;justify-content:center!important;height:100%!important;padding-left:5px!important;padding-right:5px!important;text-align:center!important;white-space:normal!important}
+.course-columns .fav-head{color:#fff!important;font-size:7.8px!important;font-weight:800!important}
+.coord-row-check,.ideal-btn{justify-self:center!important;align-self:center!important;margin:0!important}
+.coord-row-check{width:30px!important;height:30px!important;min-width:30px!important;min-height:30px!important}
+.ideal-btn{width:34px!important;height:30px!important;min-width:34px!important;min-height:30px!important;max-width:34px!important;font-size:17px!important}
+
+.hero{background:linear-gradient(115deg,#c8e1ee 0%,#b8d9e8 58%,#a9d0df 100%)!important;border-bottom:4px solid #df8730!important}
+.hero .eyebrow{color:#235c70!important}.hero h1{color:#082f4d!important}.hero p{color:#395b6e!important}
+.hero-icon{background:transparent!important;padding:0!important;border:0!important;border-radius:0!important;box-shadow:none!important;filter:drop-shadow(0 5px 9px rgba(10,50,75,.18))!important}
+.hero-side,.hero-side *{color:#193f55!important}
+
+.teacher-admin-status span{white-space:normal!important;line-height:1.35!important}
+
+@media print{
+  #printArea .print-program-title{font-size:9.6px!important}
+  #printArea .currTable tr:first-child th{font-size:9px!important}
+  #printArea .currTable tr:nth-child(2) th:not(.vhead):not(.area-print-head){font-size:9px!important}
+  #printArea .currTable td.subject{font-size:10.7px!important}
+  #printArea .quality-finalized{margin-top:1px!important;font-size:5.5px!important;line-height:1!important;color:#677986!important;font-weight:500!important}
+}
+
+@media (min-width:1260px){.coord-fav-inline-note{grid-template-columns:minmax(220px,1.85fr) 72px 78px 188px 78px 64px!important}}
+@media (min-width:781px) and (max-width:1259px){.coord-fav-inline-note{grid-template-columns:minmax(220px,1.85fr) 72px 78px minmax(188px,1fr) 78px 64px!important}}
+@media (max-width:780px){
+  .program-name-flow strong{font-size:16px!important}
+  .coord-fav-inline-note{display:block!important;margin:0 0 5px!important}
+  .coord-fav-inline-note span{display:block!important;text-align:left!important;font-size:8.5px!important}
+  .capture-marquee-track span{padding-right:72px!important}
+}

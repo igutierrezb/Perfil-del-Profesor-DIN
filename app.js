@@ -721,6 +721,19 @@ function rowCoordinatorEnabled(pid,s,c,name){
 }
 
 const pastelTitles=['#eef4f9','#f7efe7','#edf6f0','#f2effa','#fff4ea','#ecf6f8','#f8eef1','#eef5e9'];
+function captureGuideHtml(){
+  return `<div class="instruction-band card capture-guide-band capture-guide-current">
+    <div class="instruction-title">Cómo capturar cada asignatura</div>
+    <div class="instruction-grid-five">
+      <div class="capture-help-card"><b>1. Asignatura y habilitación</b><span>Revise cada materia. Si el interruptor está <strong>apagado</strong>, significa que <strong>no puede impartirla</strong> y esa materia <strong>se imprimirá en blanco</strong>.</span></div>
+      <div class="capture-help-card"><b>2. Competencia</b><span>Seleccione el nivel de dominio: <strong class="help-x">X = Competencia media</strong> y <strong class="help-xx">XX = Competencia alta</strong>.</span></div>
+      <div class="capture-help-card"><b>3. Área de conocimiento</b><span>Seleccione una sola opción: 1 · 2 · 3 · 12 · 13 · 23 · 123.</span><div class="knowledge-key knowledge-key-inline single-line-key"><b>1</b> Formación académica · <b>2</b> Experiencia docente · <b>3</b> Experiencia laboral</div></div>
+      <div class="capture-help-card reference-help-card"><b><span class="help-alert">!</span> 4. Coordinación</b><span>Marque <strong class="help-check">✓</strong> solo si ha coordinado previamente esa asignatura. <strong>No aparece en la impresión</strong>; es una referencia para el coordinador.</span></div>
+      <div class="capture-help-card reference-help-card"><b><span class="help-alert">!</span> 5. Favorita</b><span>De forma <strong>opcional</strong>, marque <strong class="help-star">★</strong> si considera que esa asignatura es ideal para impartir de acuerdo con su perfil profesional. <strong>No aparece en la impresión</strong>.</span></div>
+    </div>
+  </div>`;
+}
+
 function renderCurrentProgram(){
   const p=currentProgram();if(!p)return;
   $('programStep').textContent=`Programa ${currentProgramIndex+1} de ${programs().length}`;
@@ -731,6 +744,7 @@ function renderCurrentProgram(){
   const guideText='Guía rápida: activa la asignatura que puedes impartir · selecciona tu nivel de dominio (X = medio, XX = alto) · indica el origen del conocimiento (1 formación, 2 experiencia docente, 3 experiencia laboral o 12, 13, 23, 123) · marca ✓ si ya coordinaste esa materia · opcional: marca ★ Favorito si es una de tus asignaturas ideales para impartir.';
 
   let h=`<article class="program">
+    ${captureGuideHtml()}
     <div class="capture-marquee" aria-label="${guideText}">
       <div class="capture-marquee-track"><span>${guideText}</span><span aria-hidden="true">${guideText}</span></div>
     </div>
@@ -738,20 +752,20 @@ function renderCurrentProgram(){
     ${renderCoordinator(p)}
     <div class="program-scroll-wrap">
       <div class="program-progress-strip"><span>${st.done}/${st.total} revisadas${st.missing?` · ${st.missing} pendientes`:''}</span></div>
-      <div class="coord-fav-note">✓ Si ya has coordinado una asignatura, o ★ si es una de tus materias favoritas, selecciónalo.</div>
       <div class="scroll-hint">↔ Si la pantalla es más angosta, desplácese horizontalmente para ver todas las columnas.</div>
       <div class="semesters-grid">`;
 
   p.semesters.forEach((sem,s)=>{
     h+=`<div class="semester-card">
       <h4>${s+1}.° cuatrimestre <span>${sem.length} asignaturas</span></h4>
+      <div class="coord-fav-inline-note"><span>✓ Si ya la coordinaste · ★ si es favorita</span></div>
       <div class="course-columns">
         <span>Asignatura</span>
         <span>Habilitar</span>
         <span>Competencia</span>
         <span class="area-head">Área de conocimiento</span>
         <span class="coord-head">¿Coordinador?</span>
-        <span class="fav-head">★</span>
+        <span class="fav-head">Favorita</span>
       </div>`;
 
     sem.forEach((name,c)=>{
@@ -892,14 +906,20 @@ window.validateAndReview=function(){
 function lockRevisionNav(){$('navRevision').classList.toggle('locked',!reviewAvailable())}
 window.saveAll=function(show=false){if(!requireEditing())return;collectProfile();persist();updateProgress();lockRevisionNav();writeAudit('Perfil guardado manualmente');if(show)toast('Perfil guardado.')}
 
+function formatLocalProfileDateTime(ms){
+  const n=Number(ms)||0;
+  if(!n)return '';
+  return new Intl.DateTimeFormat('es-MX',{day:'2-digit',month:'2-digit',year:'numeric',hour:'2-digit',minute:'2-digit',hour12:true}).format(new Date(n));
+}
 function printHeader(){
+  const closedAt=formatLocalProfileDateTime(store.finalizedAtMs);
   return `<div class="sheetHead">
     <div class="brandPrint">
       <img src="logo-uteq-wordmark.svg" class="print-logo">
       <div class="printBrandText">UNIVERSIDAD TECNOLÓGICA<br>DE QUERÉTARO</div>
     </div>
     <div class="sheetTitle"><h2>PERFIL DEL PROFESOR</h2><b>DIVISIÓN: INDUSTRIAL</b><br><span>PERIODO DE VIGENCIA: ${cfg.periodo}</span></div>
-    <div class="quality-plain"><span>${cfg.codigo}</span><span>${cfg.revision}</span><span>Fecha ${cfg.fechaRevision}</span></div>
+    <div class="quality-plain"><span>${cfg.codigo}</span><span>${cfg.revision}</span><span>Fecha ${cfg.fechaRevision}</span>${closedAt?`<span class="quality-finalized">Cierre ${closedAt}</span>`:''}</div>
   </div>`;
 }
 function metaCentered(){return `<div class="meta center compactline"><span><b>Nombre:</b> ${fullName()}</span><span><b>Categoría:</b> ${store.profile?.categoria||''}</span><span><b>Competencia:</b> X = Medio · XX = Alto</span><span><b>Área de conocimiento:</b> 1 Formación · 2 Docencia · 3 Laboral</span></div>`}
@@ -1033,6 +1053,19 @@ window.saveAdmin=function(){
   toast(previousPeriod===cfg.periodo?'Configuración guardada.':'Periodo actualizado. Los datos capturados se conservaron.');
 }
 
+function timestampToMs(value){
+  if(!value)return 0;
+  if(typeof value==='number')return value;
+  if(value instanceof Date)return value.getTime();
+  if(typeof value.toDate==='function')return value.toDate().getTime();
+  if(Number.isFinite(value.seconds))return Number(value.seconds)*1000 + Math.floor((Number(value.nanoseconds)||0)/1e6);
+  return 0;
+}
+function formatTeacherUpdatedAt(value){
+  const ms=timestampToMs(value);
+  if(!ms)return 'Sin fecha registrada';
+  return new Intl.DateTimeFormat('es-MX',{day:'2-digit',month:'short',year:'numeric',hour:'2-digit',minute:'2-digit',hour12:true}).format(new Date(ms));
+}
 function formatTeacherCompletion(d){
   if(d.submittedPeriod!==cfg.periodo)return 'Sin concluir';
   const ms=Number(d.finalizedAtMs)||0;
@@ -1071,11 +1104,14 @@ async function renderTeacherAdminList(){
       const override=!!r.individualEditEnabled;
       const statusTitle=override?'Edición individual habilitada':(doneNow?'Concluido':'En captura / sin concluir');
       const lastCompletion=doneNow?formatTeacherCompletion(r):'';
+      const lastEdit=formatTeacherUpdatedAt(r.updatedAt);
       const statusText=override
         ?(doneNow
-          ?`Edición individual habilitada · Último cierre: ${lastCompletion}`
-          :'Este profesor puede editar aunque la edición general esté cerrada.')
-        :(doneNow?`Finalizó y envió: ${lastCompletion}`:'Edición disponible según los controles generales');
+          ?`Última edición: ${lastEdit} · Finalizó y envió: ${lastCompletion} · Edición individual habilitada`
+          :`Última edición: ${lastEdit} · Edición individual habilitada`)
+        :(doneNow
+          ?`Última edición: ${lastEdit} · Finalizó y envió: ${lastCompletion}`
+          :`Última edición: ${lastEdit}`);
       return `<div class="teacher-admin-row ${override?'individual-open':doneNow?'finished':'open'}">
         <div class="teacher-admin-main">
           <b>${escapeHtml(r.name)}</b>

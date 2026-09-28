@@ -1,0 +1,15 @@
+PERFIL PROFESOR DIN · V34
+
+- Cómo capturar se mueve debajo del programa actual.
+- Nombre del programa más grande y visual.
+- Cintillo rojo más discreto y con más espacio de lectura.
+- Nota compacta “✓ Si ya la coordinaste · ★ si es favorita” sobre esas columnas.
+- Encabezado Favorita.
+- Botones Coordinador/Favorita centrados.
+- Portada azul pastel más fuerte y logo transparente.
+- Impresión: +1 punto en Programa, Cuatrimestre, Asignatura y nombres de asignaturas; Nivel/Área sin cambio.
+- Impresión: cierre con día/hora bajo datos de calidad.
+- Administración: última edición y fecha/hora de finalización.
+
+deploy-pages.yml: NO necesita actualización si ya usa V30+.
+firestore.rules: NO necesita actualización.
