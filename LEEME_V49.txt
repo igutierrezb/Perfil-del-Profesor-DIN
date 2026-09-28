@@ -1,0 +1,57 @@
+PERFIL PROFESOR DIN · V49
+
+CAMBIOS IMPLEMENTADOS SIN ALTERAR LA LÓGICA EXISTENTE
+
+1. Administración
+- Control de captura, Configuración institucional y Comisiones aparecen como tres bloques horizontales homogéneos.
+- Los tres utilizan la misma jerarquía visual y altura de tarjeta.
+- Comisiones puede habilitarse/deshabilitarse desde su propio bloque.
+
+2. Comisiones
+- Ya no existe como una cuarta página separada.
+- Se integra como apartado 4 dentro de Datos del profesor.
+- Si está deshabilitado no aparece y no es obligatorio.
+- Si está habilitado:
+  a) pregunta por comisiones autorizadas por la Dirección;
+  b) permite registrar varias comisiones;
+  c) cada comisión solicita nombre y horas autorizadas;
+  d) pregunta si requiere un bloque específico semanal;
+  e) si lo requiere, permite seleccionar días y horarios de 07:00 a 16:00;
+  f) el bloque 15:00-16:00 se muestra en gris;
+  g) permite Guardar y agregar nueva comisión.
+- La segunda pregunta consulta participación en proyectos avalados por la Universidad en Investigación, Innovación y Desarrollo Tecnológico.
+- Solicita nombre, responsabilidad, horas autorizadas y referencia/oficio cuando aplique.
+- Incluye nota de PIDET para proyectos de cuerpos académicos.
+- La tercera pregunta es Observaciones y es opcional.
+
+3. Cierre e impresión
+- El botón Finalizar e imprimir / guardar PDF permanece en Revisión e impresión.
+- Está disponible arriba y abajo del formato.
+- Si Comisiones está habilitado y falta información obligatoria, se lleva al apartado 4 y se resalta el pendiente.
+- Comisiones no forma parte del PDF.
+
+4. Edición individual y eliminación
+- Comisiones utiliza los mismos controles de edición individual que el resto del perfil.
+- Al eliminar el perfil completo de Firestore también se elimina la información de Comisiones.
+- La información sigue almacenándose por periodo.
+
+5. Excel
+- Se mantiene el mismo libro.
+- La hoja adicional ahora se llama Comisiones.
+- Incluye comisiones autorizadas, horas, bloques específicos, proyecto avalado, responsabilidad, horas, referencia y observaciones.
+
+6. Perfil por programa
+- El nombre de cada asignatura se limita a un máximo de dos renglones, incluyendo las horas.
+- Las horas permanecen discretas e inmediatamente después del nombre.
+- Cuando hace falta, se compactan las demás columnas para dar más espacio a Asignatura.
+- Coordinador usa fondo verde.
+- Favorita usa fondo amarillo.
+
+7. Cómo capturar
+- El punto 3 se hace más ancho.
+- Los puntos 4 y 5 se compactan.
+- El cintillo azul de 1 Formación académica · 2 Experiencia docente · 3 Experiencia laboral se mantiene en una sola línea cuando hay espacio.
+- Se conservan los cintillos deslizantes numerados de V47.
+
+deploy-pages.yml: NO necesita actualización.
+firestore.rules: NO necesita actualización.

@@ -28,43 +28,82 @@ const PLANNING_SLOTS=[
   ['11:00','12:00'],['12:00','13:00'],['13:00','14:00'],['14:00','15:00'],['15:00','16:00']
 ];
 
+function emptyCommission(){
+  return {
+    name:'',
+    authorizedHours:'',
+    scheduleRequired:'no',
+    reservedSlots:[]
+  };
+}
 function defaultPlanningRecord(){
   return {
-    scheduleMode:'',
-    commissionName:'',
-    reservedSlots:[],
-    managementMode:'',
-    managementCommissions:[''],
-    pidetMode:'',
-    pidetName:'',
-    pidetCoordinator:'',
+    commissionMode:'',
+    commissions:[emptyCommission()],
+    projectMode:'',
+    projectName:'',
+    projectRole:'',
+    projectHours:'',
+    projectReference:'',
     comments:'',
     completedAtMs:null,
     updatedAtMs:null
   };
 }
+function migratePlanningRecord(raw){
+  if(!raw||typeof raw!=='object')return defaultPlanningRecord();
+
+  // Compatibilidad con V46/V47: conserva información capturada previamente.
+  if(!Array.isArray(raw.commissions)){
+    const oldName=String(raw.commissionName||'').trim();
+    const oldMgmt=Array.isArray(raw.managementCommissions)
+      ?raw.managementCommissions.map(x=>String(x||'').trim()).filter(Boolean)
+      :[];
+    const oldSlots=Array.isArray(raw.reservedSlots)?raw.reservedSlots:[];
+    const names=[oldName,...oldMgmt].filter(Boolean);
+    raw.commissions=(names.length?names:['']).map((name,i)=>({
+      name,
+      authorizedHours:'',
+      scheduleRequired:(i===0&&oldSlots.length)?'yes':'no',
+      reservedSlots:(i===0?oldSlots:[])
+    }));
+    raw.commissionMode=(raw.scheduleMode==='yes'||raw.managementMode==='yes'||names.length)?'yes':
+      ((raw.scheduleMode==='na'&&raw.managementMode==='na')?'na':'');
+  }
+
+  raw.projectMode=raw.projectMode||raw.pidetMode||'';
+  raw.projectName=raw.projectName||raw.pidetName||'';
+  raw.projectRole=raw.projectRole||raw.pidetCoordinator||'';
+  raw.projectHours=raw.projectHours||'';
+  raw.projectReference=raw.projectReference||'';
+  raw.comments=raw.comments||'';
+  if(!Array.isArray(raw.commissions)||!raw.commissions.length)raw.commissions=[emptyCommission()];
+  raw.commissions=raw.commissions.map(c=>({
+    name:String(c?.name||''),
+    authorizedHours:String(c?.authorizedHours??''),
+    scheduleRequired:['yes','no'].includes(c?.scheduleRequired)?c.scheduleRequired:'no',
+    reservedSlots:Array.isArray(c?.reservedSlots)?c.reservedSlots:[]
+  }));
+  return raw;
+}
 function currentPlanningRecord(create=true){
   const period=cfg.periodo||'';
   if(!planningByPeriod[period]&&create)planningByPeriod[period]=defaultPlanningRecord();
-  const raw=planningByPeriod[period]||defaultPlanningRecord();
-  if(!Array.isArray(raw.reservedSlots))raw.reservedSlots=[];
-  if(!Array.isArray(raw.managementCommissions)||!raw.managementCommissions.length)raw.managementCommissions=[''];
+  const raw=migratePlanningRecord(planningByPeriod[period]||defaultPlanningRecord());
+  if(create)planningByPeriod[period]=raw;
   return raw;
 }
 function planningEnabled(){return !!cfg.planningEnabled}
-function planningEditingAllowed(){
-  return isAdmin() || (!deadlinePassed() && (individualEditOverride() || !cfg.editingLocked));
-}
+function planningEditingAllowed(){return editingAllowed()}
 function planningSlotKey(day,start,end){return `${day}|${start}-${end}`}
 function planningSlotLabel(slotKey){
   const [dayKey,hours='']=String(slotKey||'').split('|');
   const day=PLANNING_DAYS.find(d=>d.key===dayKey)?.label||dayKey;
   return `${day} ${hours}`;
 }
-function planningScheduleSummary(record){
-  const slots=Array.isArray(record?.reservedSlots)?record.reservedSlots:[];
-  if(record?.scheduleMode==='na')return 'No aplica';
-  if(record?.scheduleMode!=='yes')return '';
+function commissionScheduleSummary(commission){
+  const slots=Array.isArray(commission?.reservedSlots)?commission.reservedSlots:[];
+  if(commission?.scheduleRequired!=='yes')return 'Sin bloque específico';
   return PLANNING_DAYS.map(day=>{
     const daySlots=slots
       .filter(x=>String(x).startsWith(day.key+'|'))
@@ -72,11 +111,6 @@ function planningScheduleSummary(record){
       .filter(Boolean);
     return daySlots.length?`${day.label}: ${daySlots.join(', ')}`:'';
   }).filter(Boolean).join(' | ');
-}
-function planningDaysSummary(record){
-  const slots=Array.isArray(record?.reservedSlots)?record.reservedSlots:[];
-  const days=PLANNING_DAYS.filter(day=>slots.some(x=>String(x).startsWith(day.key+'|'))).map(d=>d.label);
-  return days.join(', ');
 }
 
 
@@ -217,21 +251,18 @@ function applyEditState(){
     }
   }
 
-  const planningRoot=$('planeacion');
+  const commissionsRoot=$('commissionsBlock');
   const planningLocked=!planningEditingAllowed();
-  if(planningRoot){
-    planningRoot.querySelectorAll('input,select,textarea,button').forEach(el=>{
-      if(el.closest('.planning-actions') && (el.textContent.includes('Volver') || el.textContent.includes('Revisión')))return;
-      el.disabled=planningLocked;
-    });
+  if(commissionsRoot){
+    commissionsRoot.querySelectorAll('input,select,textarea,button').forEach(el=>el.disabled=planningLocked);
   }
-  const planningBanner=$('planningLockedBanner');
+  const planningBanner=$('commissionsLockedBanner');
   if(planningBanner){
     planningBanner.classList.toggle('hidden',!planningLocked);
     if(planningLocked){
       planningBanner.textContent=deadlinePassed()
-        ?'⏱ La captura de planeación está fuera de tiempo. La información permanece disponible para consulta.'
-        :'🔒 La edición de planeación está desactivada. La información permanece disponible para consulta.';
+        ?'⏱ La captura de Comisiones está fuera de tiempo. La información permanece disponible para consulta.'
+        :'🔒 La edición de Comisiones está bloqueada. La información permanece disponible para consulta.';
     }
   }
 }
@@ -684,32 +715,25 @@ function initAuth(){
 
 
 function updateStepLabels(){
-  const enabled=planningEnabled();
-  if($('profileStepBadge'))$('profileStepBadge').textContent=enabled?'Paso 1 de 4':'Paso 1 de 3';
-  if($('captureStepKicker'))$('captureStepKicker').textContent=enabled?'Paso 2 de 4':'Paso 2 de 3';
-  if($('reviewStepKicker'))$('reviewStepKicker').textContent=enabled?'Paso 3 de 4':'Paso 3 de 3';
-  if($('planningStepKicker'))$('planningStepKicker').textContent='Paso 4 de 4';
+  if($('profileStepBadge'))$('profileStepBadge').textContent='Paso 1 de 3';
+  if($('captureStepKicker'))$('captureStepKicker').textContent='Paso 2 de 3';
+  if($('reviewStepKicker'))$('reviewStepKicker').textContent='Paso 3 de 3';
 }
 function updatePlanningAvailability(){
   const enabled=planningEnabled();
-  const nav=$('navPlanning');
-  if(nav)nav.classList.toggle('hidden',!enabled);
-  if($('planningPeriodBadge'))$('planningPeriodBadge').textContent=`Periodo · ${cfg.periodo}`;
+  const block=$('commissionsBlock');
+  if(block)block.classList.toggle('hidden',!enabled);
   updateStepLabels();
 
   const st=$('planningAdminStatus');
   const btn=$('planningToggleBtn');
   if(st){
-    st.textContent=enabled?'Habilitada · obligatoria':'Deshabilitada';
+    st.textContent=enabled?'Habilitado · obligatorio':'Deshabilitado';
     st.className=`planning-admin-status ${enabled?'enabled':'disabled'}`;
   }
   if(btn){
-    btn.textContent=enabled?'Deshabilitar página de planeación':'Habilitar página de planeación';
+    btn.textContent=enabled?'Deshabilitar apartado de Comisiones':'Habilitar apartado de Comisiones';
     btn.className=`planning-toggle-btn ${enabled?'disable':'enable'}`;
-  }
-
-  if(!enabled && $('planeacion')?.classList.contains('active')){
-    window.go('perfil',true);
   }
 }
 window.togglePlanningPage=async function(){
@@ -717,87 +741,104 @@ window.togglePlanningPage=async function(){
   const next=!cfg.planningEnabled;
   const ok=confirm(
     next
-      ?'¿Habilitar la página de Planeación cuatrimestral?\n\nSi se habilita, sus tres apartados principales serán obligatorios para los profesores. La información NO se incluirá en el PDF del Perfil del Profesor.'
-      :'¿Deshabilitar la página de Planeación cuatrimestral?\n\nLa información ya capturada se conservará, pero la página dejará de ser obligatoria y no se mostrará a los profesores.'
+      ?'¿Habilitar el apartado 4 de Comisiones?\n\nSi se habilita, las preguntas sobre comisiones autorizadas y proyectos avalados serán obligatorias; ambas permiten seleccionar No aplica. La información NO se incluirá en el PDF.'
+      :'¿Deshabilitar el apartado 4 de Comisiones?\n\nLa información ya capturada se conservará, pero dejará de mostrarse y de ser obligatoria.'
   );
   if(!ok)return;
   cfg.planningEnabled=next;
   persist();
-  await saveGlobalSettings(next?'Página de planeación cuatrimestral habilitada':'Página de planeación cuatrimestral deshabilitada');
+  await saveGlobalSettings(next?'Apartado de Comisiones habilitado':'Apartado de Comisiones deshabilitado');
   updatePlanningAvailability();
   renderPlanning();
   renderAdmin();
-  toast(next?'Planeación cuatrimestral habilitada.':'Planeación cuatrimestral deshabilitada.');
+  toast(next?'Comisiones habilitadas.':'Comisiones deshabilitadas.');
 }
 
-function renderPlanningScheduleGrid(record){
-  const selected=new Set(record.reservedSlots||[]);
-  return `<table class="planning-schedule-table">
-    <thead><tr><th>Horario</th>${PLANNING_DAYS.map(d=>`<th>${d.label}</th>`).join('')}</tr></thead>
-    <tbody>
-      ${PLANNING_SLOTS.map(([start,end],idx)=>`<tr class="${idx===PLANNING_SLOTS.length-1?'planning-late-row':''}">
-        <th>${start} - ${end}</th>
-        ${PLANNING_DAYS.map(day=>{
-          const k=planningSlotKey(day.key,start,end);
-          return `<td><label class="planning-slot-check" title="${day.label} ${start} - ${end}">
-            <input type="checkbox" data-planning-slot="${k}" ${selected.has(k)?'checked':''}>
-            <span>✓</span>
-          </label></td>`;
-        }).join('')}
-      </tr>`).join('')}
-    </tbody>
-  </table>`;
+function renderCommissionScheduleGrid(commission,index){
+  const selected=new Set(commission.reservedSlots||[]);
+  return `<div class="commission-schedule-grid ${commission.scheduleRequired==='yes'?'':'hidden'}">
+    <div class="commission-schedule-caption">Bloques específicos de atención</div>
+    <div class="compact-schedule">
+      ${PLANNING_DAYS.map(day=>`<div class="compact-day">
+        <b>${day.label}</b>
+        <div class="compact-slots">
+          ${PLANNING_SLOTS.map(([start,end],slotIndex)=>{
+            const key=planningSlotKey(day.key,start,end);
+            return `<label class="compact-slot ${slotIndex===PLANNING_SLOTS.length-1?'late':''}" title="${day.label} ${start}-${end}">
+              <input type="checkbox" data-commission-index="${index}" data-commission-slot="${key}" ${selected.has(key)?'checked':''}>
+              <span>${start.replace(':00','')}</span>
+            </label>`;
+          }).join('')}
+        </div>
+      </div>`).join('')}
+    </div>
+  </div>`;
 }
-function renderPlanningManagementList(record){
-  const rows=(record.managementCommissions||['']).length?record.managementCommissions:[''];
-  return rows.map((value,i)=>`<div class="planning-management-row">
-    <span>${i+1}</span>
-    <input data-planning-management-index="${i}" value="${escapeHtml(value||'')}" placeholder="Ej. Enlace de calidad">
-    <button type="button" onclick="removePlanningCommission(${i})" ${rows.length===1?'disabled':''}>Eliminar</button>
+function renderCommissionList(record){
+  const rows=(record.commissions||[]).length?record.commissions:[emptyCommission()];
+  return rows.map((c,i)=>`<div class="commission-entry" data-commission-row="${i}">
+    <div class="commission-entry-top">
+      <span class="commission-entry-number">${i+1}</span>
+      <label class="commission-name-field">Nombre de la comisión
+        <input data-commission-name="${i}" value="${escapeHtml(c.name||'')}" placeholder="Ej. Enlace de calidad">
+      </label>
+      <label class="commission-hours-field">Horas autorizadas
+        <input data-commission-hours="${i}" type="number" min="0" step="0.5" value="${escapeHtml(String(c.authorizedHours||''))}" placeholder="Ej. 3">
+      </label>
+      <button type="button" class="commission-remove-btn" onclick="removePlanningCommission(${i})" ${rows.length===1?'disabled':''}>Eliminar</button>
+    </div>
+    <div class="commission-schedule-question">
+      <span>¿Requiere un bloque específico de horas en la semana?</span>
+      <label class="mini-choice yes"><input type="radio" name="commissionSchedule_${i}" value="yes" ${c.scheduleRequired==='yes'?'checked':''} onchange="commissionScheduleChanged(${i},'yes')"> Sí</label>
+      <label class="mini-choice no"><input type="radio" name="commissionSchedule_${i}" value="no" ${c.scheduleRequired!=='yes'?'checked':''} onchange="commissionScheduleChanged(${i},'no')"> No</label>
+    </div>
+    ${renderCommissionScheduleGrid(c,i)}
   </div>`).join('');
 }
 function renderPlanning(){
-  const root=$('planeacion');
+  const root=$('commissionsBlock');
   if(!root)return;
   const record=currentPlanningRecord(true);
 
-  root.querySelectorAll('input[name="planningScheduleMode"]').forEach(x=>x.checked=x.value===record.scheduleMode);
-  root.querySelectorAll('input[name="planningManagementMode"]').forEach(x=>x.checked=x.value===record.managementMode);
-  root.querySelectorAll('input[name="planningPiderMode"]').forEach(x=>x.checked=x.value===record.pidetMode);
+  root.querySelectorAll('input[name="planningCommissionMode"]').forEach(x=>x.checked=x.value===record.commissionMode);
+  root.querySelectorAll('input[name="planningProjectMode"]').forEach(x=>x.checked=x.value===record.projectMode);
 
-  if($('planningCommissionName'))$('planningCommissionName').value=record.commissionName||'';
-  if($('planningPiderName'))$('planningPiderName').value=record.pidetName||'';
-  if($('planningPiderCoordinator'))$('planningPiderCoordinator').value=record.pidetCoordinator||'';
+  if($('planningCommissionList'))$('planningCommissionList').innerHTML=renderCommissionList(record);
+  if($('planningProjectName'))$('planningProjectName').value=record.projectName||'';
+  if($('planningProjectRole'))$('planningProjectRole').value=record.projectRole||'';
+  if($('planningProjectHours'))$('planningProjectHours').value=record.projectHours||'';
+  if($('planningProjectReference'))$('planningProjectReference').value=record.projectReference||'';
   if($('planningComments'))$('planningComments').value=record.comments||'';
-  if($('planningScheduleGrid'))$('planningScheduleGrid').innerHTML=renderPlanningScheduleGrid(record);
-  if($('planningManagementList'))$('planningManagementList').innerHTML=renderPlanningManagementList(record);
 
   updatePlanningConditionalUI();
   updatePlanningAvailability();
-  applyEditState();
 }
 function updatePlanningConditionalUI(){
   const record=currentPlanningRecord(true);
-  if($('planningScheduleFields'))$('planningScheduleFields').classList.toggle('hidden',record.scheduleMode!=='yes');
-  if($('planningManagementFields'))$('planningManagementFields').classList.toggle('hidden',record.managementMode!=='yes');
-  if($('planningPiderFields'))$('planningPiderFields').classList.toggle('hidden',record.pidetMode!=='yes');
+  if($('planningCommissionsFields'))$('planningCommissionsFields').classList.toggle('hidden',record.commissionMode!=='yes');
+  if($('planningProjectFields'))$('planningProjectFields').classList.toggle('hidden',record.projectMode!=='yes');
 }
 function collectPlanning(){
   const record=currentPlanningRecord(true);
-  const scheduleMode=document.querySelector('input[name="planningScheduleMode"]:checked')?.value||'';
-  const managementMode=document.querySelector('input[name="planningManagementMode"]:checked')?.value||'';
-  const pidetMode=document.querySelector('input[name="planningPiderMode"]:checked')?.value||'';
+  record.commissionMode=document.querySelector('input[name="planningCommissionMode"]:checked')?.value||'';
+  record.projectMode=document.querySelector('input[name="planningProjectMode"]:checked')?.value||'';
 
-  record.scheduleMode=scheduleMode;
-  record.managementMode=managementMode;
-  record.pidetMode=pidetMode;
-  record.commissionName=$('planningCommissionName')?.value.trim()||'';
-  record.reservedSlots=[...document.querySelectorAll('[data-planning-slot]:checked')].map(x=>x.dataset.planningSlot);
-  record.managementCommissions=[...document.querySelectorAll('[data-planning-management-index]')]
-    .map(x=>x.value.trim());
-  if(!record.managementCommissions.length)record.managementCommissions=[''];
-  record.pidetName=$('planningPiderName')?.value.trim()||'';
-  record.pidetCoordinator=$('planningPiderCoordinator')?.value.trim()||'';
+  record.commissions=[...document.querySelectorAll('[data-commission-row]')].map(row=>{
+    const i=Number(row.dataset.commissionRow);
+    const prev=(record.commissions||[])[i]||emptyCommission();
+    return {
+      name:row.querySelector(`[data-commission-name="${i}"]`)?.value.trim()||'',
+      authorizedHours:row.querySelector(`[data-commission-hours="${i}"]`)?.value.trim()||'',
+      scheduleRequired:row.querySelector(`input[name="commissionSchedule_${i}"]:checked`)?.value||prev.scheduleRequired||'no',
+      reservedSlots:[...row.querySelectorAll('[data-commission-slot]:checked')].map(x=>x.dataset.commissionSlot)
+    };
+  });
+  if(!record.commissions.length)record.commissions=[emptyCommission()];
+
+  record.projectName=$('planningProjectName')?.value.trim()||'';
+  record.projectRole=$('planningProjectRole')?.value.trim()||'';
+  record.projectHours=$('planningProjectHours')?.value.trim()||'';
+  record.projectReference=$('planningProjectReference')?.value.trim()||'';
   record.comments=$('planningComments')?.value.trim()||'';
   record.updatedAtMs=Date.now();
   planningByPeriod[cfg.periodo]=record;
@@ -810,61 +851,70 @@ window.planningModeChanged=function(){
   persist();
   updateNavState();
 }
+window.commissionScheduleChanged=function(index,value){
+  const record=collectPlanning();
+  if(!record.commissions[index])return;
+  record.commissions[index].scheduleRequired=value;
+  if(value!=='yes')record.commissions[index].reservedSlots=[];
+  planningByPeriod[cfg.periodo]=record;
+  persist();
+  renderPlanning();
+}
 window.addPlanningCommission=function(){
   if(!planningEditingAllowed())return;
   const record=collectPlanning();
-  record.managementCommissions.push('');
+  record.commissions.push(emptyCommission());
   planningByPeriod[cfg.periodo]=record;
   persist();
   renderPlanning();
   requestAnimationFrame(()=>{
-    const inputs=document.querySelectorAll('[data-planning-management-index]');
-    inputs[inputs.length-1]?.focus();
+    document.querySelector(`[data-commission-name="${record.commissions.length-1}"]`)?.focus();
   });
 }
 window.removePlanningCommission=function(index){
   if(!planningEditingAllowed())return;
   const record=collectPlanning();
-  if(record.managementCommissions.length<=1)return;
-  record.managementCommissions.splice(index,1);
+  if(record.commissions.length<=1)return;
+  record.commissions.splice(index,1);
   planningByPeriod[cfg.periodo]=record;
   persist();
   renderPlanning();
 }
 function clearPlanningValidation(){
-  document.querySelectorAll('#planeacion .planning-question-error').forEach(x=>x.classList.remove('planning-question-error'));
+  document.querySelectorAll('#commissionsBlock .planning-question-error').forEach(x=>x.classList.remove('planning-question-error'));
 }
 function validatePlanning(opts={}){
   if(!planningEnabled())return {ok:true,errors:[],firstCard:null};
   const record=opts.collect===false?currentPlanningRecord(true):collectPlanning();
   const errors=[];
   let firstCard=null;
-  const mark=(cardId,msg)=>{
+  const mark=(id,msg)=>{
     errors.push(msg);
-    if(!firstCard)firstCard=$(cardId);
-    if(opts.visual&&$(cardId))$(cardId).classList.add('planning-question-error');
+    if(!firstCard)firstCard=$(id);
+    if(opts.visual&&$(id))$(id).classList.add('planning-question-error');
   };
   if(opts.visual)clearPlanningValidation();
 
-  if(!['yes','na'].includes(record.scheduleMode)){
-    mark('planningScheduleCard','Indique si requiere reservar horario por alguna comisión o seleccione No aplica.');
-  }else if(record.scheduleMode==='yes'){
-    if(!record.commissionName)mark('planningScheduleCard','Capture el nombre de la comisión para la que requiere liberar horario.');
-    if(!(record.reservedSlots||[]).length)mark('planningScheduleCard','Seleccione al menos un bloque de día y horario que deba mantenerse libre.');
+  if(!['yes','na'].includes(record.commissionMode)){
+    mark('planningCommissionsCard','Indique si tiene comisiones autorizadas por la Dirección o seleccione No aplica.');
+  }else if(record.commissionMode==='yes'){
+    const commissions=(record.commissions||[]);
+    if(!commissions.length)mark('planningCommissionsCard','Agregue al menos una comisión autorizada.');
+    commissions.forEach((c,i)=>{
+      if(!String(c.name||'').trim())mark('planningCommissionsCard',`Comisión ${i+1}: capture el nombre.`);
+      if(String(c.authorizedHours||'').trim()==='')mark('planningCommissionsCard',`Comisión ${i+1}: capture las horas autorizadas.`);
+      if(c.scheduleRequired==='yes' && !(c.reservedSlots||[]).length){
+        mark('planningCommissionsCard',`Comisión ${i+1}: seleccione al menos un día y horario específico.`);
+      }
+    });
   }
 
-  if(!['yes','na'].includes(record.managementMode)){
-    mark('planningManagementCard','Indique sus comisiones de gestión académica o seleccione No aplica.');
-  }else if(record.managementMode==='yes'){
-    const valid=(record.managementCommissions||[]).map(x=>String(x||'').trim()).filter(Boolean);
-    if(!valid.length)mark('planningManagementCard','Agregue al menos una comisión de gestión académica.');
-  }
-
-  if(!['yes','na'].includes(record.pidetMode)){
-    mark('planningPiderCard','Indique si participa en un proyecto PIDET o seleccione No aplica.');
-  }else if(record.pidetMode==='yes'){
-    if(!record.pidetName)mark('planningPiderCard','Capture el nombre del proyecto PIDET.');
-    if(!record.pidetCoordinator)mark('planningPiderCard','Capture quién coordina el proyecto PIDET.');
+  if(!['yes','na'].includes(record.projectMode)){
+    mark('planningProjectCard','Indique si participa en un proyecto avalado por la Universidad o seleccione No aplica.');
+  }else if(record.projectMode==='yes'){
+    if(!record.projectName)mark('planningProjectCard','Capture el nombre del proyecto.');
+    if(!record.projectRole)mark('planningProjectCard','Capture la responsabilidad que ocupa en el proyecto.');
+    if(String(record.projectHours||'').trim()==='')mark('planningProjectCard','Capture las horas autorizadas para el proyecto.');
   }
 
   if(opts.visual&&firstCard){
@@ -873,33 +923,27 @@ function validatePlanning(opts={}){
   return {ok:!errors.length,errors,firstCard};
 }
 window.savePlanning=async function(show=false){
-  if(!planningEnabled()){toast('La página de planeación está deshabilitada.');return false}
-  if(!planningEditingAllowed()){toast('La edición de planeación está cerrada.');return false}
+  if(!planningEnabled()){toast('El apartado de Comisiones está deshabilitado.');return false}
+  if(!planningEditingAllowed()){toast('La edición está cerrada.');return false}
   const v=validatePlanning({visual:true});
   if(!v.ok){
-    $('planningErrors').innerHTML=statusBox(v.errors,'Complete la información obligatoria de planeación.');
+    if($('planningErrors'))$('planningErrors').innerHTML=statusBox(v.errors,'Complete la información obligatoria de Comisiones.');
     return false;
   }
   const record=currentPlanningRecord(true);
   record.completedAtMs=Date.now();
   record.updatedAtMs=Date.now();
   planningByPeriod[cfg.periodo]=record;
-  $('planningErrors').innerHTML='<div class="status-box ok"><b>Información de planeación completa.</b><br>Se conservará para consulta y para el concentrado administrativo.</div>';
+  if($('planningErrors'))$('planningErrors').innerHTML='<div class="status-box ok"><b>Comisiones guardadas.</b><br>La información queda disponible para consulta y para el concentrado administrativo.</div>';
   persist();
-  await writeAudit('Planeación cuatrimestral guardada');
+  await writeAudit('Comisiones y consideraciones académicas guardadas');
   updateNavState();
-  if(show)toast('Información de planeación guardada.');
+  if(show)toast('Comisiones guardadas.');
   return true;
 }
-window.savePlanningAndReview=async function(){
-  const ok=await savePlanning(false);
-  if(!ok)return;
-  toast('Planeación guardada.');
-  window.go('revision',true);
-}
+
 window.go=function(id,force=false){
   if(id==='admin'&&!isAdmin()){toast('Administración disponible únicamente para ivan.gutierrez@uteq.edu.mx');return}
-  if(id==='planeacion'&&!planningEnabled()){toast('La página de planeación cuatrimestral está deshabilitada para este periodo.');return}
   if(id==='captura'&&!force){const p=validateProfile({visual:true,focusFirst:true});if(!p.ok){$('profileErrors').innerHTML=statusBox(p.errors,'Complete los datos obligatorios antes de continuar.');return}}
   if(id==='revision'&&!force){
     const v=validateAll();
@@ -908,7 +952,6 @@ window.go=function(id,force=false){
   document.querySelectorAll('.view').forEach(x=>x.classList.remove('active'));$(id).classList.add('active');
   document.querySelectorAll('.main-nav button').forEach(b=>b.classList.toggle('active',b.dataset.view===id));
   if(id==='revision')buildPrint();
-  if(id==='planeacion')renderPlanning();
   if(id==='admin')renderAdmin();
   scrollTo(0,0);
 }
@@ -923,16 +966,11 @@ function updateNavState(){
   const pBtn=document.querySelector('.main-nav button[data-view="perfil"]');
   const cBtn=document.querySelector('.main-nav button[data-view="captura"]');
   const rBtn=document.querySelector('.main-nav button[data-view="revision"]');
-  const plBtn=document.querySelector('.main-nav button[data-view="planeacion"]');
   if(pBtn)pBtn.classList.toggle('complete',profileLooksComplete());
   if(cBtn)cBtn.classList.toggle('complete',validateCapture().ok);
   if(rBtn){
     rBtn.classList.toggle('complete',validateAll().ok);
     rBtn.classList.toggle('readable',reviewAvailable()&&!validateAll().ok);
-  }
-  if(plBtn){
-    plBtn.classList.toggle('complete',planningEnabled()&&validatePlanning({collect:false}).ok);
-    plBtn.classList.toggle('hidden',!planningEnabled());
   }
 }
 
@@ -1638,9 +1676,10 @@ window.printProfile=async function(){
   if(planningEnabled()){
     const pv=validatePlanning({visual:true});
     if(!pv.ok){
-      $('planningErrors').innerHTML=statusBox(pv.errors,'Antes de finalizar, complete la Planeación cuatrimestral o seleccione No aplica donde corresponda.');
-      window.go('planeacion',true);
-      toast('Complete la Planeación cuatrimestral antes de finalizar.');
+      if($('planningErrors'))$('planningErrors').innerHTML=statusBox(pv.errors,'Antes de finalizar, complete el apartado de Comisiones o seleccione No aplica donde corresponda.');
+      window.go('perfil',true);
+      requestAnimationFrame(()=>$('commissionsBlock')?.scrollIntoView({behavior:'smooth',block:'start'}));
+      toast('Complete el apartado de Comisiones antes de finalizar.');
       return;
     }
   }
@@ -1714,15 +1753,15 @@ window.saveAdmin=function(){
   if(previousPeriod!==cfg.periodo){
     cfg.planningEnabled=confirm(
       `El periodo cambió de "${previousPeriod}" a "${cfg.periodo}".\n\n`+
-      `¿Desea habilitar para este periodo la página 4 de Planeación cuatrimestral?\n\n`+
-      `Si la habilita, sus tres apartados principales serán obligatorios. La información no se imprimirá ni formará parte del PDF del Perfil del Profesor.`
+      `¿Desea habilitar para este periodo el apartado 4 de Comisiones?\n\n`+
+      `Si lo habilita, las preguntas sobre comisiones autorizadas y proyectos avalados serán obligatorias; ambas permiten No aplica. La información no se imprimirá ni formará parte del PDF.`
     );
   }
 
   // El cambio de periodo nunca borra profile, answers, programMeta ni planeaciones de periodos anteriores.
   updatePeriodBadges();persist();updatePlanningAvailability();renderPlanning();
   saveGlobalSettings(previousPeriod===cfg.periodo?'Configuración institucional actualizada':`Periodo actualizado de ${previousPeriod} a ${cfg.periodo} sin borrar perfiles`);
-  toast(previousPeriod===cfg.periodo?'Configuración guardada.':`Periodo actualizado. Planeación ${cfg.planningEnabled?'habilitada':'deshabilitada'} para el nuevo periodo.`);
+  toast(previousPeriod===cfg.periodo?'Configuración guardada.':`Periodo actualizado. Comisiones ${cfg.planningEnabled?'habilitadas':'deshabilitadas'} para el nuevo periodo.`);
 }
 
 function timestampToMs(value){
@@ -2488,26 +2527,30 @@ async function exportWorkbook(){
 
 
   // --- Hoja adicional: Planeación cuatrimestral ---
+  // --- Hoja adicional: Comisiones ---
   const planningRows=teachers.map(t=>{
-    const rec=(t.planningByPeriod||{})[cfg.periodo]||{};
-    const management=(rec.managementMode==='na')
+    const rec=migratePlanningRecord(JSON.parse(JSON.stringify((t.planningByPeriod||{})[cfg.periodo]||{})));
+    const commissions=rec.commissionMode==='na'
       ?'No aplica'
-      :(rec.managementCommissions||[]).map(x=>String(x||'').trim()).filter(Boolean).join(' | ');
+      :(rec.commissions||[]).map((c,i)=>{
+          const base=`${i+1}. ${c.name||'(sin nombre)'} · ${c.authorizedHours||0} h`;
+          const schedule=c.scheduleRequired==='yes'?` · ${commissionScheduleSummary(c)}`:' · sin bloque específico';
+          return base+schedule;
+        }).join(' | ');
     return {
       Profesor:t.name,
       Categoria:t.category||'',
       Correo:t.email||'',
       Periodo:cfg.periodo,
-      'Horario protegido':rec.scheduleMode==='na'?'No aplica':rec.scheduleMode==='yes'?'Sí':'Sin captura',
-      'Comisión para liberar horario':rec.scheduleMode==='yes'?(rec.commissionName||''):'',
-      'Días solicitados':rec.scheduleMode==='yes'?planningDaysSummary(rec):'',
-      'Detalle de horarios':rec.scheduleMode==='yes'?planningScheduleSummary(rec):'',
-      'Comisiones de gestión académica':management||'Sin captura',
-      'Participa en PIDET':rec.pidetMode==='na'?'No aplica':rec.pidetMode==='yes'?'Sí':'Sin captura',
-      'Proyecto PIDET':rec.pidetMode==='yes'?(rec.pidetName||''):'',
-      'Coordina PIDET':rec.pidetMode==='yes'?(rec.pidetCoordinator||''):'',
-      'Comentarios / observaciones':rec.comments||'',
-      'Planeación completa':rec.completedAtMs?'Sí':'',
+      'Comisiones autorizadas':rec.commissionMode==='na'?'No aplica':rec.commissionMode==='yes'?'Sí':'Sin captura',
+      'Detalle de comisiones':commissions||'Sin captura',
+      'Proyecto avalado':rec.projectMode==='na'?'No aplica':rec.projectMode==='yes'?'Sí':'Sin captura',
+      'Nombre del proyecto':rec.projectMode==='yes'?(rec.projectName||''):'',
+      'Responsabilidad':rec.projectMode==='yes'?(rec.projectRole||''):'',
+      'Horas autorizadas proyecto':rec.projectMode==='yes'?(rec.projectHours||''):'',
+      'Referencia / oficio':rec.projectMode==='yes'?(rec.projectReference||''):'',
+      'Observaciones':rec.comments||'',
+      'Información completa':rec.completedAtMs?'Sí':'',
       'Fecha de guardado':rec.completedAtMs?formatLocalProfileDateTime(rec.completedAtMs):''
     };
   });
@@ -2516,8 +2559,8 @@ async function exportWorkbook(){
     wsPlanning['!autofilter']={ref:wsPlanning['!ref']};
     wsPlanning['!freeze']={ySplit:1,topLeftCell:'A2',activePane:'bottomLeft',state:'frozen'};
     wsPlanning['!cols']=[
-      {wch:30},{wch:32},{wch:28},{wch:20},{wch:18},{wch:34},{wch:28},{wch:55},
-      {wch:52},{wch:20},{wch:36},{wch:30},{wch:48},{wch:18},{wch:24}
+      {wch:30},{wch:32},{wch:28},{wch:20},{wch:20},{wch:72},{wch:18},
+      {wch:38},{wch:28},{wch:22},{wch:30},{wch:52},{wch:18},{wch:24}
     ];
     const pHeaders=Object.keys(planningRows[0]);
     pHeaders.forEach((_,c)=>{
@@ -2539,7 +2582,7 @@ async function exportWorkbook(){
         const addr=XLSX.utils.encode_cell({r,c});
         if(wsPlanning[addr])wsPlanning[addr].s={
           font:{name:'Aptos',sz:10,color:{rgb:'243746'}},
-          alignment:{vertical:'top',horizontal:c<4?'left':'left',wrapText:true},
+          alignment:{vertical:'top',horizontal:'left',wrapText:true},
           border:{
             top:{style:'thin',color:{rgb:'D8E1E6'}},
             bottom:{style:'thin',color:{rgb:'D8E1E6'}},
@@ -2553,7 +2596,7 @@ async function exportWorkbook(){
 
   const wb=XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(wb,ws,'Concentrado perfiles');
-  XLSX.utils.book_append_sheet(wb,wsPlanning,'Planeación cuatrimestral');
+  XLSX.utils.book_append_sheet(wb,wsPlanning,'Comisiones');
   XLSX.utils.book_append_sheet(wb,wsBase,'Base maestra');
   XLSX.utils.book_append_sheet(wb,wsCat,'Catálogo');
   XLSX.utils.book_append_sheet(wb,wsSummary,'Resumen por asignatura');
@@ -2583,7 +2626,7 @@ function setupPlanningAutoSave(){
   let timer=null;
   document.addEventListener('input',e=>{
     if(!planningEnabled()||!planningEditingAllowed())return;
-    if(!e.target.matches('#planeacion input,#planeacion textarea'))return;
+    if(!e.target.matches('#commissionsBlock input,#commissionsBlock textarea'))return;
     clearTimeout(timer);
     timer=setTimeout(()=>{
       collectPlanning();
@@ -2593,7 +2636,7 @@ function setupPlanningAutoSave(){
   });
   document.addEventListener('change',e=>{
     if(!planningEnabled()||!planningEditingAllowed())return;
-    if(!e.target.matches('#planeacion input,#planeacion textarea'))return;
+    if(!e.target.matches('#commissionsBlock input,#commissionsBlock textarea'))return;
     collectPlanning();
     persist();
     updateNavState();
