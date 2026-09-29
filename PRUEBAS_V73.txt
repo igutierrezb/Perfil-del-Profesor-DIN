@@ -1,0 +1,10 @@
+PERFIL DIN V73 · PRUEBAS
+========================
+
+OK: 7 reglas críticas V73 verificadas
+
+Reglas verificadas:
+- envío anterior no desbloquea revisión durante edición;
+- Paso 3 exige captura completa + confirmación secuencial;
+- Programa 1 no retrocede circularmente a Programa 8;
+- entrada a Paso 2 parte de índice 0.

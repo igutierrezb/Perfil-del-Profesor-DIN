@@ -1,0 +1,112 @@
+/* =========================================================
+   V73 · Flujo secuencial estricto integrado al núcleo
+   ========================================================= */
+const SEQUENTIAL_FLOW_PREFIX='PAD_DIN_SEQ_V73';
+
+function sequentialFlowKey(){
+  const uid=currentUser?.uid||'guest';
+  const period=String(cfg.periodo||'').replace(/\s+/g,'_');
+  return `${SEQUENTIAL_FLOW_PREFIX}_${uid}_${period}`;
+}
+function sequentialRead(){
+  try{
+    const raw=sessionStorage.getItem(sequentialFlowKey());
+    return raw?JSON.parse(raw):{profileConfirmed:false,captureConfirmed:false};
+  }catch(_){
+    return {profileConfirmed:false,captureConfirmed:false};
+  }
+}
+function sequentialWrite(next){
+  try{sessionStorage.setItem(sequentialFlowKey(),JSON.stringify(next))}catch(_){}
+}
+function sequentialProfileConfirmed(){
+  return !editingAllowed() || !!sequentialRead().profileConfirmed;
+}
+function sequentialCaptureConfirmed(){
+  return !editingAllowed() || !!sequentialRead().captureConfirmed;
+}
+function sequentialConfirmProfileStep(){
+  const state=sequentialRead();
+  state.profileConfirmed=true;
+  state.captureConfirmed=false;
+  sequentialWrite(state);
+  updateSequentialNavLocks();
+}
+function sequentialConfirmCaptureStep(){
+  const state=sequentialRead();
+  state.profileConfirmed=true;
+  state.captureConfirmed=true;
+  sequentialWrite(state);
+  updateSequentialNavLocks();
+}
+function sequentialInvalidateProfileStep(){
+  if(!editingAllowed())return;
+  sequentialWrite({profileConfirmed:false,captureConfirmed:false});
+  currentProgramIndex=0;
+  store.currentProgramIndex=0;
+  persist({touch:false,schedule:false});
+  updateSequentialNavLocks();
+}
+function sequentialInvalidateCaptureStep(){
+  if(!editingAllowed())return;
+  const state=sequentialRead();
+  state.captureConfirmed=false;
+  sequentialWrite(state);
+  updateSequentialNavLocks();
+}
+function resetSequentialFlowForEditing(){
+  if(!editingAllowed())return;
+  sequentialWrite({profileConfirmed:false,captureConfirmed:false});
+  currentProgramIndex=0;
+  store.currentProgramIndex=0;
+  persist({touch:false,schedule:false});
+  updateSequentialNavLocks();
+}
+function initializeSequentialFlow(){
+  if(editingAllowed()){
+    resetSequentialFlowForEditing();
+  }else{
+    updateSequentialNavLocks();
+  }
+}
+function updateSequentialNavLocks(){
+  const captureBtn=document.querySelector('.main-nav button[data-view="captura"]');
+  const revisionBtn=document.querySelector('.main-nav button[data-view="revision"]');
+
+  if(!editingAllowed()){
+    if(captureBtn){
+      captureBtn.disabled=false;
+      captureBtn.classList.remove('locked');
+      captureBtn.removeAttribute('aria-disabled');
+      captureBtn.title='';
+    }
+    if(revisionBtn){
+      revisionBtn.disabled=false;
+      revisionBtn.classList.remove('locked');
+      revisionBtn.removeAttribute('aria-disabled');
+      revisionBtn.title='';
+    }
+    return;
+  }
+
+  const profileOk=sequentialProfileConfirmed();
+  const captureOk=sequentialCaptureConfirmed() && validateAll().ok;
+
+  if(captureBtn){
+    captureBtn.disabled=!profileOk;
+    captureBtn.classList.toggle('locked',!profileOk);
+    captureBtn.setAttribute('aria-disabled',profileOk?'false':'true');
+    captureBtn.title=profileOk
+      ?'Datos del profesor confirmados.'
+      :'Primero concluya y confirme Datos del profesor.';
+  }
+
+  if(revisionBtn){
+    revisionBtn.disabled=!captureOk;
+    revisionBtn.classList.toggle('locked',!captureOk);
+    revisionBtn.setAttribute('aria-disabled',captureOk?'false':'true');
+    revisionBtn.title=captureOk
+      ?'Perfil por programa concluido.'
+      :'Primero concluya todos los programas en orden.';
+  }
+}

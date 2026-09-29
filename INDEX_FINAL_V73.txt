@@ -1,0 +1,22 @@
+PERFIL DIN V73 · FINAL DE index.html
+========================================
+
+V73 ya NO utiliza flow-sequence.js.
+
+Al final de index.html deje SOLAMENTE:
+
+<script type="module" src="bootstrap-persistence.js?v=20260929-73"></script>
+</body>
+</html>
+
+bootstrap-persistence.js cargará:
+1. verificación inicial de persistencia;
+2. app.js?v=20260929-73;
+3. persistence-live.js?v=20260929-73.
+
+Quite del index cualquier referencia a:
+- flow-sequence.js
+- backup.js
+- realtime-sync.js antiguo
+- restore-edit-guard.js
+- edit-restore-authority.js

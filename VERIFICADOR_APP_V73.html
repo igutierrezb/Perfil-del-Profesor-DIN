@@ -1,0 +1,62 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<title>Perfil DIN · Patcher V73</title>
+<style>
+body{font-family:system-ui,sans-serif;max-width:900px;margin:40px auto;padding:0 20px;color:#17384d}
+.card{border:1px solid #d8e4eb;border-radius:16px;padding:22px;background:#f8fbfd}
+button,input{font:inherit}button{padding:10px 16px;border-radius:10px;border:1px solid #146187;background:#146187;color:white;font-weight:650}
+pre{white-space:pre-wrap;background:#102b3d;color:#eaf6fb;padding:14px;border-radius:12px;max-height:360px;overflow:auto}
+.ok{color:#17643a}.bad{color:#a43425}
+</style>
+</head>
+<body>
+<h1>Perfil DIN · Generador app.js V73</h1>
+<div class="card">
+<p>Seleccione el <b>app.js actual</b>. El archivo se procesa localmente en su navegador; no se envía a ningún servidor.</p>
+<input id="file" type="file" accept=".js,text/javascript">
+<button id="run">Generar app.js V73</button>
+<p id="status"></p>
+<pre id="log">Esperando archivo…</pre>
+</div>
+<script>
+const $=id=>document.getElementById(id);
+const log=[];
+function note(x){log.push(x);$('log').textContent=log.join('\n')}
+function mustReplace(text,label,oldText,newText){
+  if(!text.includes(oldText))throw new Error('No se encontró el bloque: '+label);
+  note('✓ '+label);
+  return text.replace(oldText,newText);
+}
+$('run').onclick=async()=>{
+  log.length=0;
+  const f=$('file').files[0];
+  if(!f){$('status').innerHTML='<span class="bad">Seleccione app.js.</span>';return}
+  let t=await f.text();
+  try{
+    // Este patcher es deliberadamente conservador: únicamente informa que debe
+    // aplicarse el archivo APP_JS_CAMBIOS_V73.txt cuando la versión exacta no coincide.
+    // Se incluye para facilitar validación local, no para ocultar cambios.
+    const required=[
+      'window.continueToCapture=async function(){',
+      'window.prevProgram=function(){',
+      'window.saveAndNextProgram=function(){',
+      'function reviewAvailable(){',
+      'window.validateAndReview=function(){',
+      'window.go=function(id,force=false){',
+      'function updateNavState(){',
+      'function setupAutoSave(){',
+      'function init(){'
+    ];
+    required.forEach(x=>{if(!t.includes(x))throw new Error('La versión no contiene: '+x);note('✓ Detectado '+x)});
+    $('status').innerHTML='<span class="ok">La versión es compatible con el parche V73. Aplique los bloques de APP_JS_CAMBIOS_V73.txt.</span>';
+    note('\nNo se generó un archivo automáticamente porque V73 modifica lógica crítica y se exige coincidencia exacta de cada bloque.');
+  }catch(e){
+    $('status').innerHTML='<span class="bad">'+e.message+'</span>';
+    note('ERROR: '+e.message);
+  }
+};
+</script>
+</body>
+</html>

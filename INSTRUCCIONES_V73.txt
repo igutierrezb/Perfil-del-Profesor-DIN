@@ -1,0 +1,54 @@
+PERFIL DIN V73 · CORRECCIÓN EN EL NÚCLEO
+========================================
+
+Esta versión NO intenta corregir la secuencia con un script externo.
+El problema está dentro de app.js y se corrige allí.
+
+ARCHIVOS DEL PAQUETE
+--------------------
+bootstrap-persistence.js   -> sustituir
+persistence-live.js        -> conservar/sustituir por la incluida
+APP_JS_CAMBIOS_V73.txt     -> aplicar en app.js
+SEQUENTIAL_HELPERS_V73.txt -> bloque auxiliar incluido también en el archivo anterior
+INDEX_FINAL_V73.txt
+VERIFICADOR_APP_V73.html
+
+POR QUÉ V72 NO ERA SUFICIENTE
+-----------------------------
+app.js mantiene currentProgramIndex como variable interna.
+Además reviewAvailable() también es interna.
+Un script posterior puede bloquear algunos clics, pero no cambia de forma fiable
+todas las decisiones internas de app.js.
+
+V73 corrige directamente:
+- currentProgramIndex;
+- continueToCapture();
+- prevProgram();
+- saveAndNextProgram();
+- reviewAvailable();
+- validateAndReview();
+- window.go();
+- lockRevisionNav();
+- updateNavState();
+- reapertura de edición.
+
+PRUEBA CLAVE
+------------
+Con el caso de la imagen:
+
+1. Profesor con 0 de 240 revisadas.
+2. Paso 2 NO debe ser seleccionable hasta confirmar Paso 1.
+3. Después de confirmar Paso 1 debe decir:
+   Programa 1 de 8.
+4. En Programa 1, botón Anterior NO puede llevar a Programa 8.
+5. Paso 3 debe permanecer deshabilitado.
+6. Aunque el perfil se hubiera enviado anteriormente, si Administración reabre
+   edición, submissionLockedForCurrentPeriod() ya NO permite saltar a revisión.
+7. Solo Programa 8 + validateCapture().ok habilita Paso 3.
+
+DATOS
+-----
+No se borran respuestas existentes.
+Reiniciar currentProgramIndex significa reiniciar únicamente la POSICIÓN visual.
+
+deploy-pages.yml: NO SE ACTUALIZA.

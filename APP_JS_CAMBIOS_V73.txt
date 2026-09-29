@@ -1,0 +1,627 @@
+PERFIL DIN V73 · CAMBIOS DIRECTOS EN app.js
+============================================
+
+DIAGNÓSTICO REAL DEL CÓDIGO ACTUAL
+----------------------------------
+Se localizaron cuatro causas distintas del comportamiento mostrado:
+
+1. currentProgramIndex se recupera de PAD_UTEQ / PAD_UTEQ_PROFILE_<UID>.
+   Si quedó en 7, renderCurrentProgram() abre "Programa 8 de 8".
+
+2. continueToCapture() valida Datos del profesor, pero NO reinicia
+   currentProgramIndex antes de mostrar Perfil por programa.
+
+3. prevProgram() utiliza módulo:
+   (currentProgramIndex-1+programs().length)%programs().length
+
+   Por tanto, estando en Programa 1, "Anterior" puede mandar directamente
+   a Programa 8. Esto se elimina.
+
+4. reviewAvailable() actualmente acepta:
+   submissionLockedForCurrentPeriod()
+
+   aunque Administración haya vuelto a habilitar edición individual.
+   Así, un perfil enviado anteriormente puede tener disponible Revisión e
+   impresión aunque en esta nueva sesión de edición todavía no reconfirme
+   la captura. V73 corrige esto: SI hay edición activa, Revisión exige
+   validateAll().ok Y haber concluido la secuencia.
+
+IMPORTANTE
+----------
+Esta corrección debe hacerse directamente en app.js.
+NO se usa flow-sequence.js V71/V72 como parche externo.
+
+============================================================
+CAMBIO 1 · AGREGAR CONTROL SECUENCIAL
+============================================================
+
+Busque exactamente:
+
+window.go=function(id,force=false){
+
+Y PEGUE INMEDIATAMENTE ANTES todo este bloque:
+
+
+/* =========================================================
+   V73 · Flujo secuencial estricto integrado al núcleo
+   ========================================================= */
+const SEQUENTIAL_FLOW_PREFIX='PAD_DIN_SEQ_V73';
+
+function sequentialFlowKey(){
+  const uid=currentUser?.uid||'guest';
+  const period=String(cfg.periodo||'').replace(/\s+/g,'_');
+  return `${SEQUENTIAL_FLOW_PREFIX}_${uid}_${period}`;
+}
+function sequentialRead(){
+  try{
+    const raw=sessionStorage.getItem(sequentialFlowKey());
+    return raw?JSON.parse(raw):{profileConfirmed:false,captureConfirmed:false};
+  }catch(_){
+    return {profileConfirmed:false,captureConfirmed:false};
+  }
+}
+function sequentialWrite(next){
+  try{sessionStorage.setItem(sequentialFlowKey(),JSON.stringify(next))}catch(_){}
+}
+function sequentialProfileConfirmed(){
+  return !editingAllowed() || !!sequentialRead().profileConfirmed;
+}
+function sequentialCaptureConfirmed(){
+  return !editingAllowed() || !!sequentialRead().captureConfirmed;
+}
+function sequentialConfirmProfileStep(){
+  const state=sequentialRead();
+  state.profileConfirmed=true;
+  state.captureConfirmed=false;
+  sequentialWrite(state);
+  updateSequentialNavLocks();
+}
+function sequentialConfirmCaptureStep(){
+  const state=sequentialRead();
+  state.profileConfirmed=true;
+  state.captureConfirmed=true;
+  sequentialWrite(state);
+  updateSequentialNavLocks();
+}
+function sequentialInvalidateProfileStep(){
+  if(!editingAllowed())return;
+  sequentialWrite({profileConfirmed:false,captureConfirmed:false});
+  currentProgramIndex=0;
+  store.currentProgramIndex=0;
+  persist({touch:false,schedule:false});
+  updateSequentialNavLocks();
+}
+function sequentialInvalidateCaptureStep(){
+  if(!editingAllowed())return;
+  const state=sequentialRead();
+  state.captureConfirmed=false;
+  sequentialWrite(state);
+  updateSequentialNavLocks();
+}
+function resetSequentialFlowForEditing(){
+  if(!editingAllowed())return;
+  sequentialWrite({profileConfirmed:false,captureConfirmed:false});
+  currentProgramIndex=0;
+  store.currentProgramIndex=0;
+  persist({touch:false,schedule:false});
+  updateSequentialNavLocks();
+}
+function initializeSequentialFlow(){
+  if(editingAllowed()){
+    resetSequentialFlowForEditing();
+  }else{
+    updateSequentialNavLocks();
+  }
+}
+function updateSequentialNavLocks(){
+  const captureBtn=document.querySelector('.main-nav button[data-view="captura"]');
+  const revisionBtn=document.querySelector('.main-nav button[data-view="revision"]');
+
+  if(!editingAllowed()){
+    if(captureBtn){
+      captureBtn.disabled=false;
+      captureBtn.classList.remove('locked');
+      captureBtn.removeAttribute('aria-disabled');
+      captureBtn.title='';
+    }
+    if(revisionBtn){
+      revisionBtn.disabled=false;
+      revisionBtn.classList.remove('locked');
+      revisionBtn.removeAttribute('aria-disabled');
+      revisionBtn.title='';
+    }
+    return;
+  }
+
+  const profileOk=sequentialProfileConfirmed();
+  const captureOk=sequentialCaptureConfirmed() && validateAll().ok;
+
+  if(captureBtn){
+    captureBtn.disabled=!profileOk;
+    captureBtn.classList.toggle('locked',!profileOk);
+    captureBtn.setAttribute('aria-disabled',profileOk?'false':'true');
+    captureBtn.title=profileOk
+      ?'Datos del profesor confirmados.'
+      :'Primero concluya y confirme Datos del profesor.';
+  }
+
+  if(revisionBtn){
+    revisionBtn.disabled=!captureOk;
+    revisionBtn.classList.toggle('locked',!captureOk);
+    revisionBtn.setAttribute('aria-disabled',captureOk?'false':'true');
+    revisionBtn.title=captureOk
+      ?'Perfil por programa concluido.'
+      :'Primero concluya todos los programas en orden.';
+  }
+}
+
+
+============================================================
+CAMBIO 2 · window.go(): BLOQUEO REAL DE LAS PESTAÑAS
+============================================================
+
+Busque este bloque completo:
+
+window.go=function(id,force=false){
+  if(id==='admin'&&!isAdmin()){toast('Administración disponible únicamente para ivan.gutierrez@uteq.edu.mx');return}
+  if(id==='captura'&&!force){const p=validateProfile({visual:true,focusFirst:true});if(!p.ok){$('profileErrors').innerHTML=statusBox(p.errors,'Complete los datos obligatorios antes de continuar.');return}}
+  if(id==='revision'&&!force){
+    const v=validateAll();
+    if(!reviewAvailable()){showCaptureErrors(v.errors);return}
+  }
+  document.querySelectorAll('.view').forEach(x=>x.classList.remove('active'));$(id).classList.add('active');
+  document.querySelectorAll('.main-nav button').forEach(b=>b.classList.toggle('active',b.dataset.view===id));
+  if(id==='revision')buildPrint();
+  if(id==='admin')renderAdmin();
+  scrollTo(0,0);
+  if(id==='captura')requestAnimationFrame(showCaptureOrientationIfNeeded);
+}
+
+REEMPLÁCELO POR:
+
+window.go=function(id,force=false){
+  if(id==='admin'&&!isAdmin()){
+    toast('Administración disponible únicamente para ivan.gutierrez@uteq.edu.mx');
+    return;
+  }
+
+  // V73: mientras exista edición activa, las pestañas respetan la secuencia.
+  if(editingAllowed() && id==='captura' && !sequentialProfileConfirmed()){
+    toast('Primero concluya y confirme los Datos del profesor.');
+    return;
+  }
+
+  if(editingAllowed() && id==='revision' && !sequentialCaptureConfirmed()){
+    toast('Primero concluya todos los programas del Perfil por programa.');
+    return;
+  }
+
+  if(id==='captura'&&!force){
+    const p=validateProfile({visual:true,focusFirst:true});
+    if(!p.ok){
+      $('profileErrors').innerHTML=statusBox(
+        p.errors,
+        'Complete los datos obligatorios antes de continuar.'
+      );
+      return;
+    }
+  }
+
+  if(id==='revision'){
+    const v=validateAll();
+
+    // Incluso force=true NO puede saltar el flujo mientras está editando.
+    if(editingAllowed() && (!sequentialCaptureConfirmed() || !v.ok)){
+      showCaptureErrors(v.errors);
+      toast('Complete y confirme toda la captura antes de pasar a revisión.');
+      return;
+    }
+
+    if(!force && !reviewAvailable()){
+      showCaptureErrors(v.errors);
+      return;
+    }
+  }
+
+  document.querySelectorAll('.view').forEach(x=>x.classList.remove('active'));
+  $(id).classList.add('active');
+  document.querySelectorAll('.main-nav button').forEach(
+    b=>b.classList.toggle('active',b.dataset.view===id)
+  );
+
+  if(id==='revision')buildPrint();
+  if(id==='admin')renderAdmin();
+  scrollTo(0,0);
+  if(id==='captura')requestAnimationFrame(showCaptureOrientationIfNeeded);
+}
+
+============================================================
+CAMBIO 3 · AL CONFIRMAR PASO 1 SIEMPRE COMENZAR EN PROGRAMA 1
+============================================================
+
+Dentro de window.continueToCapture=async function(), localice:
+
+  if(cloudAvailable&&currentUser){
+    try{await saveProfileToCloud(false)}catch(e){console.warn('Guardado previo al avance',e)}
+  }
+
+  renderCurrentProgram();
+
+REEMPLÁCELO POR:
+
+  if(cloudAvailable&&currentUser){
+    try{await saveProfileToCloud(false)}catch(e){console.warn('Guardado previo al avance',e)}
+  }
+
+  // V73: Paso 1 quedó confirmado.
+  // Reiniciamos ÚNICAMENTE la posición de navegación.
+  // answers/programMeta/profile NO se borran.
+  sequentialConfirmProfileStep();
+  currentProgramIndex=0;
+  store.currentProgramIndex=0;
+  persist({touch:false,schedule:false});
+
+  renderCurrentProgram();
+
+============================================================
+CAMBIO 4 · renderCurrentProgram(): NUNCA MOSTRAR PROGRAMA 8
+ANTES DE CONFIRMAR PASO 1
+============================================================
+
+Busque:
+
+function renderCurrentProgram(){
+  const p=currentProgram();if(!p)return;
+
+REEMPLÁCELO POR:
+
+function renderCurrentProgram(){
+  // V73: durante una sesión editable sin Paso 1 confirmado,
+  // la vista preparada en segundo plano siempre es Programa 1.
+  if(editingAllowed() && !sequentialProfileConfirmed() && currentProgramIndex!==0){
+    currentProgramIndex=0;
+    store.currentProgramIndex=0;
+    persist({touch:false,schedule:false});
+  }
+
+  const p=currentProgram();if(!p)return;
+
+============================================================
+CAMBIO 5 · "ANTERIOR" YA NO PUEDE HACER PROGRAMA 1 -> PROGRAMA 8
+============================================================
+
+Busque:
+
+window.prevProgram=function(){
+  if(!canLeaveCurrentProgram())return;
+  currentProgramIndex=(currentProgramIndex-1+programs().length)%programs().length;
+  persist();renderCurrentProgram();
+  scrollTo({top:$('captura').offsetTop-55,behavior:'smooth'})
+}
+
+REEMPLÁCELO POR:
+
+window.prevProgram=function(){
+  if(currentProgramIndex<=0){
+    toast('Este es el primer programa educativo.');
+    return;
+  }
+  if(!canLeaveCurrentProgram())return;
+
+  currentProgramIndex--;
+  sequentialInvalidateCaptureStep();
+  persist();
+  renderCurrentProgram();
+  scrollTo({top:$('captura').offsetTop-55,behavior:'smooth'})
+}
+
+============================================================
+CAMBIO 6 · saveAndNextProgram(): SOLO SECUENCIA 1 -> 2 -> ... -> 8
+============================================================
+
+Busque:
+
+window.saveAndNextProgram=function(){
+  if(!canLeaveCurrentProgram())return;
+  persist();toast('Programa guardado.');
+  if(currentProgramIndex>=programs().length-1){validateAndReview();return}
+  currentProgramIndex++;
+  persist();renderCurrentProgram();
+  scrollTo({top:$('captura').offsetTop-55,behavior:'smooth'})
+}
+
+REEMPLÁCELO POR:
+
+window.saveAndNextProgram=function(){
+  if(!editingAllowed()){
+    toast('La edición de este perfil no está disponible.');
+    return;
+  }
+
+  if(!sequentialProfileConfirmed()){
+    toast('Primero concluya y confirme los Datos del profesor.');
+    window.go('perfil',true);
+    return;
+  }
+
+  if(!canLeaveCurrentProgram())return;
+
+  persist();
+  toast('Programa guardado.');
+
+  if(currentProgramIndex>=programs().length-1){
+    // No basta con que Programa 8 esté completo:
+    // se valida TODA la captura antes de habilitar Paso 3.
+    const allCapture=validateCapture();
+    if(!allCapture.ok){
+      sequentialInvalidateCaptureStep();
+      showCaptureErrors(allCapture.errors);
+      toast('Todavía existen materias pendientes en otros programas.');
+      return;
+    }
+
+    validateAndReview(true);
+    return;
+  }
+
+  currentProgramIndex++;
+  sequentialInvalidateCaptureStep();
+  persist();
+  renderCurrentProgram();
+  scrollTo({top:$('captura').offsetTop-55,behavior:'smooth'})
+}
+
+============================================================
+CAMBIO 7 · reviewAvailable(): UN ENVÍO ANTERIOR NO DESBLOQUEA
+REVISIÓN CUANDO LA EDICIÓN FUE REABIERTA
+============================================================
+
+Busque:
+
+function reviewAvailable(){
+  // Si Administración cerró la edición (o venció la fecha), el profesor puede
+  // seguir consultando y generar/imprimir el estado actual de su perfil.
+  return validateAll().ok || cfg.editingLocked || deadlinePassed() || submissionLockedForCurrentPeriod();
+}
+
+REEMPLÁCELO POR:
+
+function reviewAvailable(){
+  const complete=validateAll().ok;
+
+  // V73: si el profesor está actualmente habilitado para editar,
+  // su envío anterior NO autoriza saltar a revisión.
+  if(editingAllowed()){
+    return complete && sequentialCaptureConfirmed();
+  }
+
+  // Solo en modo verdaderamente de consulta/solo lectura conservamos
+  // el acceso a revisión e impresión del perfil ya existente.
+  return complete ||
+    cfg.editingLocked ||
+    deadlinePassed() ||
+    submissionLockedForCurrentPeriod();
+}
+
+============================================================
+CAMBIO 8 · validateAndReview(): SOLO EL ÚLTIMO PROGRAMA PUEDE
+CONFIRMAR PASO 2
+============================================================
+
+Busque el bloque:
+
+window.validateAndReview=function(){
+  if(editingAllowed()) collectProfile();
+  persist();
+  const v=validateAll();
+  if(!reviewAvailable()){showCaptureErrors(v.errors);toast('Complete las materias pendientes.');return}
+  $('captureErrors').innerHTML='';
+  $('validation').innerHTML=v.ok
+    ?`<div class="status-box ok"><b>Perfil completo.</b><br>La información puede formalizarse e imprimirse.</div>`
+    :`<div class="status-box info"><b>Consulta en modo solo lectura.</b><br>La edición está cerrada, pero puede revisar e imprimir el perfil capturado.</div>`;
+  buildPrint();
+  window.go('revision',true)
+}
+
+REEMPLÁCELO POR:
+
+window.validateAndReview=function(fromSequentialFlow=false){
+  if(editingAllowed()){
+    collectProfile();
+
+    // Mientras está editando, solo saveAndNextProgram() desde el último
+    // programa puede habilitar Revisión.
+    if(!fromSequentialFlow){
+      toast('Concluya primero todos los programas en orden.');
+      return false;
+    }
+  }
+
+  persist();
+  const v=validateAll();
+
+  if(editingAllowed() && !v.ok){
+    sequentialInvalidateCaptureStep();
+    showCaptureErrors(v.errors);
+    toast('Complete las materias pendientes.');
+    return false;
+  }
+
+  if(!editingAllowed() && !reviewAvailable()){
+    showCaptureErrors(v.errors);
+    return false;
+  }
+
+  if(editingAllowed()){
+    sequentialConfirmCaptureStep();
+  }
+
+  $('captureErrors').innerHTML='';
+  $('validation').innerHTML=v.ok
+    ?`<div class="status-box ok"><b>Perfil completo.</b><br>La información puede formalizarse e imprimirse.</div>`
+    :`<div class="status-box info"><b>Consulta en modo solo lectura.</b><br>La edición está cerrada, pero puede revisar e imprimir el perfil capturado.</div>`;
+
+  buildPrint();
+  window.go('revision',true);
+  return true;
+}
+
+============================================================
+CAMBIO 9 · lockRevisionNav()
+============================================================
+
+Busque:
+
+function lockRevisionNav(){$('navRevision').classList.toggle('locked',!reviewAvailable())}
+
+REEMPLÁCELO POR:
+
+function lockRevisionNav(){
+  const el=$('navRevision');
+  if(!el)return;
+
+  const locked=editingAllowed()
+    ?(!sequentialCaptureConfirmed() || !validateAll().ok)
+    :!reviewAvailable();
+
+  el.classList.toggle('locked',locked);
+  el.disabled=locked;
+  el.setAttribute('aria-disabled',locked?'true':'false');
+}
+
+============================================================
+CAMBIO 10 · updateNavState(): APLICAR TAMBIÉN LOS CANDADOS
+============================================================
+
+Busque el final de updateNavState():
+
+  if(rBtn){
+    rBtn.classList.toggle('complete',validateAll().ok);
+    rBtn.classList.toggle('readable',reviewAvailable()&&!validateAll().ok);
+  }
+}
+
+REEMPLÁCELO POR:
+
+  if(rBtn){
+    rBtn.classList.toggle('complete',validateAll().ok);
+    rBtn.classList.toggle('readable',reviewAvailable()&&!validateAll().ok);
+  }
+
+  updateSequentialNavLocks();
+}
+
+============================================================
+CAMBIO 11 · SI MODIFICA DATOS DEL PROFESOR, DEBE CONFIRMAR DE NUEVO
+============================================================
+
+Dentro de setupAutoSave(), en el listener 'input', después de:
+
+    if(!e.target.matches('#perfil input,#perfil select,#perfil textarea'))return;
+
+AGREGUE:
+
+    sequentialInvalidateProfileStep();
+
+Y en el listener 'change', cambie:
+
+    if(e.target.matches('#perfil input,#perfil select,#perfil textarea')){collectProfile();updateNavState()}
+
+POR:
+
+    if(e.target.matches('#perfil input,#perfil select,#perfil textarea')){
+      sequentialInvalidateProfileStep();
+      collectProfile();
+      updateNavState();
+    }
+
+============================================================
+CAMBIO 12 · AL REABRIR EDICIÓN DESDE ADMINISTRACIÓN
+REINICIAR SECUENCIA, NO LOS DATOS
+============================================================
+
+En el listener de metadatos del perfil, busque:
+
+    if(priorPeriod!==store.submittedPeriod || priorOverride!==store.individualEditEnabled || priorDisabled!==store.individualEditDisabled){
+      localStorage.setItem('PAD_UTEQ',JSON.stringify({...store,cfg,answers,programMeta,customPrograms,programOverrides,disabledPrograms,programAcronyms,commonRules,transversalRules,currentProgramIndex,lastSavedAt}));
+      applyEditState();updateNavState();
+
+REEMPLÁCELO POR:
+
+    if(priorPeriod!==store.submittedPeriod || priorOverride!==store.individualEditEnabled || priorDisabled!==store.individualEditDisabled){
+      const editingWasReopened=!priorOverride && store.individualEditEnabled;
+
+      if(editingWasReopened){
+        // V73: conservar TODA la captura anterior, pero volver a exigir
+        // Paso 1 -> Programa 1 -> ... -> último programa -> Paso 3.
+        resetSequentialFlowForEditing();
+
+        document.querySelectorAll('.view').forEach(x=>x.classList.remove('active'));
+        $('perfil')?.classList.add('active');
+        document.querySelectorAll('.main-nav button').forEach(
+          b=>b.classList.toggle('active',b.dataset.view==='perfil')
+        );
+      }
+
+      localStorage.setItem('PAD_UTEQ',JSON.stringify({...store,cfg,answers,programMeta,customPrograms,programOverrides,disabledPrograms,programAcronyms,commonRules,transversalRules,currentProgramIndex,lastSavedAt}));
+      applyEditState();
+      updateNavState();
+
+============================================================
+CAMBIO 13 · AL ARRANCAR UNA SESIÓN EDITABLE
+============================================================
+
+Dentro de function init(), busque:
+
+function init(){
+  loadProfile();
+  updatePeriodBadges();
+  initAuth();
+  renderCurrentProgram();
+
+REEMPLÁCELO POR:
+
+function init(){
+  loadProfile();
+  updatePeriodBadges();
+  initAuth();
+
+  // V73: toda sesión editable inicia secuencialmente.
+  // Solo reinicia navegación, nunca answers/profile/programMeta.
+  initializeSequentialFlow();
+
+  renderCurrentProgram();
+
+============================================================
+RESULTADO
+============================================================
+
+Profesor en captura nueva:
+1 Datos del profesor          habilitado
+2 Perfil por programa        BLOQUEADO
+3 Revisión e impresión       BLOQUEADO
+
+Después de confirmar Paso 1:
+1 habilitado
+2 habilitado -> Programa 1 de 8
+3 BLOQUEADO
+
+Programa 1 -> Guardar y seguir -> Programa 2
+...
+Programa 7 -> Guardar y seguir -> Programa 8
+
+Programa 8:
+- si cualquier materia de cualquier programa sigue pendiente:
+  NO pasa a Revisión;
+- si TODA la captura está completa:
+  confirma Paso 2 y habilita Paso 3.
+
+Profesor que ya había enviado y recibe edición otra vez:
+- conserva todos sus datos precargados;
+- vuelve a Paso 1;
+- debe confirmar Paso 1;
+- Paso 2 abre Programa 1, NO Programa 8;
+- debe recorrer nuevamente 1 -> 8;
+- el envío anterior ya NO desbloquea Revisión durante esta edición.
+
+deploy-pages.yml: NO SE ACTUALIZA.
