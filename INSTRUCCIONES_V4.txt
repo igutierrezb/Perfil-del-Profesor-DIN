@@ -1,0 +1,35 @@
+PERFIL DIN · RESPALDO/RESTAURACIÓN V4
+
+1) Sustituya únicamente backup.js por el archivo incluido.
+2) En index.html cambie:
+   backup.js?v=20260929-3
+   por:
+   backup.js?v=20260929-4
+3) Haga commit en main.
+4) Espere despliegue en GitHub Pages y Cloudflare Workers.
+5) Recargue con Ctrl+F5.
+
+CORRECCIONES:
+- Al cargar el JSON se abre una pantalla administrativa independiente.
+- Lista de profesores clara, con búsqueda y selección.
+- Botones visibles de restauración.
+- Confirmación adicional antes de escribir.
+- Barra de progreso por profesor.
+- Verificación real de cada documento después de restaurarlo.
+- Respaldo preventivo automático.
+- La restauración incrementa dataRevision/clientUpdatedAt para que el estado restaurado prevalezca y se propague a móvil/escritorio.
+
+AUDITORÍA:
+El JSON conserva toda la auditoría. No se intenta reescribir audit porque las reglas actuales permiten crear eventos pero no actualizar documentos históricos. La restauración genera un nuevo evento de auditoría.
+
+NO CAMBIAN:
+app.js
+realtime-sync.js
+styles.css
+mobile.css
+firestore.rules
+build-cloudflare.sh
+wrangler.jsonc
+deploy-pages.yml
+
+deploy-pages.yml: NO SE ACTUALIZA.
