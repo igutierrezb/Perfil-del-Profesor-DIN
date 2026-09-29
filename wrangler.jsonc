@@ -2,6 +2,6 @@
   "name": "perfil-del-profesor-din",
   "compatibility_date": "2026-09-28",
   "assets": {
-    "directory": "."
+    "directory": "./dist"
   }
 }
