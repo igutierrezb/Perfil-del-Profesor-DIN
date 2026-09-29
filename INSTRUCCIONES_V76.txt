@@ -1,0 +1,62 @@
+PERFIL DIN V76 · FLUJO ESTRICTO Y SIN RESPALDOS
+================================================
+
+SE DETECTÓ EN EL REPOSITORIO ACTUAL
+-----------------------------------
+El index.html actualmente publicado todavía contiene:
+
+<script type="module" src="app.js?v=20260928-1"></script>
+<script type="module" src="backup.js?v=20260929-2"></script>
+
+Por eso:
+1. El módulo "Respaldo y restauración" sigue apareciendo en Administración.
+2. Las correcciones nuevas de navegación no se están cargando de forma efectiva.
+
+V76 CORRIGE AMBAS COSAS
+-----------------------
+A. backup.js deja de cargarse.
+B. sequence-guard.js se carga ANTES de app.js.
+C. Mientras un profesor está en edición:
+   - Datos del profesor / Perfil por programa / Revisión e impresión
+     son solo indicadores;
+   - no se puede saltar haciendo clic arriba;
+   - la navegación válida es exclusivamente por los botones inferiores.
+D. Cuando el botón inferior de Paso 1 lleva a Paso 2:
+   - se elimina la posición anterior guardada;
+   - si app.js internamente quedó en Programa 8, sequence-guard.js usa
+     goToCaptureIssue(0,0,0) para cambiar el índice interno real;
+   - debe mostrar Programa 1.
+
+ARCHIVOS
+--------
+1. sequence-guard.js -> subir a la raíz del repositorio.
+2. GENERAR_INDEX_V76.html -> úselo localmente para producir el index.html nuevo.
+3. Sustituya index.html en GitHub por el archivo generado.
+
+NO MODIFIQUE
+------------
+app.js
+firebase-config.js
+catalog.js
+firestore.rules
+deploy-pages.yml
+
+PRUEBA
+------
+1. Actualice ambos archivos en GitHub.
+2. Espere el despliegue.
+3. Haga Ctrl+F5.
+4. Administración:
+   - "Respaldo y restauración" debe desaparecer.
+5. Profesor con edición:
+   - clic en cualquiera de las tres pestañas superiores -> no navega.
+   - confirmar Paso 1 con el botón inferior -> abre Paso 2.
+   - debe indicar Programa 1 de 8.
+   - avance únicamente con Guardar y seguir.
+
+IMPORTANTE
+----------
+Si Cloudflare Workers sigue mostrando la versión anterior después del commit,
+haga una nueva implementación del commit actual.
+
+deploy-pages.yml: NO SE ACTUALIZA.
