@@ -1,0 +1,103 @@
+PERFIL ACADÉMICO DOCENTE DIN · V71
+FLUJO SECUENCIAL ESTRICTO
+====================================
+
+OBJETIVO
+--------
+Mientras el profesor esté editando o retomando una captura NO finalizada:
+
+PASO 1 · Datos del profesor
+- Es el único paso inicialmente disponible.
+- Paso 2 y Paso 3 permanecen bloqueados.
+- El profesor debe concluir y confirmar los datos mediante el botón normal
+  de continuar de la plataforma.
+- Solo si la validación real de app.js permite entrar a Captura, se habilita Paso 2.
+
+PASO 2 · Perfil por programa
+- Se habilita después de confirmar correctamente Paso 1.
+- Paso 3 permanece bloqueado.
+- El profesor debe recorrer y concluir los programas utilizando
+  "Guardar y seguir".
+- Solo cuando la validación real de app.js permite pasar a Revisión,
+  se habilita Paso 3.
+
+PASO 3 · Revisión e impresión
+- No se puede seleccionar manualmente antes de concluir Paso 2.
+- Se habilita cuando el propio flujo de captura llega correctamente a revisión.
+
+CAMBIOS POSTERIORES
+-------------------
+- Si el profesor vuelve al Paso 1 y modifica algo, se vuelven a bloquear
+  Paso 2 y Paso 3 hasta confirmar otra vez.
+- Si modifica información del Paso 2, Paso 3 vuelve a bloquearse hasta
+  concluir otra vez la captura.
+
+PERFIL FINALIZADO
+-----------------
+Un perfil ya finalizado NO queda atrapado por esta regla.
+Puede consultarse y reimprimirse conforme a la lógica actual.
+
+PERSISTENCIA
+------------
+V71 conserva íntegramente V70:
+- Firestore como fuente persistente;
+- copia local por UID;
+- revisión más reciente;
+- recuperación al cerrar/abrir sesión;
+- sincronización móvil/escritorio;
+- protección frente a nube vacía accidental.
+
+flow-sequence.js NO escribe ni borra:
+- profile
+- answers
+- programMeta
+- planningByPeriod
+- Firestore
+
+Solo controla el orden de navegación.
+
+ARCHIVOS A SUBIR
+----------------
+1. bootstrap-persistence.js -> sustituir por V71
+2. persistence-live.js -> puede sustituir por la copia incluida (misma base V70)
+3. flow-sequence.js -> NUEVO
+4. index.html -> una sola línea según INDEX_FINAL_V71.txt
+
+NO CAMBIAN
+----------
+app.js
+firestore.rules
+build-cloudflare.sh
+wrangler.jsonc
+deploy-pages.yml
+
+deploy-pages.yml: NO SE ACTUALIZA.
+
+PRUEBAS FUNCIONALES
+-------------------
+1. Profesor no finalizado inicia sesión:
+   - Paso 1 disponible.
+   - Paso 2 con candado.
+   - Paso 3 con candado.
+
+2. Intentar pulsar Paso 2:
+   - no navega;
+   - pide confirmar Datos del profesor.
+
+3. Confirmar Paso 1 correctamente:
+   - entra a Paso 2;
+   - Paso 2 queda habilitado;
+   - Paso 3 continúa bloqueado.
+
+4. Intentar pulsar Paso 3 antes de terminar:
+   - no navega.
+
+5. Completar todos los programas y usar "Guardar y continuar a revisión":
+   - entra a Paso 3;
+   - Paso 3 queda habilitado.
+
+6. Modificar posteriormente Datos del profesor:
+   - Paso 2 y Paso 3 vuelven a bloquearse.
+
+7. Perfil finalizado:
+   - conserva la consulta/reimpresión actual.

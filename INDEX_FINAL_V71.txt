@@ -1,0 +1,16 @@
+PERFIL DIN V71 · FINAL DE index.html
+========================================
+
+Mantenga eliminados todos los scripts de respaldo/restauración.
+
+Al final de index.html deje SOLAMENTE:
+
+<script type="module" src="bootstrap-persistence.js?v=20260929-71"></script>
+</body>
+</html>
+
+bootstrap-persistence.js carga en este orden:
+1. preflight de persistencia;
+2. app.js;
+3. flow-sequence.js;
+4. persistence-live.js.

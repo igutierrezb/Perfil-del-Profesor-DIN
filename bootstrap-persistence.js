@@ -1,6 +1,6 @@
 /*
  Perfil Académico Docente DIN
- Arranque protegido de persistencia V70
+ Arranque protegido de persistencia V71
  2026-09-29
 
  Objetivo:
@@ -159,5 +159,6 @@ async function preflight(){
 }
 
 await preflight();
-await import('./app.js?v=20260929-70');
-await import('./persistence-live.js?v=20260929-70');
+await import('./app.js?v=20260929-71');
+await import('./flow-sequence.js?v=20260929-71');
+await import('./persistence-live.js?v=20260929-71');

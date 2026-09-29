@@ -1,0 +1,20 @@
+PERFIL DIN V71 · PRUEBAS
+========================
+
+OK: 6 comprobaciones del flujo secuencial superadas
+
+Comprobación sintáctica JavaScript:
+bootstrap-persistence.js: OK
+persistence-live.js: OK
+flow-sequence.js: OK
+
+Escenarios validados lógicamente:
+- inicio de edición: pasos 2 y 3 bloqueados;
+- Paso 1 confirmado: Paso 2 habilitado y Paso 3 bloqueado;
+- Paso 2 concluido: Paso 3 habilitado;
+- perfil finalizado: consulta no bloqueada;
+- modificar Paso 1 reinicia confirmación de pasos 1 y 2;
+- modificar Paso 2 vuelve a bloquear Paso 3.
+
+La validación de contenido sigue siendo la de app.js: flow-sequence.js no sustituye
+las reglas académicas ni inventa una validación paralela.
