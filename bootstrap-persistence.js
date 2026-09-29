@@ -1,6 +1,6 @@
 /*
  Perfil Académico Docente DIN
- Arranque protegido de persistencia V73
+ Arranque protegido de persistencia V74
  2026-09-29
 
  Objetivo:
@@ -102,7 +102,7 @@ function hydrateFromRemote(uid,d){
     individualEditDisabled:!!d.individualEditDisabled,
     profileResetToken:d.profileResetToken||null,
     profileDeletionToken:d.profileDeletionToken||null,
-    currentProgramIndex:Number.isInteger(prior.currentProgramIndex)?prior.currentProgramIndex:0,
+    currentProgramIndex:0,
     localUpdatedAt:now,
     cloudUpdatedAt:now,
     syncPending:false,
@@ -159,5 +159,5 @@ async function preflight(){
 }
 
 await preflight();
-await import('./app.js?v=20260929-73');
-await import('./persistence-live.js?v=20260929-73');
+await import('./app.js?v=20260929-74');
+await import('./persistence-live.js?v=20260929-74');

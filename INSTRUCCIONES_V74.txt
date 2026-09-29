@@ -1,0 +1,68 @@
+PERFIL DIN V74 · INSTRUCCIONES
+===============================
+
+Esta versión corrige el problema dentro de app.js. No depende de un parche
+externo de navegación.
+
+ARCHIVOS A ACTUALIZAR
+---------------------
+1. app.js
+2. bootstrap-persistence.js
+3. persistence-live.js
+4. index.html (solo la línea final indicada en INDEX_FINAL_V74.txt)
+
+CÓMO OBTENER app.js V74
+-----------------------
+Opción recomendada:
+
+1. Descargue desde GitHub su app.js ACTUAL.
+2. Abra con doble clic APLICAR_CORRECCION_V74.html.
+3. Seleccione ese app.js.
+4. Pulse "Generar app.js corregido".
+5. La herramienta debe mostrar:
+   "21/21 cambios aplicados".
+6. Se descargará automáticamente un archivo llamado app.js.
+7. Ese es el app.js que debe sustituir en GitHub.
+
+La herramienta funciona completamente en su computadora; no sube el código a
+ningún servicio.
+
+También se incluye APLICAR_CORRECCION_V74.py como alternativa.
+
+RESULTADO ESPERADO
+------------------
+Profesor nuevo o con captura incompleta:
+- Paso 1: disponible.
+- Paso 2: deshabilitado.
+- Paso 3: deshabilitado.
+
+Después de confirmar correctamente Paso 1:
+- Paso 2 se habilita.
+- Siempre muestra "Programa 1 de 8".
+- Paso 3 sigue deshabilitado.
+
+Perfil por programa:
+- Programa 1 -> Guardar y seguir -> Programa 2.
+- No existe salto circular Programa 1 -> Programa 8.
+- El último programa NO puede abrir Revisión si queda una sola materia
+  pendiente en cualquier programa.
+
+Profesor que ya había finalizado y recibe edición otra vez:
+- conserva todos sus datos anteriores precargados;
+- vuelve a Paso 1;
+- debe confirmar Paso 1;
+- entra a Programa 1, no a Programa 8;
+- debe confirmar nuevamente el recorrido;
+- el envío anterior no desbloquea Paso 3.
+
+IMPORTANTE
+----------
+No se borran:
+- profile
+- answers
+- programMeta
+- planningByPeriod
+
+Solo se reinicia la posición y la confirmación de la secuencia.
+
+deploy-pages.yml: NO SE ACTUALIZA.

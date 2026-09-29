@@ -1,0 +1,38 @@
+PERFIL DIN V74 · VALIDACIÓN SOBRE EL CÓDIGO ACTUAL
+==================================================
+
+Se ejecutó el parche lógico contra el app.js actual leído directamente del
+repositorio GitHub.
+
+Resultado:
+- archivo original: 185,344 caracteres;
+- archivo esperado después del parche: ~191 KB;
+- 21 grupos de modificaciones localizados correctamente;
+- no hubo bloques ambiguos en las sustituciones individuales.
+
+Coincidencias encontradas:
+01 declaración índice: 1
+02 restauraciones de índice tipo A: 2
+03 restauración de índice tipo B: 1
+04 inserción del control secuencial: 1
+05 window.go: 1
+06 continueToCapture: 1
+07 renderCurrentProgram: 1
+08 prevProgram: 1
+09 saveAndNextProgram: 1
+10 reviewAvailable: 1
+11 validateAndReview: 1
+12 lockRevisionNav: 1
+13 salto por error: 1
+14 goToCaptureIssue: 1
+15 updateNavState: 1
+16 autosave input: 1
+17 autosave change: 1
+18 onAuthStateChanged: 1
+19 reapertura de edición: 1
+20 renderLoadedProfile: 1
+21 init: 1
+
+La herramienta HTML vuelve a verificar estas coincidencias antes de generar el
+archivo. Si el app.js cambió y un bloque ya no coincide, se detiene y NO genera
+un app.js parcialmente modificado.

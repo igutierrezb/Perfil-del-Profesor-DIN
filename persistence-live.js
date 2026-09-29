@@ -1,6 +1,6 @@
 /*
  Perfil Académico Docente DIN
- Sincronización persistente multidispositivo V70
+ Sincronización persistente multidispositivo V74
  2026-09-29
 
  - Escucha únicamente versiones remotas realmente más nuevas.
@@ -103,7 +103,7 @@ function hydrate(uid,d){
     individualEditDisabled:!!d.individualEditDisabled,
     profileResetToken:d.profileResetToken||null,
     profileDeletionToken:d.profileDeletionToken||null,
-    currentProgramIndex:Number.isInteger(prior.currentProgramIndex)?prior.currentProgramIndex:0,
+    currentProgramIndex:0,
     localUpdatedAt:now,
     cloudUpdatedAt:now,
     syncPending:false,

@@ -1,0 +1,46 @@
+PERFIL DIN V74 · DIAGNÓSTICO DEL PROBLEMA
+=========================================
+
+Se analizó el app.js actualmente publicado en GitHub (SHA de blob:
+29baf4d0ef1e9ccf328421e04fb7ab293f303bfc).
+
+El problema no era una sola condición. Había cuatro rutas independientes:
+
+1. POSICIÓN ANTIGUA PERSISTENTE
+   currentProgramIndex se recuperaba desde PAD_UTEQ_PROFILE_<UID>.
+   Si una sesión anterior terminó en índice 7, la nueva sesión mostraba:
+   "Programa 8 de 8", aunque 0 materias estuvieran revisadas.
+
+2. NAVEGACIÓN CIRCULAR
+   prevProgram() utilizaba:
+   (currentProgramIndex - 1 + programs().length) % programs().length
+
+   En Programa 1, el botón Anterior podía llevar a Programa 8.
+
+3. ENVÍO ANTERIOR DESBLOQUEABA REVISIÓN
+   reviewAvailable() devolvía verdadero si:
+   submissionLockedForCurrentPeriod()
+
+   Por eso un perfil enviado anteriormente podía tener Revisión disponible
+   después de que Administración reabriera la edición.
+
+4. LAS PESTAÑAS NO REPRESENTABAN UNA CONFIRMACIÓN SECUENCIAL
+   Paso 2 dependía de validateProfile(), pero no de que el profesor hubiera
+   confirmado expresamente Paso 1.
+   Paso 3 dependía del estado global y del envío anterior, no de haber recorrido
+   de nuevo los programas.
+
+V74 cambia la regla:
+
+- cada sesión editable inicia con currentProgramIndex=0;
+- NO se recupera la posición 7/Programa 8 desde el respaldo local;
+- Paso 2 queda físicamente disabled hasta confirmar Paso 1;
+- confirmar Paso 1 siempre muestra Programa 1;
+- Programa 1 no puede retroceder circularmente a Programa 8;
+- Paso 3 queda físicamente disabled hasta completar la captura;
+- un envío anterior NO cuenta como autorización para saltar a Revisión si
+  individualEditEnabled reabrió la edición;
+- reabrir edición conserva profile/answers/programMeta, pero reinicia solamente
+  la SECUENCIA;
+- cualquier cambio posterior en answers/programMeta invalida automáticamente
+  la confirmación de Paso 2 mediante una firma del estado capturado.

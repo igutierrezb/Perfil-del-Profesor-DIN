@@ -1,0 +1,22 @@
+PERFIL DIN V74 · FINAL DE index.html
+========================================
+
+Esta versión YA NO utiliza flow-sequence.js.
+
+Al final de index.html deje solamente:
+
+<script type="module" src="bootstrap-persistence.js?v=20260929-74"></script>
+</body>
+</html>
+
+Quite cualquier carga directa o indirecta antigua de:
+- flow-sequence.js
+- backup.js
+- realtime-sync.js antiguo
+- restore-edit-guard.js
+- edit-restore-authority.js
+
+bootstrap-persistence.js V74 carga:
+1. preflight de persistencia;
+2. app.js?v=20260929-74;
+3. persistence-live.js?v=20260929-74.
