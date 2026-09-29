@@ -1,6 +1,6 @@
 /*
  Perfil Académico Docente DIN
- Arranque protegido de persistencia V71
+ Arranque protegido de persistencia V72
  2026-09-29
 
  Objetivo:
@@ -159,6 +159,37 @@ async function preflight(){
 }
 
 await preflight();
-await import('./app.js?v=20260929-71');
-await import('./flow-sequence.js?v=20260929-71');
-await import('./persistence-live.js?v=20260929-71');
+// V72: para una sesión editable, el recorrido de programas siempre inicia en 1.
+try{
+  const shared=readJson('PAD_UTEQ');
+  const period=String(shared?.cfg?.periodo||'').trim();
+  const finalized=!!period &&
+    String(shared?.submittedPeriod||'').trim()===period &&
+    !shared?.individualEditEnabled;
+
+  const editable=
+    !finalized &&
+    !shared?.individualEditDisabled &&
+    (!shared?.cfg?.editingLocked || !!shared?.individualEditEnabled);
+
+  if(editable){
+    shared.currentProgramIndex=0;
+    writeJson('PAD_UTEQ',shared);
+
+    const appInstance=firebaseApp();
+    const auth=getAuth(appInstance);
+    const user=auth.currentUser;
+    if(user){
+      const key=PROFILE_PREFIX+user.uid;
+      const teacher=readJson(key);
+      teacher.currentProgramIndex=0;
+      writeJson(key,teacher);
+    }
+  }
+}catch(e){
+  console.warn('No fue posible reiniciar el índice de programas antes del arranque.',e);
+}
+
+await import('./app.js?v=20260929-72');
+await import('./flow-sequence.js?v=20260929-72');
+await import('./persistence-live.js?v=20260929-72');

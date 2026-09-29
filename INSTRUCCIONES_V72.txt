@@ -1,0 +1,86 @@
+PERFIL ACADÉMICO DOCENTE DIN · V72
+REAPERTURA DE EDICIÓN + SECUENCIA DESDE PROGRAMA 1
+===================================================
+
+PROBLEMA CORREGIDO
+------------------
+Un profesor que ya había enviado su perfil podía recibir edición nuevamente y,
+al pasar a "Perfil por programa", aparecer directamente en Programa 8.
+
+V72 separa dos cosas:
+
+A) DATOS CAPTURADOS
+Se conservan íntegros y precargados:
+- Datos del profesor
+- respuestas por materia
+- favoritos
+- programMeta
+- planeación/comisiones
+- estado almacenado
+
+B) POSICIÓN DE NAVEGACIÓN
+Se reinicia únicamente currentProgramIndex a 0.
+
+Por tanto, al reabrir edición:
+- NO se borran respuestas;
+- NO se vacían materias;
+- NO se reinicia el perfil;
+- sí se obliga a volver a recorrer desde Programa 1.
+
+FLUJO OBLIGATORIO
+-----------------
+1. Datos del profesor:
+   debe revisar y confirmar nuevamente.
+
+2. Perfil por programa:
+   siempre abre Programa 1.
+   Después:
+   Programa 1 -> Guardar y seguir -> Programa 2
+   Programa 2 -> Guardar y seguir -> Programa 3
+   ...
+   Programa 8 -> Guardar y continuar a revisión
+
+3. Revisión e impresión:
+   permanece bloqueada hasta que el recorrido secuencial haya llegado realmente
+   desde Programa 1 hasta el último programa.
+
+PROTECCIONES
+------------
+- Clic directo en Paso 3: bloqueado.
+- Llamada interna a Revisión con force=true: bloqueada si Paso 2 no terminó.
+- Si la interfaz aparece inesperadamente en Programa 8 u otro programa al iniciar,
+  V72 pone currentProgramIndex=0 y recarga una sola vez.
+- Si durante el recorrido hay un salto inesperado 2 -> 8, se rechaza y vuelve a 1.
+- Si "Guardar y seguir" no cambia de programa, se asume que app.js encontró un
+  pendiente y no se marca el programa como concluido.
+- Solo se desbloquea Revisión si la transición ocurre desde el último programa
+  esperado después de haber recorrido la secuencia.
+
+PERFIL YA FINALIZADO SIN EDICIÓN
+--------------------------------
+Conserva consulta/reimpresión normal.
+
+PERFIL FINALIZADO + EDICIÓN REABIERTA
+-------------------------------------
+Se trata como una nueva sesión de revisión:
+- Paso 1 vuelve a requerir confirmación.
+- Paso 2 vuelve a iniciar en Programa 1.
+- La información anterior aparece precargada.
+- Paso 3 queda bloqueado hasta reconfirmar todo.
+
+ARCHIVOS
+--------
+1. bootstrap-persistence.js -> sustituir
+2. flow-sequence.js -> sustituir
+3. persistence-live.js -> conservar/sustituir por la incluida
+4. index.html -> según INDEX_FINAL_V72.txt
+
+NO CAMBIAN
+----------
+app.js
+firestore.rules
+build-cloudflare.sh
+wrangler.jsonc
+deploy-pages.yml
+
+deploy-pages.yml: NO SE ACTUALIZA.

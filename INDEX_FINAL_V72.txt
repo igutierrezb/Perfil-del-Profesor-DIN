@@ -1,0 +1,16 @@
+PERFIL DIN V72 · FINAL DE index.html
+========================================
+
+Mantenga fuera del index todos los scripts de respaldo/restauración.
+
+Al final deje SOLAMENTE:
+
+<script type="module" src="bootstrap-persistence.js?v=20260929-72"></script>
+</body>
+</html>
+
+bootstrap-persistence.js cargará:
+1. persistencia inicial;
+2. app.js;
+3. flow-sequence.js V72;
+4. persistence-live.js.

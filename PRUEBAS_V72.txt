@@ -1,0 +1,8 @@
+PERFIL DIN V72 · PRUEBAS
+========================
+
+OK: 8 pruebas del recorrido secuencial V72 superadas
+
+bootstrap-persistence.js: OK
+flow-sequence.js: OK
+persistence-live.js: OK
