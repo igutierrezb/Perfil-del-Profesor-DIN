@@ -1,0 +1,66 @@
+PERFIL DIN V65 · RESTAURACIÓN VERIFICABLE
+
+CAUSA PRINCIPAL DETECTADA
+-------------------------
+El repositorio actual tiene realtime-sync.js, pero index.html NO lo está cargando.
+Por eso una restauración puede escribirse en Firestore y aun así un perfil ya abierto
+en móvil/escritorio no recibe esa versión de forma inmediata.
+
+Además, index.html sigue cargando backup.js con ?v=20260929-2, aunque backup.js ya
+ha evolucionado.
+
+ARCHIVOS
+--------
+1. Sustituir backup.js por V5.
+2. Sustituir realtime-sync.js por V2.
+3. Modificar al final de index.html para cargar ambos con versión nueva.
+
+INDEX.HTML
+----------
+Dejar exactamente:
+
+<script type="module" src="app.js?v=20260928-1"></script>
+<script type="module" src="realtime-sync.js?v=20260929-2"></script>
+<script type="module" src="backup.js?v=20260929-5"></script>
+</body>
+</html>
+
+QUÉ CAMBIA EN V5
+----------------
+- Cada profesor tiene "Ver contenido".
+- Se detalla:
+  datos del profesor,
+  asignaturas,
+  revisadas,
+  favoritas,
+  programas,
+  comisiones/planeación,
+  estado de finalización,
+  revisión técnica.
+- Aparece botón explícito:
+  "Restablecer esta versión de [profesor]".
+- La restauración escribe el documento completo con merge:false para que el perfil
+  quede exactamente en la versión respaldada (salvo metadatos nuevos de sincronización).
+- Se verifica inmediatamente Firestore después de escribir.
+- Se añade adminRestoreToken.
+- realtime-sync V2 detecta adminRestoreToken y fuerza la actualización local aunque
+  haya una copia antigua abierta.
+- El respaldo preventivo ahora indica alcance:
+  * PRE-RESTAURACION_PROFESOR_[nombre]...
+  * PRE-RESTAURACION_N_PROFESORES...
+  * PRE-RESTAURACION_TOTAL...
+
+SEGURIDAD
+---------
+- No se eliminan perfiles ajenos a la operación.
+- Antes de restaurar se descarga respaldo preventivo.
+- La auditoría histórica se conserva en JSON y no se reescribe.
+- La operación crea un nuevo registro audit.
+- Firestore rules no cambia.
+
+DEPLOY
+------
+deploy-pages.yml: NO SE ACTUALIZA.
+build-cloudflare.sh: NO SE ACTUALIZA.
+wrangler.jsonc: NO SE ACTUALIZA.
+firestore.rules: NO SE ACTUALIZA.
