@@ -1,0 +1,32 @@
+PERFIL DIN V77 · DIAGNÓSTICO PROFUNDO
+======================================
+
+Se revisaron el app.js e index.html actualmente publicados en main.
+
+1. Las pestañas superiores son navegación real porque app.js asigna onclick
+   a todos los botones de .main-nav.
+2. currentProgramIndex se guarda en PAD_UTEQ y PAD_UTEQ_PROFILE_<UID>.
+   Si quedó en 7, una nueva sesión puede abrir Programa 8.
+3. prevProgram() usa navegación circular y Programa 1 puede regresar a Programa 8.
+4. reviewAvailable() acepta submissionLockedForCurrentPeriod(), lo cual permite
+   que un envío anterior siga desbloqueando Revisión aunque Administración
+   haya reabierto edición.
+5. saveAndNextProgram() en el último programa llama a Revisión sin establecer
+   un origen de navegación exclusivo.
+6. finalizeCurrentProfile() no contiene su propio candado de validación final.
+7. index.html sigue cargando backup.js, por eso el módulo manual de respaldos
+   continúa visible.
+
+V77 corrige los siete puntos dentro del núcleo y elimina backup.js del arranque.
+
+PRESERVACIÓN
+------------
+No se borran ni reinician:
+- profile
+- answers
+- programMeta
+- planningByPeriod
+- submittedPeriod
+- datos de Firestore
+
+Únicamente currentProgramIndex deja de tratarse como dato persistente.

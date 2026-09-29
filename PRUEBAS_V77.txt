@@ -1,0 +1,35 @@
+PERFIL DIN V77 · VALIDACIÓN CONTRA EL CÓDIGO ACTUAL
+===================================================
+
+El conjunto de cambios se contrastó con app.js actual (185,344 caracteres).
+
+Coincidencias verificadas:
+- currentProgramIndex inicial: 1
+- snapshot de copia local: 1
+- persistencia del índice: 1
+- restauración de índice tipo A: 2
+- restauración de índice tipo B: 1
+- window.go + navegación superior: 1
+- updateNavState: 1
+- continueToCapture: 1
+- renderCurrentProgram: 1
+- prevProgram: 1
+- saveAndNextProgram: 1
+- reviewAvailable: 1
+- validateAndReview: 1
+- lockRevisionNav: 1
+- reapertura de edición: 1
+- mensaje administrativo: 1
+- finalizeCurrentProfile: 1
+- printProfile: 1
+- init: 1
+- escrituras completas con currentProgramIndex: 4
+
+index.html actual:
+- 1 carga de app.js
+- 1 carga de backup.js
+- V77 elimina backup.js
+- V77 fuerza app.js?v=20260929-77
+
+La herramienta se detiene si una coincidencia crítica cambia. No genera
+archivos parcialmente modificados.

@@ -1,0 +1,44 @@
+PERFIL DIN V77 · ACTUALIZACIÓN
+==============================
+
+1. Descargue de GitHub los archivos ACTUALES:
+   - app.js
+   - index.html
+
+2. Abra APLICAR_SOLUCION_V77.html.
+
+3. Seleccione ambos archivos y pulse "Generar archivos V77".
+
+4. Debe aparecer:
+   "20 grupos de cambios aplicados y verificados."
+
+5. Se descargarán:
+   - app.js
+   - index.html
+
+6. Sustituya esos dos archivos en GitHub.
+
+7. No cargue scripts de flujo adicionales de versiones anteriores.
+
+COMPORTAMIENTO ESPERADO
+-----------------------
+Mientras el profesor esté editando:
+- las pestañas superiores 1, 2 y 3 son indicadores no clicables;
+- Paso 1 solo avanza con el botón inferior;
+- Paso 1 incompleto no puede entrar a Paso 2;
+- Paso 2 siempre inicia en Programa 1;
+- Programa 1 + Anterior vuelve a Datos del profesor, nunca a Programa 8;
+- Guardar y seguir avanza secuencialmente;
+- el último programa valida toda la captura;
+- Revisión solo puede abrirse desde el botón inferior del último programa;
+- un envío anterior no sirve como atajo si la edición fue reabierta;
+- finalizar tiene un segundo candado de validación.
+
+Cuando el perfil ya está finalizado y NO tiene edición:
+- las pestañas superiores vuelven a funcionar para consulta/reimpresión.
+
+Administración:
+- conserva navegación libre;
+- desaparece el módulo manual "Respaldo y restauración".
+
+deploy-pages.yml: NO SE ACTUALIZA.
