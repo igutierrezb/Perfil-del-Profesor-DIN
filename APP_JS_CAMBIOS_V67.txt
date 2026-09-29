@@ -1,0 +1,294 @@
+PERFIL DIN V66 · CAMBIOS EXACTOS EN app.js
+==============================================
+
+Estos cambios corrigen dos problemas distintos:
+A) al pasar de Datos del profesor a Perfil por programa se conservaba el último
+   programa visitado (por ejemplo Programa 8);
+B) una restauración administrativa podía competir contra el respaldo local
+   antiguo del profesor.
+
+NO borran información ni cambian las colecciones de Firestore.
+
+------------------------------------------------------------
+CAMBIO 1 · SIEMPRE INICIAR EN PROGRAMA 1 AL AVANZAR DESDE DATOS
+------------------------------------------------------------
+
+Dentro de:
+
+window.continueToCapture=async function(){
+
+busque este tramo:
+
+  if(cloudAvailable&&currentUser){
+    try{await saveProfileToCloud(false)}catch(e){console.warn('Guardado previo al avance',e)}
+  }
+
+  renderCurrentProgram();
+
+y sustitúyalo por:
+
+  if(cloudAvailable&&currentUser){
+    try{await saveProfileToCloud(false)}catch(e){console.warn('Guardado previo al avance',e)}
+  }
+
+  // V66: al entrar desde Datos del profesor, el recorrido SIEMPRE comienza
+  // en el primer programa educativo. Esto evita saltar directamente al último
+  // programa que quedó guardado en una sesión anterior.
+  currentProgramIndex=0;
+  store.currentProgramIndex=0;
+  persist({touch:false,schedule:false});
+  renderCurrentProgram();
+
+
+------------------------------------------------------------
+CAMBIO 2 · SI SE ENTRA A "PERFIL POR PROGRAMA" DESDE LA PESTAÑA
+------------------------------------------------------------
+
+Dentro de:
+
+window.go=function(id,force=false){
+
+DESPUÉS de estas validaciones:
+
+  if(id==='admin'&&!isAdmin()){...}
+  if(id==='captura'&&!force){...}
+  if(id==='revision'&&!force){...}
+
+y ANTES de:
+
+  document.querySelectorAll('.view').forEach...
+
+agregue:
+
+  // V66: si se entra a Perfil por programa desde Datos del profesor,
+  // iniciar el recorrido secuencial en Programa 1.
+  const enteringCaptureFromProfile=
+    id==='captura' &&
+    document.getElementById('perfil')?.classList.contains('active');
+
+  if(enteringCaptureFromProfile){
+    currentProgramIndex=0;
+    store.currentProgramIndex=0;
+    persist({touch:false,schedule:false});
+    renderCurrentProgram();
+  }
+
+
+------------------------------------------------------------
+CAMBIO 3 · NO PERMITIR REVISIÓN/IMPRESIÓN INCOMPLETA MIENTRAS HAY EDICIÓN
+------------------------------------------------------------
+
+Busque:
+
+function reviewAvailable(){
+  // Si Administración cerró la edición (o venció la fecha), el profesor puede
+  // seguir consultando y generar/imprimir el estado actual de su perfil.
+  return validateAll().ok || cfg.editingLocked || deadlinePassed() || submissionLockedForCurrentPeriod();
+}
+
+REEMPLAZAR POR:
+
+function reviewAvailable(){
+  const complete=validateAll().ok;
+
+  // Mientras el perfil está habilitado para edición, no se puede pasar a
+  // Revisión/impresión sin completar la captura.
+  if(editingAllowed())return complete;
+
+  // Solo en modo realmente de consulta/solo lectura se permite visualizar
+  // e imprimir el estado existente aunque falte alguna respuesta.
+  return complete || cfg.editingLocked || deadlinePassed() || submissionLockedForCurrentPeriod();
+}
+
+
+------------------------------------------------------------
+CAMBIO 4 · GUARDAR EL TOKEN DE RESTAURACIÓN EN EL RESPALDO LOCAL
+------------------------------------------------------------
+
+Dentro de:
+
+function profileBackupSnapshot(){
+
+busque:
+
+    dataRevision:Number(store.dataRevision)||0,
+    savedAt:Date.now()
+
+y reemplácelo por:
+
+    dataRevision:Number(store.dataRevision)||0,
+    adminRestoreToken:store.adminRestoreToken||null,
+    savedAt:Date.now()
+
+
+------------------------------------------------------------
+CAMBIO 5 · CONSERVAR TOKEN EN EL PAYLOAD DE NUBE
+------------------------------------------------------------
+
+Dentro de:
+
+function profileCloudPayload(){
+
+busque:
+
+    dataRevision:Number(store.dataRevision)||0,
+    updatedAt:serverTimestamp()
+
+y reemplácelo por:
+
+    dataRevision:Number(store.dataRevision)||0,
+    adminRestoreToken:store.adminRestoreToken||null,
+    updatedAt:serverTimestamp()
+
+
+------------------------------------------------------------
+CAMBIO 6 · APLICAR TOKEN CUANDO SE CARGA CONTENIDO REMOTO
+------------------------------------------------------------
+
+Dentro de:
+
+function applyProfileContent(data){
+
+después de:
+
+  store.planningByPeriod=planningByPeriod;
+
+agregue:
+
+  if('adminRestoreToken' in data){
+    store.adminRestoreToken=data.adminRestoreToken||null;
+  }
+
+
+------------------------------------------------------------
+CAMBIO 7 · UNA RESTAURACIÓN ADMINISTRATIVA DEBE GANAR A LA COPIA LOCAL
+------------------------------------------------------------
+
+Dentro de loadRemoteProfile(), después de:
+
+      const remoteResetToken=d.profileResetToken||null;
+      const backupResetToken=backup?.profileResetToken||null;
+
+agregue:
+
+      const remoteAdminRestoreToken=d.adminRestoreToken||null;
+      const backupAdminRestoreToken=backup?.adminRestoreToken||null;
+      const adminRestoreIsNew=
+        !!remoteAdminRestoreToken &&
+        remoteAdminRestoreToken!==backupAdminRestoreToken;
+
+
+Después busque el inicio de localIsNewer:
+
+      const localIsNewer=!!backup && !explicitResetIsNew && (
+
+REEMPLAZAR POR:
+
+      const localIsNewer=!!backup && !explicitResetIsNew && !adminRestoreIsNew && (
+
+
+Después busque preserveLocalAgainstEmptyCloud:
+
+      const preserveLocalAgainstEmptyCloud=
+        !!backup &&
+        localHasData &&
+        !remoteHasData &&
+        d.deletedByAdmin!==true &&
+        !explicitResetIsNew;
+
+REEMPLAZAR POR:
+
+      const preserveLocalAgainstEmptyCloud=
+        !!backup &&
+        localHasData &&
+        !remoteHasData &&
+        d.deletedByAdmin!==true &&
+        !explicitResetIsNew &&
+        !adminRestoreIsNew;
+
+
+En la rama REMOTA:
+
+      }else{
+        applyProfileContent(d);
+
+agregue inmediatamente después:
+
+        store.adminRestoreToken=remoteAdminRestoreToken||null;
+
+
+RESULTADO ESPERADO
+------------------
+- Datos del profesor -> Perfil por programa = Programa 1 de 8.
+- Guardar y seguir = 1 -> 2 -> 3 -> ... -> 8.
+- El último programa NO deja pasar a revisión si hay materias pendientes.
+- Si Administración restaura un profesor, esa versión remota gana frente a
+  una copia local antigua.
+
+
+============================================================
+CAMBIOS ADICIONALES V67 · RESTAURACIÓN + REAPERTURA DE EDICIÓN
+============================================================
+
+Aunque restore-edit-guard.js protege la sesión sin modificar app.js, se recomienda
+hacer también estos cambios permanentes en app.js cuando actualice la versión principal.
+
+A) En profileBackupSnapshot(), antes de savedAt agregue:
+
+    adminRestoreToken:store.adminRestoreToken||null,
+
+B) En profileCloudPayload(), antes de updatedAt agregue:
+
+    adminRestoreToken:store.adminRestoreToken||null,
+
+C) En applyProfileContent(data), después de:
+
+  store.planningByPeriod=planningByPeriod;
+
+agregue:
+
+  if('adminRestoreToken' in data){
+    store.adminRestoreToken=data.adminRestoreToken||null;
+  }
+
+D) En restoreUserBackupBeforeCloud(), después de profileDeletionToken agregue:
+
+  if('adminRestoreToken' in backup)store.adminRestoreToken=backup.adminRestoreToken||null;
+
+E) En loadRemoteProfile(), después de:
+
+  const remoteResetToken=d.profileResetToken||null;
+  const backupResetToken=backup?.profileResetToken||null;
+
+agregue:
+
+  const remoteAdminRestoreToken=d.adminRestoreToken||null;
+  const backupAdminRestoreToken=backup?.adminRestoreToken||null;
+  const adminRestoreIsNew=
+    !!remoteAdminRestoreToken &&
+    remoteAdminRestoreToken!==backupAdminRestoreToken;
+
+Luego cambie:
+
+  const localIsNewer=!!backup && !explicitResetIsNew && (
+
+por:
+
+  const localIsNewer=!!backup && !explicitResetIsNew && !adminRestoreIsNew && (
+
+Y cambie el final de preserveLocalAgainstEmptyCloud para que quede:
+
+  const preserveLocalAgainstEmptyCloud=
+    !!backup &&
+    localHasData &&
+    !remoteHasData &&
+    d.deletedByAdmin!==true &&
+    !explicitResetIsNew &&
+    !adminRestoreIsNew;
+
+Finalmente, en la rama remota, después de applyProfileContent(d), agregue:
+
+  store.adminRestoreToken=remoteAdminRestoreToken||null;
+
+Esto hace que una restauración administrativa tenga prioridad sobre una copia local
+antigua cuando se vuelve a habilitar la edición.

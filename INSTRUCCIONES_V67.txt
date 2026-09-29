@@ -1,0 +1,73 @@
+PERFIL DIN V67 · VISUAL + PROTECCIÓN AL REABRIR EDICIÓN
+==========================================================
+
+CAMBIOS DE ESTA VERSIÓN
+-----------------------
+1. El modal de restauración se hizo visualmente más sobrio:
+   - menos texto en negritas;
+   - jerarquía tipográfica más limpia;
+   - filas más aireadas;
+   - botones secundarios menos pesados;
+   - colores más discretos.
+
+2. YA NO se descarga automáticamente un respaldo al restaurar.
+   El administrador decide manualmente cuándo descargar "Respaldo TOTAL".
+
+3. Se corrige el problema crítico:
+   después de restaurar un profesor y volver a habilitar su edición,
+   NO deben desaparecer profile, answers ni programMeta.
+
+4. Para esa protección se agrega:
+   restore-edit-guard.js
+
+CÓMO FUNCIONA EL GUARDIÁN
+-------------------------
+Cuando llega una restauración administrativa:
+- reconoce adminRestoreToken;
+- guarda la versión completa restaurada en PAD_UTEQ;
+- actualiza PAD_UTEQ_PROFILE_<uid>;
+- mantiene una copia independiente PAD_RESTORE_GUARD_<uid>.
+
+Cuando Administración habilita nuevamente la edición:
+- vuelve a leer el documento completo de Firestore;
+- comprueba que contenga answers/programMeta;
+- vuelve a sembrar el almacenamiento local con ESA versión;
+- recarga la interfaz.
+
+Así una copia local antigua o vacía no puede ganar justo al reabrir edición.
+
+ARCHIVOS A SUBIR
+----------------
+1. backup.js                  -> sustituir
+2. realtime-sync.js           -> sustituir
+3. restore-edit-guard.js      -> NUEVO
+4. index.html                 -> actualizar solo las líneas finales según INDEX_FINAL_V67.txt
+
+Además se incluye APP_JS_CAMBIOS_V67.txt para consolidar el comportamiento dentro
+de app.js cuando haga la siguiente actualización estructural.
+
+PRUEBA RECOMENDADA
+------------------
+A. Descargar respaldo TOTAL manualmente.
+B. Restaurar un profesor de prueba.
+C. Verificar que sus materias regresan.
+D. Deshabilitar su edición.
+E. Habilitar nuevamente su edición.
+F. Entrar con ese profesor.
+G. Perfil por programa debe conservar las respuestas restauradas.
+H. No debe aparecer vacío ni reiniciarse.
+
+SEGURIDAD
+---------
+- No se borra ningún perfil fuera de la selección.
+- No se descarga respaldo automáticamente.
+- La auditoría histórica continúa dentro del JSON.
+- Firestore rules no cambia.
+- La restauración conserva adminRestoreToken para propagación entre dispositivos.
+
+DEPLOY
+------
+deploy-pages.yml: NO SE ACTUALIZA.
+build-cloudflare.sh: NO SE ACTUALIZA.
+wrangler.jsonc: NO SE ACTUALIZA.
+firestore.rules: NO SE ACTUALIZA.

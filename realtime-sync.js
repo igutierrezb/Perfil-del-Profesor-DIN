@@ -1,5 +1,5 @@
 /*
- Perfil DIN · Sincronización multidispositivo V2
+ Perfil DIN · Sincronización multidispositivo V3
  2026-09-29
 
  V2 añade soporte explícito para restauraciones administrativas:
@@ -44,7 +44,24 @@ function merge(d,uid){
  const next={...cur,profile:d.profile||{},answers:d.answers||{},programMeta:d.programMeta||{},planningByPeriod:d.planningByPeriod&&typeof d.planningByPeriod==='object'?d.planningByPeriod:(cur.planningByPeriod||{}),submittedPeriod:d.submittedPeriod||null,finalizedAtMs:Number(d.finalizedAtMs||0)||null,individualEditEnabled:!!d.individualEditEnabled,individualEditDisabled:!!d.individualEditDisabled,profileResetToken:d.profileResetToken||null,profileDeletionToken:d.profileDeletionToken||null,localUpdatedAt:v.updatedAt||Date.now(),cloudUpdatedAt:v.updatedAt||Date.now(),dataRevision:v.revision||Number(cur.dataRevision||0),syncPending:false,lastSavedAt:v.updatedAt||Date.now(),adminRestoreToken:d.adminRestoreToken||null};
  write('PAD_UTEQ',next);
  write(`PAD_UTEQ_PROFILE_${uid}`,{profile:next.profile,answers:next.answers,programMeta:next.programMeta,planningByPeriod:next.planningByPeriod,submittedPeriod:next.submittedPeriod,finalizedAtMs:next.finalizedAtMs,profileResetToken:next.profileResetToken,profileDeletionToken:next.profileDeletionToken,currentProgramIndex:Number(next.currentProgramIndex||0),localUpdatedAt:next.localUpdatedAt,cloudUpdatedAt:next.cloudUpdatedAt,syncPending:false,dataRevision:next.dataRevision,adminRestoreToken:next.adminRestoreToken,savedAt:Date.now()});
- if(d.adminRestoreToken)localStorage.setItem(RESTORE_TOKEN_KEY,String(d.adminRestoreToken));
+ if(d.adminRestoreToken){
+    localStorage.setItem(RESTORE_TOKEN_KEY,String(d.adminRestoreToken));
+    // Copia adicional independiente para evitar que una reapertura de edición
+    // vuelva a una versión local anterior.
+    try{
+      localStorage.setItem(`PAD_RESTORE_GUARD_${uid}`,JSON.stringify({
+        token:String(d.adminRestoreToken),
+        profile:next.profile,
+        answers:next.answers,
+        programMeta:next.programMeta,
+        planningByPeriod:next.planningByPeriod,
+        submittedPeriod:next.submittedPeriod,
+        finalizedAtMs:next.finalizedAtMs,
+        dataRevision:next.dataRevision,
+        updatedAt:Date.now()
+      }));
+    }catch(_){}
+  }
  lastRev=v.revision;lastUpdated=v.updatedAt
 }
 function apply(uid){

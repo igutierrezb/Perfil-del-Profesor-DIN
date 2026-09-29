@@ -1,0 +1,15 @@
+PERFIL DIN V67 · FINAL DE index.html
+====================================
+
+Deje exactamente estas líneas al final:
+
+<script type="module" src="app.js?v=20260929-66"></script>
+<script type="module" src="realtime-sync.js?v=20260929-3"></script>
+<script type="module" src="restore-edit-guard.js?v=20260929-1"></script>
+<script type="module" src="backup.js?v=20260929-7"></script>
+</body>
+</html>
+
+IMPORTANTE:
+- restore-edit-guard.js es NUEVO.
+- Debe cargarse después de realtime-sync.js y antes de backup.js.
