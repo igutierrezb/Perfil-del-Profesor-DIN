@@ -1,0 +1,18 @@
+PERFIL DIN V64 · CAMBIO AL FINAL DE index.html
+==============================================
+
+Al final de index.html actualmente tienes app.js y backup.js.
+
+Déjalo exactamente en este orden:
+
+<script type="module" src="app.js?v=20260929-64"></script>
+<script type="module" src="realtime-sync.js?v=20260929-1"></script>
+<script type="module" src="backup.js?v=20260929-3"></script>
+</body>
+</html>
+
+IMPORTANTE:
+- realtime-sync.js debe cargarse DESPUÉS de app.js.
+- backup.js debe cargarse al final.
+- El cambio de versión en app.js fuerza a GitHub Pages y Workers a descartar
+  una copia antigua del navegador.

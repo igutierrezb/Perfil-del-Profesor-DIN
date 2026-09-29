@@ -1,0 +1,96 @@
+PERFIL DIN V64 · CAMBIOS EXACTOS EN app.js
+===========================================
+
+IMPORTANTE
+----------
+Estos cambios son pequeños y deliberados. No borran información ni cambian la
+estructura de Firestore. El objetivo es que Comisiones permanezca siempre
+disponible pero deje de ser obligatorio.
+
+CAMBIO 1 · COMISIONES SIEMPRE HABILITADO
+----------------------------------------
+BUSCAR:
+
+function planningEnabled(){return !!cfg.planningEnabled}
+
+REEMPLAZAR POR:
+
+function planningEnabled(){return true}
+
+
+CAMBIO 2 · COMISIONES DEJA DE SER OBLIGATORIO
+---------------------------------------------
+Dentro de function validatePlanning(opts={}) busca este bloque:
+
+  if(!['yes','na'].includes(record.commissionMode)){
+    mark('planningCommissionsCard','Indique si tiene comisiones autorizadas por la Dirección o seleccione No aplica.');
+  }else if(record.commissionMode==='yes'){
+
+REEMPLAZAR POR:
+
+  if(record.commissionMode==='yes'){
+
+
+Después busca este bloque:
+
+  if(!['yes','na'].includes(record.projectMode)){
+    mark('planningProjectCard','Indique si participa en un proyecto avalado por la Universidad o seleccione No aplica.');
+  }else if(record.projectMode==='yes'){
+
+REEMPLAZAR POR:
+
+  if(record.projectMode==='yes'){
+
+RESULTADO:
+- Si el profesor deja Comisiones sin contestar, puede continuar.
+- Si marca "Sí", entonces sí se valida que complete los datos de esa comisión/proyecto.
+- "No aplica" sigue funcionando si desea usarlo.
+
+
+CAMBIO 3 · GUARDAR COMISIONES YA NO HABLA DE OBLIGATORIEDAD
+------------------------------------------------------------
+Dentro de window.savePlanning busca:
+
+    if($('planningErrors'))$('planningErrors').innerHTML=statusBox(v.errors,'Complete la información obligatoria de Comisiones.');
+
+REEMPLAZAR POR:
+
+    if($('planningErrors'))$('planningErrors').innerHTML=statusBox(v.errors,'Complete los datos de la comisión o proyecto que decidió registrar.');
+
+
+CAMBIO 4 · AL CAMBIAR DE PERIODO, COMISIONES PERMANECE ACTIVO SIN PREGUNTAR
+----------------------------------------------------------------------------
+Dentro de window.saveAdmin busca TODO este bloque:
+
+  if(previousPeriod!==cfg.periodo){
+    cfg.planningEnabled=confirm(
+      `El periodo cambió de "${previousPeriod}" a "${cfg.periodo}".\n\n`+
+      `¿Desea habilitar para este periodo el apartado 4 de Comisiones?\n\n`+
+      `Si lo habilita, las preguntas sobre comisiones autorizadas y proyectos avalados serán obligatorias; ambas permiten No aplica. La información no se imprimirá ni formará parte del PDF.`
+    );
+  }
+
+REEMPLAZAR POR:
+
+  if(previousPeriod!==cfg.periodo){
+    cfg.planningEnabled=true;
+  }
+
+
+Luego, dentro de la misma función, busca:
+
+  toast(previousPeriod===cfg.periodo?'Configuración guardada.':`Periodo actualizado. Comisiones ${cfg.planningEnabled?'habilitadas':'deshabilitadas'} para el nuevo periodo.`);
+
+REEMPLAZAR POR:
+
+  toast(previousPeriod===cfg.periodo?'Configuración guardada.':'Periodo actualizado sin borrar perfiles. Comisiones permanece disponible como apartado opcional.');
+
+
+NO CAMBIAR
+----------
+- profileCloudPayload()
+- syncProfileToCloud()
+- loadRemoteProfile()
+- reglas de Firestore
+- estructuras profile / answers / programMeta / planningByPeriod
+- lógica de finalización del perfil

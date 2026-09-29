@@ -1,0 +1,110 @@
+PERFIL ACADÉMICO DOCENTE DIN · V64
+RESPALDO / RESTAURACIÓN / SINCRONIZACIÓN MULTIDISPOSITIVO
+==========================================================
+
+OBJETIVOS
+---------
+1. El respaldo/restauración solo aparece en Administración.
+2. El respaldo incluye la información YA CAPTURADA por todos los profesores:
+   - datos personales/académicos del perfil;
+   - respuestas por asignatura;
+   - metadatos de programas;
+   - comisiones y observaciones por periodo;
+   - estado de finalización;
+   - permisos individuales;
+   - revisiones y marcas internas necesarias para recuperación.
+3. También incluye configuración institucional y auditoría.
+4. La restauración puede ser:
+   - integral;
+   - de uno o varios profesores.
+5. Antes de restaurar se descarga automáticamente un respaldo preventivo.
+6. La restauración es no destructiva: no hace borrado masivo.
+7. Móvil y escritorio reciben los cambios guardados del otro dispositivo casi
+   en tiempo real, sin recargar mientras el usuario está escribiendo.
+8. Comisiones permanece visible, siempre habilitado y deja de ser obligatorio.
+
+ARCHIVOS DEL PAQUETE
+--------------------
+backup.js
+  Sustituye el backup.js actual.
+  Módulo administrativo de respaldo/restauración.
+
+realtime-sync.js
+  Archivo NUEVO.
+  Escucha el documento del profesor en Firestore y refleja cambios guardados
+  en otro dispositivo cuando la versión remota es más nueva.
+
+APP_JS_CAMBIOS_EXACTOS.txt
+  Cuatro cambios pequeños que debes aplicar en app.js para que Comisiones sea
+  siempre visible y opcional.
+
+INDEX_CAMBIO_FINAL.txt
+  Líneas exactas que deben quedar al final de index.html.
+
+SEGURIDAD DE RESTAURACIÓN
+-------------------------
+- Solo la cuenta PAD_ADMIN_EMAIL puede abrir el módulo.
+- Valida que el respaldo pertenezca al mismo projectId.
+- Permite seleccionar profesores individualmente.
+- Antes de cualquier restauración genera un archivo:
+  PRE-RESTAURACION_perfil-din_....
+- Exige escribir RESTAURAR.
+- Usa los IDs originales de los documentos.
+- Usa merge:true.
+- No elimina profesores o documentos que no estén en el respaldo.
+- Registra la operación en audit.
+
+SINCRONIZACIÓN MÓVIL / ESCRITORIO
+----------------------------------
+El sistema actual ya guarda en Firestore con clientUpdatedAt y dataRevision.
+realtime-sync.js aprovecha esos dos campos.
+
+Flujo:
+A. El profesor guarda/cambia algo en móvil.
+B. app.js lo sincroniza a profiles/<uid>.
+C. El escritorio escucha el mismo documento.
+D. Si la revisión remota es superior y el escritorio no tiene cambios locales
+   pendientes, actualiza su copia local y recarga la interfaz.
+E. Si el profesor está escribiendo en ese momento, espera a que termine el
+   campo antes de aplicar el cambio.
+
+Esto evita que un snapshot antiguo reemplace una edición local pendiente.
+
+COHERENCIA Y CONFLICTOS
+-----------------------
+La coherencia es casi inmediata después del guardado a Firestore.
+No conviene editar EL MISMO perfil simultáneamente en dos dispositivos durante
+varios minutos: el documento usa un esquema de "última revisión guardada".
+El puente evita sobrescribir cambios locales pendientes, pero no intenta hacer
+fusión campo por campo de dos ediciones simultáneas contradictorias.
+
+DEPLOY
+------
+GitHub Pages y Workers siguen leyendo el mismo repositorio.
+
+deploy-pages.yml:
+NO SE ACTUALIZA.
+
+build-cloudflare.sh:
+NO SE ACTUALIZA.
+
+wrangler.jsonc:
+NO SE ACTUALIZA.
+
+firestore.rules:
+NO SE ACTUALIZA.
+
+DESPUÉS DE SUBIR LOS CAMBIOS
+----------------------------
+1. Commit en main.
+2. Esperar despliegue de GitHub Pages.
+3. Esperar despliegue automático de Workers.
+4. Si Workers no lo hace automáticamente, usar Nueva implementación.
+5. Ctrl + F5.
+6. Probar:
+   a) Administración -> Respaldo y restauración.
+   b) Descargar respaldo.
+   c) Cargar ese mismo JSON y comprobar que aparecen los profesores.
+   d) NO es necesario restaurar para validar la lectura.
+   e) Abrir el mismo profesor en móvil y escritorio.
+   f) Hacer un cambio pequeño, guardarlo y verificar reflejo en el otro equipo.
