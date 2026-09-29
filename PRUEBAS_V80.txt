@@ -1,0 +1,44 @@
+PRUEBAS V80
+===========
+
+OK · backup.js eliminado de index
+OK · build no publica backup.js
+OK · navegación circular eliminada
+OK · saveProfileToCloud inexistente eliminado
+OK · validación no persiste
+OK · pestañas superiores bloqueadas
+OK · Paso 1 fuerza Programa 1
+OK · Revisión exige final secuencial
+OK · finalización doblemente validada
+OK · defensa contra HTML legacy
+OK · impresión solo lectura sin persistir
+OK · Pages usa el mismo build
+OK · cache bust V80
+
+Sintaxis app.js: OK
+
+Cambios aplicados:
+- Marca de runtime V80
+- Estado secuencial independiente
+- Helpers de flujo y guardia anti-backup legacy
+- Separación lectura/guardado del perfil
+- Validación pura del perfil
+- Snapshot por UID sin cursor
+- Persistencia sin cursor
+- Restauraciones antiguas de currentProgramIndex neutralizadas
+- Navegación principal secuencial
+- Pestañas superiores como indicadores
+- Paso 1 completo abre Programa 1
+- Guardia de índice del programa
+- Anterior y Guardar/Siguiente secuenciales
+- Navegación segura a pendientes
+- Retorno exacto a pendientes
+- Revisión separa edición de solo lectura
+- Validación de acceso a Revisión
+- Candado visual de Revisión
+- Reapertura individual reinicia solo navegación
+- Impresión no persiste en solo lectura
+- Finalización con doble candado
+- Impresión/finalización no es ruta de escape
+- Resiliencia al cerrar/recargar
+- Inicio limpio V80

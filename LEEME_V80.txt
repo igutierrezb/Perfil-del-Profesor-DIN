@@ -1,0 +1,60 @@
+PERFIL ACADÉMICO DOCENTE DIN · RELEASE V80
+===========================================
+
+DIAGNÓSTICO CONFIRMADO
+----------------------
+- El index.html activo cargaba backup.js; esa es la causa exacta de que Administración
+  siga mostrando “Respaldo y restauración”.
+- El build publicaba scripts legacy/experimentales.
+- currentProgramIndex se restauraba y podía colocar al profesor en Programa 8.
+- prevProgram() tenía navegación circular.
+- Las pestañas superiores eran accesos directos.
+- reviewAvailable() mezclaba consulta finalizada con edición reabierta.
+- validateProfile() persistía al validar.
+- continueToCapture() llamaba saveProfileToCloud(false), función inexistente.
+- El último texto podía quedar fuera del respaldo local si se cerraba antes del debounce.
+
+ARCHIVOS A SUSTITUIR
+--------------------
+1. app.js
+2. index.html
+3. styles.css
+4. build-cloudflare.sh
+5. .github/workflows/deploy-pages.yml
+
+DATOS PRESERVADOS
+-----------------
+No cambia el esquema de Firestore y no se borran:
+profile, answers, programMeta, planningByPeriod, submittedPeriod, finalizedAtMs,
+dataRevision, profiles/<UID>, PAD_UTEQ_PROFILE_<UID>.
+
+FLUJO V80
+---------
+Durante edición:
+- las pestañas 1/2/3 son indicadores;
+- Paso 1 debe estar completo;
+- si Comisiones está habilitado, también debe completarse o marcar No aplica;
+- el botón inferior confirma Paso 1;
+- Perfil por programa abre Programa 1;
+- Guardar y seguir valida el programa actual;
+- Anterior desde Programa 1 vuelve a Datos del profesor;
+- Revisión solo abre tras completar toda la secuencia;
+- Finalizar vuelve a validar todo.
+
+En solo lectura:
+- se conserva consulta y reimpresión.
+
+MÓVIL, VISUAL, IMPRESIÓN E INFORMES
+-----------------------------------
+No se rediseña mobile.css ni las tablas actuales. Se conserva EA-F-86, PDF móvil,
+impresión del navegador, Excel administrativo, comisiones, reportes y navegación
+responsive. Sólo se cambia la condición de acceso a los pasos.
+
+DESPLIEGUE
+----------
+V80 SÍ modifica deploy-pages.yml. GitHub Pages y Cloudflare pasan a utilizar el
+mismo build curado. Los scripts legacy, incluido backup.js, dejan de publicarse.
+
+VERSIÓN
+-------
+V80-2026-09-29

@@ -4,8 +4,9 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Perfil Académico Docente · División Industrial UTEQ</title>
-<link rel="stylesheet" href="styles.css">
-<link rel="stylesheet" href="mobile.css?v=20260928-1">
+<meta name="pad-build" content="V80-2026-09-29">
+<link rel="stylesheet" href="styles.css?v=20260929-80">
+<link rel="stylesheet" href="mobile.css?v=20260929-80">
 <meta name="theme-color" content="#0b2b46">
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-capable" content="yes">
@@ -45,6 +46,7 @@
   </div>
 </div>
 
+
 <header class="hero">
   <div class="hero-inner">
     <div class="brand-block">
@@ -71,12 +73,14 @@
   <div id="deadlineHeader" class="deadline-card header-deadline">Fecha límite no configurada.</div>
 </div>
 
+
 <nav class="main-nav">
   <button data-view="perfil" class="active"><span class="nav-num">1</span><span class="nav-ico" aria-hidden="true">▣</span> Datos del profesor</button>
   <button data-view="captura"><span class="nav-num">2</span><span class="nav-ico" aria-hidden="true">▤</span> Perfil por programa</button>
   <button data-view="revision" id="navRevision"><span class="nav-num">3</span><span class="nav-ico" aria-hidden="true">⌕</span> Revisión e impresión</button>
   <button data-view="admin" id="adminTab" class="admin-tab hidden"><span class="nav-num">4</span><span class="nav-ico" aria-hidden="true">⚙</span> Administración</button>
 </nav>
+
 
 <main>
   <section id="perfil" class="view active">
@@ -88,6 +92,7 @@
       </div>
       <div class="welcome-badge" id="profileStepBadge">Paso 1 de 3</div>
     </div>
+
 
     <div class="card section-card">
       <div class="section-head">
@@ -110,6 +115,7 @@
       <div class="save-row"><button class="save-btn" onclick="saveSection()">Guardar datos del profesor</button></div>
     </div>
 
+
     <div class="card section-card">
       <div class="section-head">
         <div><h2>1. Formación profesional</h2><p>La primera línea es obligatoria.</p></div>
@@ -118,6 +124,7 @@
       <div id="formacion"></div>
       <div class="save-row"><button class="save-btn" onclick="saveSection()">Guardar formación profesional</button></div>
     </div>
+
 
     <div class="card section-card">
       <div class="section-head">
@@ -128,6 +135,7 @@
       <div class="save-row"><button class="save-btn" onclick="saveSection()">Guardar experiencia docente</button></div>
     </div>
 
+
     <div class="card section-card">
       <div class="section-head">
         <div><h2>3. Experiencia laboral</h2><p>Cada organización se captura en una sola línea: organización, cargo y periodo.</p></div>
@@ -136,6 +144,7 @@
       <div id="laboral"></div>
       <div class="save-row"><button class="save-btn" onclick="saveSection()">Guardar experiencia laboral</button></div>
     </div>
+
 
     <div id="commissionsBlock" class="card section-card commissions-section hidden">
       <div class="section-head commissions-section-head">
@@ -146,13 +155,16 @@
         <span class="required-note">Obligatorio cuando está habilitado · admite No aplica</span>
       </div>
 
+
       <div class="commissions-reference-note">
         <strong>Referencia para planeación.</strong>
         Esta información no forma parte del Perfil del Profesor ni se incluye en el PDF.
         Se utiliza únicamente como referencia para la elaboración de las planeaciones cuatrimestrales del periodo.
       </div>
 
+
       <div id="commissionsLockedBanner" class="capture-lock-banner hidden"></div>
+
 
       <div class="commission-main-grid">
   <div class="commission-left-column">
@@ -165,10 +177,12 @@
           </div>
         </div>
 
+
         <div class="planning-choice-row commission-choice">
           <label class="choice-card option-yes"><input type="radio" name="planningCommissionMode" value="yes" onchange="planningModeChanged()"> Sí</label>
           <label class="choice-card option-no"><input type="radio" name="planningCommissionMode" value="na" onchange="planningModeChanged()"> No aplica</label>
         </div>
+
 
         <div id="planningCommissionsFields" class="planning-conditional">
           <div class="commissions-help">
@@ -189,10 +203,12 @@
           </div>
         </div>
 
+
         <div class="planning-choice-row commission-choice">
           <label class="choice-card option-yes"><input type="radio" name="planningProjectMode" value="yes" onchange="planningModeChanged()"> Sí</label>
           <label class="choice-card option-no"><input type="radio" name="planningProjectMode" value="na" onchange="planningModeChanged()"> No aplica</label>
         </div>
+
 
         <div id="planningProjectFields" class="planning-conditional planning-project-grid">
           <label>Nombre del proyecto
@@ -225,17 +241,20 @@
   </div>
 </div>
 
+
 <div id="planningErrors"></div>
       <div class="save-row commissions-save-row">
         <button class="save-btn" onclick="savePlanning(true)">Guardar comisiones y observaciones</button>
       </div>
     </div>
 
+
     <div id="profileErrors"></div>
     <div class="actions">
       <button id="continueProfileBtn" type="button" class="primary">Guardar y continuar al perfil por programa →</button>
     </div>
   </section>
+
 
   <section id="captura" class="view">
     <div class="card profile-toolbar">
@@ -253,7 +272,9 @@
       <div id="deadlineCapture" class="deadline-card capture-deadline">Fecha límite no configurada.</div>
     </div>
 
+
     <div id="editingLockedBanner" class="capture-lock-banner hidden"></div>
+
 
     <div class="card program-header-flow">
       <div class="program-step-badge" id="programStep"></div>
@@ -263,7 +284,9 @@
         <button id="flowNextBtn" class="primary" onclick="saveAndNextProgram()">Guardar y seguir →</button>
       </div>
 
+
     </div>
+
 
     <div id="programs"></div>
     <div id="captureErrors"></div>
@@ -271,6 +294,7 @@
       <button onclick="saveAll(true)">Guardar avances</button>
     </div>
   </section>
+
 
   <section id="revision" class="view">
     <div class="card review-head no-print">
@@ -294,11 +318,15 @@
 
 
 
+
+
+
   <section id="admin" class="view">
     <div class="admin-quickbar card">
       <button onclick="document.getElementById('captureControlCard').scrollIntoView({behavior:'smooth',block:'start'})">⚙ Control de captura</button>
       <button onclick="document.getElementById('institutionalConfig').scrollIntoView({behavior:'smooth',block:'start'})">▤ Configuración institucional</button>
     </div>
+
 
     <div class="admin-core-grid">
 <section id="captureControlCard" class="card admin-core-card capture-control-card">
@@ -359,6 +387,7 @@
         </div>
       </section>
 
+
 <section id="excelExportCard" class="card admin-core-card excel-admin-card">
   <div class="admin-core-head">
     <div>
@@ -388,7 +417,9 @@
 </section>
 </div>
 
+
 </div>
+
 
     <div class="card teacher-admin-card">
       <div class="section-head teacher-admin-head">
@@ -404,6 +435,7 @@
       <div class="teacher-delete-note">Eliminar perfil borra la información académica guardada en esta plataforma; no elimina la cuenta institucional del profesor.</div>
       <div id="teacherAdminList" class="teacher-admin-list"></div>
     </div>
+
 
     <div class="card programs-common-card">
       <div class="section-head">
@@ -427,6 +459,8 @@
     </div>
 
 
+
+
     <details class="card academic-relations-card" id="academicRelationsCard">
       <summary class="academic-relations-summary">
         <div>
@@ -445,6 +479,7 @@
       </div>
     </details>
 
+
     <div class="card transversal-admin-card">
       <div class="section-head transversal-admin-head">
         <div>
@@ -454,11 +489,13 @@
         <span class="transversal-admin-badge">↔ Vinculación 1 a 1</span>
       </div>
 
+
       <div class="transversal-auto-note">
         <strong>Sincronización automática por nombre.</strong>
         Las asignaturas con el <b>mismo nombre exacto</b> comparten automáticamente competencia, área de conocimiento, coordinación y favorita.
         Si una materia se <b>deshabilita</b>, esa decisión sólo afecta a esa materia. <b>Proyecto integrador siempre permanece autónomo.</b>
       </div>
+
 
       <div class="transversal-pair-grid">
         <section class="transversal-side source">
@@ -474,7 +511,9 @@
           </label>
         </section>
 
+
         <div class="transversal-pair-arrow">→</div>
+
 
         <section class="transversal-side target">
           <div class="transversal-side-title"><span>2</span><div><b>Materia de destino</b><small>Programa, cuatrimestre y asignatura común.</small></div></div>
@@ -490,15 +529,18 @@
         </section>
       </div>
 
+
       <div class="transversal-actions">
         <button type="button" class="transversal-save-btn" onclick="saveTransversalRule()">＋ Agregar relación transversal</button>
       </div>
+
 
       <div class="transversal-configured">
         <h3>Relaciones transversales configuradas</h3>
         <div id="transversalRulesList"></div>
       </div>
     </div>
+
 
     <div id="programEditorCard" class="card program-editor-card">
       <div class="section-head">
@@ -508,6 +550,7 @@
         </div>
         <span id="programEditorMode" class="editor-mode-badge">Nuevo</span>
       </div>
+
 
       <div class="admin-grid">
         <label>Nombre del programa educativo<input id="newProgramName"></label>
@@ -522,8 +565,10 @@
       <div id="customProgramsList"></div>
     </div>
 
+
   </section>
 </main>
+
 
 <footer class="site-footer">
   <div class="creator-credit">Sitio diseñado, creado y administrado por <b>Iván Gutiérrez Bautista</b>.</div>
@@ -532,7 +577,9 @@
   </div>
 </footer>
 
+
 <div id="toast" class="toast"></div>
+
 
 <div id="captureOrientationModal" class="capture-orientation-modal hidden" role="dialog" aria-modal="true" aria-labelledby="captureOrientationTitle">
   <div class="capture-orientation-card">
@@ -544,10 +591,12 @@
       </div>
     </div>
 
+
     <div class="capture-orientation-principle">
       <strong>Mensaje para el llenado</strong>
       <span>El llenado de la información parte de un ejercicio de <b>autorreflexión y objetividad</b>. Seleccione únicamente las asignaturas que sean congruentes con su formación académica, experiencia docente y experiencia profesional.</span>
     </div>
+
 
     <div class="capture-orientation-grid">
       <div class="orientation-step"><b>1</b><span><strong>Todas las asignaturas aparecen habilitadas por defecto.</strong> Su tarea principal es deshabilitar aquellas que no sean acordes con su perfil.</span></div>
@@ -557,10 +606,12 @@
       <div class="orientation-step"><b>5</b><span>La <strong>★ Favorita</strong> es opcional y sirve para identificar las asignaturas que considera especialmente adecuadas para impartir según su perfil.</span></div>
     </div>
 
+
     <div class="capture-orientation-reference">
       <div><strong>Coordinador y Favorita</strong><span>Son referencias para apoyar el diseño de la planeación cuatrimestral; no aparecen en el formato impreso del Perfil del Profesor.</span></div>
       <div><strong>Comisiones y horarios</strong><span>Los horarios registrados para alguna comisión son una referencia para la planeación. <b>La prioridad es la atención de la clase frente a grupo</b> y cualquier descarga deberá sujetarse a la autorización correspondiente.</span></div>
     </div>
+
 
     <div class="capture-orientation-footer">
       <span>Los programas con <strong>tronco común</strong> mostrarán un aviso específico cuando existan asignaturas sincronizadas entre programas.</span>
@@ -568,6 +619,8 @@
     </div>
   </div>
 </div>
+
+
 
 
 <div id="finalizeProfileModal" class="finalize-modal hidden" role="dialog" aria-modal="true" aria-labelledby="finalizeModalTitle">
@@ -598,17 +651,20 @@
 </div>
 
 
+
+
 <script src="firebase-config.js?v=20260928-1"></script>
-<script src="catalog.js?v=20260928-1"></script>
+<script src="catalog.js?v=20260929-80"></script>
+
 
 <script src="https://cdn.jsdelivr.net/npm/xlsx-js-style@1.2.0/dist/xlsx.bundle.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/jspdf@2.5.1/dist/jspdf.umd.min.js"></script>
 
+
 <script src="https://accounts.google.com/gsi/client" async defer></script>
 
-<script type="module" src="app.js?v=20260928-1"></script>
-<script type="module" src="backup.js?v=20260929-2"></script>
+
+<script type="module" src="app.js?v=20260929-80"></script>
 </body>
 </html>
-
