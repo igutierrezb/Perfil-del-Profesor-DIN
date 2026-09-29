@@ -1,6 +1,6 @@
 /*
   Perfil Académico Docente DIN
-  Respaldo / restauración integral V7
+  Respaldo / restauración integral V9
   2026-09-29
 
   Cambios clave:
@@ -20,7 +20,7 @@ import {
 } from 'https://www.gstatic.com/firebasejs/10.13.2/firebase-firestore.js';
 
 const BACKUP_FORMAT = 'PAD_DIN_FIRESTORE_BACKUP';
-const BACKUP_VERSION = 7;
+const BACKUP_VERSION = 9;
 let loadedBackup = null;
 let restoreBusy = false;
 let authUnsub = null;
@@ -177,19 +177,19 @@ function injectModal(){
   <div class="restore-backdrop"></div>
   <div class="restore-panel">
     <header class="restore-head">
-      <div><span class="restore-kicker">Administración · Recuperación segura</span><h2>Restablecer una versión respaldada</h2><p>Revise qué información contiene el archivo antes de aplicarla a Firestore.</p></div>
+      <div><span class="restore-kicker">Administración · Recuperación segura</span><h2>Restaurar respaldo</h2><p>Revise y seleccione la versión que desea recuperar.</p></div>
       <button id="restoreClose" type="button">×</button>
     </header>
     <div class="restore-body">
       <section id="restoreSummary" class="restore-summary"></section>
       <div class="restore-columns">
         <section class="restore-section teacher-column">
-          <div class="restore-section-title"><div><h3>Profesores del respaldo</h3><p>Seleccione los perfiles que desea restablecer.</p></div><span id="restoreCount">0 seleccionados</span></div>
+          <div class="restore-section-title"><div><h3>Profesores</h3><p>Seleccione uno o varios perfiles.</p></div><span id="restoreCount">0 seleccionados</span></div>
           <div class="restore-tools"><button id="restoreSelectAll" type="button">✓ Todos</button><button id="restoreClearAll" type="button">Ninguno</button><input id="restoreSearch" type="search" placeholder="Buscar profesor o correo…"></div>
           <div id="restoreTeacherList" class="restore-list"></div>
         </section>
         <section class="restore-section detail-column">
-          <div class="restore-section-title"><div><h3>Contenido de la versión</h3><p>Detalle del profesor señalado.</p></div></div>
+          <div class="restore-section-title"><div><h3>Detalle del respaldo</h3><p>Información incluida en la versión seleccionada.</p></div></div>
           <div id="restoreTeacherDetail" class="restore-detail-empty">Seleccione un profesor para revisar exactamente qué se recuperará.</div>
         </section>
       </div>
@@ -203,13 +203,13 @@ function injectModal(){
     </div>
     <footer class="restore-foot">
       <button id="restoreCancel" type="button" class="secondary">Cancelar</button>
-      <button id="restoreSelected" type="button" class="primary">Restablecer versión seleccionada</button>
-      <button id="restoreAll" type="button" class="danger">Restablecer todos los profesores</button>
+      <button id="restoreSelected" type="button" class="primary">Restaurar seleccionados</button>
+      <button id="restoreAll" type="button" class="danger">Restaurar todos</button>
     </footer>
   </div>`;
   document.body.appendChild(m);
   $('restoreClose').onclick=()=>{if(!restoreBusy)closeModal();};
-  $('restoreCancel').onclick=()=>{if(!restoreBusy)closeModal();};
+  wireRestoreFooter();
   m.querySelector('.restore-backdrop').onclick=()=>{if(!restoreBusy)closeModal();};
   $('restoreSelectAll').onclick=()=>{document.querySelectorAll('.restore-check').forEach(x=>x.checked=true);updateCount();};
   $('restoreClearAll').onclick=()=>{document.querySelectorAll('.restore-check').forEach(x=>x.checked=false);updateCount();};
@@ -217,8 +217,7 @@ function injectModal(){
     const q=String(e.target.value||'').trim().toLowerCase();
     document.querySelectorAll('.restore-row').forEach(r=>r.hidden=!!q&&!String(r.dataset.search||'').includes(q));
   };
-  $('restoreSelected').onclick=()=>restore(false);
-  $('restoreAll').onclick=()=>restore(true);
+  
 }
 function openModal(){injectModal();$('restoreModal').classList.remove('hidden');document.body.classList.add('restore-open');}
 function closeModal(){$('restoreModal')?.classList.add('hidden');document.body.classList.remove('restore-open');}
@@ -309,7 +308,7 @@ function detailHtml(entry){
     </div>
 
     <button type="button" class="restore-one-btn" data-restore-one="${esc(entry.id)}">
-      Restablecer exactamente esta versión de ${esc(s.name)}
+      Restaurar esta versión de ${esc(s.name)}
     </button>`;
 }
 function showDetail(uid){
@@ -329,8 +328,26 @@ function updateCount(){
   if(selected.length===1)showDetail(selected[0].value);
   else if(selected.length===0&&$('restoreTeacherDetail'))$('restoreTeacherDetail').innerHTML='<div class="restore-detail-empty">Seleccione un profesor para revisar exactamente qué se recuperará.</div>';
 }
+
+function restoreFootDefaultHtml(){
+  return `
+    <button id="restoreCancel" type="button" class="secondary">Cancelar</button>
+    <button id="restoreSelected" type="button" class="primary">Restaurar seleccionados</button>
+    <button id="restoreAll" type="button" class="danger">Restaurar todos</button>`;
+}
+function wireRestoreFooter(){
+  if($('restoreCancel'))$('restoreCancel').onclick=()=>{if(!restoreBusy)closeModal();};
+  if($('restoreSelected'))$('restoreSelected').onclick=()=>restore(false);
+  if($('restoreAll'))$('restoreAll').onclick=()=>restore(true);
+}
+
 function renderModal(data){
   injectModal();
+  const foot=document.querySelector('#restoreModal .restore-foot');
+  if(foot){
+    foot.innerHTML=restoreFootDefaultHtml();
+    wireRestoreFooter();
+  }
   const teachers=Array.isArray(data.manifest?.teachers)?data.manifest.teachers:(data.collections?.profiles||[]).map(teacherSummary);
   $('restoreSummary').innerHTML=`
     <div class="valid">✓ Respaldo válido</div>
@@ -371,19 +388,84 @@ function confirmRestore(count,withSettings){
     $('confirmRestoreGo').onclick=()=>{d.remove();resolve(true);};
   });
 }
+
+function academicPayloadFingerprint(data){
+  const normalize=value=>{
+    if(value===undefined)return null;
+    if(value===null||typeof value!=='object')return value;
+    if(Array.isArray(value))return value.map(normalize);
+    const out={};
+    Object.keys(value).sort().forEach(k=>{
+      if(['updatedAt','adminRestoredAt','clientUpdatedAt','dataRevision','adminRestoreToken'].includes(k))return;
+      out[k]=normalize(value[k]);
+    });
+    return out;
+  };
+  return JSON.stringify(normalize({
+    profile:data?.profile||{},
+    answers:data?.answers||{},
+    programMeta:data?.programMeta||{},
+    planningByPeriod:data?.planningByPeriod||{},
+    submittedPeriod:data?.submittedPeriod||null,
+    finalizedAtMs:Number(data?.finalizedAtMs||0)||null
+  }));
+}
+function academicCounts(data){
+  const answers=data?.answers&&typeof data.answers==='object'?data.answers:{};
+  const meta=data?.programMeta&&typeof data.programMeta==='object'?data.programMeta:{};
+  const planning=data?.planningByPeriod&&typeof data.planningByPeriod==='object'?data.planningByPeriod:{};
+  const vals=Object.values(answers).filter(x=>x&&typeof x==='object');
+  return {
+    answers:Object.keys(answers).length,
+    x:vals.filter(a=>a.status==='X').length,
+    xx:vals.filter(a=>a.status==='XX').length,
+    off:vals.filter(a=>a.status==='off').length,
+    na:vals.filter(a=>a.status==='na').length,
+    pending:vals.filter(a=>a.status==='pending').length,
+    favorites:vals.filter(a=>a.ideal===true).length,
+    programMeta:Object.keys(meta).length,
+    planningPeriods:Object.keys(planning).length
+  };
+}
+
 async function restoreProfile(db,entry,restoreToken){
-  const ref=doc(db,'profiles',entry.id),cur=await getDoc(ref),current=cur.exists()?cur.data():{},data=deepDecode(entry.data,db);
+  const ref=doc(db,'profiles',entry.id);
+  const cur=await getDoc(ref);
+  const current=cur.exists()?cur.data():{};
+  const data=deepDecode(entry.data,db);
+
+  const expectedFingerprint=academicPayloadFingerprint(data);
+  const expectedCounts=academicCounts(data);
+
   const next=Math.max(Number(current.dataRevision||0),Number(data.dataRevision||0))+1;
   data.dataRevision=next;
   data.clientUpdatedAt=Date.now();
   data.updatedAt=serverTimestamp();
   data.adminRestoreToken=restoreToken;
   data.adminRestoredAt=serverTimestamp();
+
   await setDoc(ref,data,{merge:false});
+
   const verify=await getDoc(ref);
   if(!verify.exists())throw new Error(`No se pudo verificar el perfil ${entry.id}.`);
+
   const saved=verify.data()||{};
-  if(String(saved.adminRestoreToken||'')!==restoreToken||Number(saved.dataRevision||0)!==next)throw new Error(`La verificación del perfil ${entry.id} no coincidió.`);
+  const savedFingerprint=academicPayloadFingerprint(saved);
+  const savedCounts=academicCounts(saved);
+
+  if(String(saved.adminRestoreToken||'')!==restoreToken){
+    throw new Error(`Firestore no confirmó el token de restauración del perfil ${entry.id}.`);
+  }
+  if(Number(saved.dataRevision||0)!==next){
+    throw new Error(`Firestore no confirmó la revisión restaurada del perfil ${entry.id}.`);
+  }
+  if(savedFingerprint!==expectedFingerprint){
+    throw new Error(
+      `La información almacenada no coincide con el respaldo. `+
+      `Esperado: ${expectedCounts.answers} asignaturas; almacenado: ${savedCounts.answers}.`
+    );
+  }
+  return {uid:entry.id,counts:savedCounts,revision:next};
 }
 async function restoreSettingsEntry(db,entry){
   const data=deepDecode(entry.data,db);data.updatedAt=serverTimestamp();await setDoc(doc(db,'settings',entry.id||'app'),data,{merge:true});
@@ -405,10 +487,11 @@ async function restore(all){
 
     const restoreToken=`restore_${Date.now()}_${Math.random().toString(36).slice(2,10)}`;
     setProgress(18,`1 de 3 · Preparando ${entries.length} perfil(es)…`);
+    const restoredResults=[];
     for(let i=0;i<entries.length;i++){
       const t=teacherSummary(entries[i]),pct=15+Math.round((i/Math.max(1,entries.length))*68);
       setProgress(pct,`2 de 3 · Restableciendo ${i+1} de ${entries.length}: ${t.name}`);
-      await restoreProfile(db,entries[i],restoreToken);
+      restoredResults.push(await restoreProfile(db,entries[i],restoreToken));
     }
     if(withSettings){
       setProgress(88,'2 de 3 · Restableciendo configuración institucional…');
@@ -421,12 +504,33 @@ async function restore(all){
       backupExportedAt:String(loadedBackup.exportedAt||''),restoreToken,
       restoredProfileIds:entries.map(x=>x.id),settingsRestored:withSettings
     });
+    const totalAnswers=restoredResults.reduce((n,r)=>n+Number(r.counts?.answers||0),0);
+    const totalMeta=restoredResults.reduce((n,r)=>n+Number(r.counts?.programMeta||0),0);
     setProgress(100,`Restauración aplicada · ${entries.length} perfil(es) verificados`);
-    setModalStatus(`CAMBIOS APLICADOS EN FIRESTORE. ${entries.length} perfil(es) fueron restablecidos y verificados. El token de restauración obligará a los dispositivos abiertos a tomar esta versión respaldada.`,'ok');
-    setCardStatus(`Restauración aplicada: ${entries.length} perfil(es) actualizados.`,'ok');
+    setModalStatus(
+      `Firestore confirmó la versión restaurada: ${entries.length} perfil(es), `+
+      `${totalAnswers} registros de asignaturas y ${totalMeta} programas.`,
+      'ok'
+    );
+    setCardStatus(`Restauración confirmada: ${entries.length} perfil(es) · ${totalAnswers} asignaturas.`,'ok');
+
+    document.getElementById('restoreVerificationResult')?.remove();
+    const result=document.createElement('div');
+    result.id='restoreVerificationResult';
+    result.className='restore-verification-result';
+    result.innerHTML=`<span class="verify-icon">✓</span><div><strong>Versión restaurada</strong><small>${entries.length} perfil(es) · ${totalAnswers} asignaturas · ${totalMeta} programas</small></div>`;
+    document.getElementById('restoreModalStatus')?.insertAdjacentElement('beforebegin',result);
+
+    const footer=document.querySelector('#restoreModal .restore-foot');
+    if(footer){
+      footer.innerHTML=`<button type="button" id="restoreAcceptBtn" class="accept">Aceptar</button>`;
+      document.getElementById('restoreAcceptBtn')?.addEventListener('click',()=>{
+        closeModal();
+      });
+    }
 
     if($('restoreSelected'))$('restoreSelected').textContent='✓ Versión restablecida';
-    setTimeout(()=>{if($('restoreSelected'))$('restoreSelected').textContent='Restablecer versión seleccionada';},4000);
+    setTimeout(()=>{if($('restoreSelected'))$('restoreSelected').textContent='Restaurar seleccionados';},4000);
   }catch(e){
     console.error(e);setModalStatus(`La restauración se detuvo: ${e.message||'error no identificado'}. Revise el respaldo original y el estado actual antes de intentar nuevamente.`,'error');setCardStatus('La última restauración no concluyó.','error');
   }finally{setBusy(false);updateCount();}
@@ -451,6 +555,109 @@ function styles(){
   .backup-profile-values span{font-size:.69rem;color:#536c7c}
   .backup-real-data{margin:0;padding:9px 12px 10px 26px;color:#526a7a;font-size:.68rem;line-height:1.4}
   .backup-real-data li+li{margin-top:5px}.backup-empty-line{display:block;padding:9px 10px;color:#81909b;font-size:.68rem}
+
+
+  .restore-panel{width:min(1020px,96vw)!important;max-height:88vh!important}
+  .restore-head{padding:14px 20px!important}
+  .restore-head h2{font-size:1.18rem!important;font-weight:600!important}
+  .restore-head p{font-size:.72rem!important}
+  .restore-body{padding:12px 16px!important}
+  .restore-summary{gap:7px!important}
+  .restore-summary>div{padding:8px 10px!important;border-radius:10px!important}
+  .restore-summary b{font-size:.78rem!important;font-weight:600!important}
+  .restore-columns{gap:10px!important}
+  .restore-section{margin-top:9px!important;padding:10px!important;border-radius:11px!important}
+  .restore-section-title{margin-bottom:7px!important}
+  .restore-section-title h3{font-size:.82rem!important;font-weight:600!important}
+  .restore-section-title p{font-size:.64rem!important}
+  .restore-tools{margin-bottom:6px!important}
+  .restore-list{max-height:270px!important}
+  .restore-row{padding:7px 9px!important}
+  .teacher b{font-size:.7rem!important;font-weight:500!important}
+  .teacher small{font-size:.6rem!important}
+  .inspect-btn{padding:4px 7px!important;font-size:.6rem!important}
+  .detail-professor strong{font-size:.83rem!important;font-weight:600!important}
+  .detail-professor span{font-size:.62rem!important}
+  .backup-data-proof{padding:6px 8px!important;margin-top:6px!important}
+  .backup-data-proof strong{font-size:.68rem!important;font-weight:600!important}
+  .backup-data-proof span{font-size:.59rem!important}
+  .detail-grid{gap:5px!important;margin-top:6px!important}
+  .detail-grid>div{padding:6px!important}
+  .detail-grid b{font-size:.6rem!important;font-weight:600!important}
+  .detail-grid span{font-size:.59rem!important}
+  .backup-detail-section{margin-top:5px!important}
+  .backup-detail-section summary{padding:6px 8px!important;font-size:.62rem!important;font-weight:600!important}
+  .detail-note{margin-top:6px!important;padding:6px!important;font-size:.6rem!important}
+  .restore-one-btn{margin-top:6px!important;padding:7px!important;font-size:.68rem!important;font-weight:600!important}
+  .restore-foot{padding:9px 16px!important}
+  .restore-foot button{min-height:33px!important;padding:6px 11px!important;font-size:.68rem!important;font-weight:600!important}
+  .restore-verification-result{display:flex;align-items:center;gap:8px;margin-top:8px;padding:8px 10px;border:1px solid #b8ddc3;border-radius:9px;background:#eef8f1;color:#175f35}
+  .restore-verification-result .verify-icon{display:grid;place-items:center;width:22px;height:22px;border-radius:50%;background:#d7efdf}
+  .restore-verification-result strong,.restore-verification-result small{display:block}
+  .restore-verification-result strong{font-size:.68rem;font-weight:600}
+  .restore-verification-result small{font-size:.6rem;color:#4c735b}
+
+
+  /* V69 · densidad visual reducida */
+  .restore-panel{width:min(980px,95vw)!important;max-height:86vh!important}
+  .restore-head{padding:12px 18px!important}
+  .restore-kicker{font-size:.58rem!important;letter-spacing:.02em!important}
+  .restore-head h2{font-size:1.05rem!important;margin:2px 0!important;font-weight:600!important}
+  .restore-head p{font-size:.66rem!important}
+  .restore-head button{width:34px!important;height:34px!important;font-size:20px!important}
+  .restore-body{padding:10px 14px!important}
+  .restore-summary{grid-template-columns:auto 1fr 1fr 1fr!important;gap:6px!important;margin-bottom:4px!important}
+  .restore-summary>div{padding:7px 9px!important;min-height:42px!important;border-radius:9px!important}
+  .restore-summary b{font-size:.72rem!important;font-weight:600!important}
+  .restore-summary span{font-size:.57rem!important;margin-top:2px!important}
+  .restore-columns{grid-template-columns:minmax(0,1.2fr) minmax(300px,.8fr)!important;gap:8px!important}
+  .restore-section{margin-top:7px!important;padding:9px!important;border-radius:10px!important}
+  .restore-section-title{margin-bottom:6px!important}
+  .restore-section-title h3{font-size:.76rem!important;font-weight:600!important}
+  .restore-section-title p{font-size:.58rem!important}
+  .restore-section-title>span{font-size:.58rem!important;padding:4px 7px!important}
+  .restore-tools{grid-template-columns:auto auto minmax(150px,1fr)!important;gap:5px!important;margin-bottom:5px!important}
+  .restore-tools button,.restore-tools input{min-height:29px!important;padding:4px 7px!important;font-size:.62rem!important}
+  .restore-list{max-height:238px!important;border-radius:9px!important}
+  .restore-row{padding:6px 8px!important;gap:7px!important;grid-template-columns:18px 16px minmax(0,1fr) auto!important}
+  .restore-check{width:15px!important;height:15px!important}
+  .tick{width:17px!important;height:17px!important}
+  .teacher b{font-size:.65rem!important;font-weight:500!important}
+  .teacher small{font-size:.54rem!important}
+  .inspect-btn{padding:4px 6px!important;font-size:.54rem!important;border-radius:7px!important}
+  .restore-detail-empty{min-height:180px!important;padding:12px!important;font-size:.68rem!important}
+  .detail-professor{padding-bottom:5px!important}
+  .detail-professor strong{font-size:.76rem!important}
+  .detail-professor span{font-size:.56rem!important;margin-top:1px!important}
+  .backup-data-proof{margin-top:5px!important;padding:5px 7px!important}
+  .backup-data-proof strong{font-size:.62rem!important}
+  .backup-data-proof span{font-size:.52rem!important}
+  .detail-grid{grid-template-columns:repeat(2,minmax(0,1fr))!important;gap:4px!important;margin-top:5px!important}
+  .detail-grid>div{padding:5px!important;border-radius:7px!important}
+  .detail-grid b{font-size:.54rem!important}
+  .detail-grid span{font-size:.53rem!important;margin-top:1px!important}
+  .backup-detail-section{margin-top:4px!important;border-radius:8px!important}
+  .backup-detail-section summary{padding:5px 7px!important;font-size:.56rem!important}
+  .backup-profile-values{padding:6px!important;gap:4px!important}
+  .backup-profile-values span{font-size:.54rem!important}
+  .backup-real-data{padding:6px 8px 7px 20px!important;font-size:.54rem!important}
+  .detail-note{margin-top:5px!important;padding:5px 6px!important;font-size:.53rem!important}
+  .restore-one-btn{margin-top:5px!important;padding:6px!important;font-size:.61rem!important}
+  .restore-option{padding:7px 8px!important;margin-top:5px!important}
+  .restore-option b{font-size:.62rem!important;font-weight:600!important}
+  .restore-option small{font-size:.54rem!important}
+  .restore-safety{margin-top:7px!important;padding:6px 8px!important;font-size:.56rem!important}
+  .restore-progress{margin-top:7px!important;padding:7px!important}
+  .restore-progress>div{height:7px!important}
+  .restore-progress span{font-size:.58rem!important;margin-top:4px!important}
+  .restore-status{font-size:.6rem!important;margin-top:6px!important}
+  .restore-foot{padding:8px 14px!important;gap:6px!important}
+  .restore-foot button{min-height:31px!important;padding:5px 10px!important;font-size:.62rem!important;font-weight:600!important}
+  .restore-foot .accept{min-width:120px;border:1px solid #0a5e8e;background:#0b6697;color:#fff;border-radius:8px}
+  .restore-verification-result{margin-top:6px!important;padding:6px 8px!important;border-radius:8px!important}
+  .restore-verification-result .verify-icon{width:19px!important;height:19px!important;font-size:.65rem!important}
+  .restore-verification-result strong{font-size:.61rem!important}
+  .restore-verification-result small{font-size:.53rem!important}
 
   @media(max-width:900px){.restore-modal{padding:6px}.restore-panel{width:100%;max-height:97vh;border-radius:14px}.restore-body{padding:12px}.restore-columns{grid-template-columns:1fr}.restore-summary{grid-template-columns:1fr 1fr}.restore-tools{grid-template-columns:1fr 1fr}.restore-tools input{grid-column:1/-1}.restore-foot{flex-wrap:wrap}.restore-foot button{flex:1 1 180px}}
   @media(max-width:1179px){#backupRestoreCard{grid-column:1/-1}}

@@ -1,5 +1,5 @@
 /*
- Perfil DIN · Sincronización multidispositivo V3
+ Perfil DIN · Sincronización multidispositivo V5
  2026-09-29
 
  V2 añade soporte explícito para restauraciones administrativas:
@@ -10,7 +10,7 @@ import { initializeApp,getApps,getApp } from 'https://www.gstatic.com/firebasejs
 import { getAuth,onAuthStateChanged } from 'https://www.gstatic.com/firebasejs/10.13.2/firebase-auth.js';
 import { getFirestore,doc,onSnapshot } from 'https://www.gstatic.com/firebasejs/10.13.2/firebase-firestore.js';
 
-let unsub=null,pending=null,timer=null,lastRev=0,lastUpdated=0;
+let unsub=null,pending=null,timer=null,lastRev=0,lastUpdated=0,priorIndividualEditEnabled=null;
 const RESTORE_TOKEN_KEY='PAD_LAST_ADMIN_RESTORE_TOKEN';
 
 function configured(){const c=window.FIREBASE_CONFIG||{};return !!(c.apiKey&&c.projectId&&c.appId)}
@@ -80,6 +80,18 @@ function listen(user){
  const a=app();if(!a)return;const db=getFirestore(a),ref=doc(db,'profiles',user.uid);
  unsub=onSnapshot(ref,s=>{
   if(!s.exists())return;const d=s.data()||{};if(d.deletedByAdmin===true)return;
+  const reopened=priorIndividualEditEnabled===false&&d.individualEditEnabled===true;
+  priorIndividualEditEnabled=!!d.individualEditEnabled;
+  if(reopened&&d.adminRestoreToken&&(
+    Object.keys(d.answers||{}).length>0||
+    Object.keys(d.programMeta||{}).length>0||
+    Object.keys(d.profile||{}).length>0
+  )){
+    notice('Edición habilitada. Conservando la versión restaurada…');
+    merge(d,user.uid);
+    setTimeout(()=>location.reload(),450);
+    return;
+  }
   const v=version(d);
   if(!restoreTokenChanged(d)&&v.revision&&v.revision<=lastRev&&v.updatedAt<=lastUpdated)return;
   if(!newer(d))return;

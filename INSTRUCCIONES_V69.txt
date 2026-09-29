@@ -1,0 +1,86 @@
+PERFIL DIN V69 · RESTAURACIÓN AUTORITATIVA + MODAL COMPACTO
+===========================================================
+
+CORRECCIÓN CRÍTICA
+------------------
+Al habilitar nuevamente la edición de un profesor restaurado, ahora se crea una
+NUEVA revisión técnica en Firestore:
+
+- adminRestoreToken nuevo;
+- dataRevision + 1;
+- clientUpdatedAt = ahora;
+- updatedAt = ahora.
+
+NO se modifican:
+- profile
+- answers
+- programMeta
+- planningByPeriod
+
+Esto hace que la información restaurada permanezca como la versión más reciente
+y que una copia local antigua no pueda desplazarla al reabrir edición.
+
+ARCHIVO NUEVO
+-------------
+edit-restore-authority.js
+
+Este archivo reemplaza únicamente la función administrativa de habilitar/
+deshabilitar edición. Usa merge:true y nunca vacía los datos académicos.
+
+DISEÑO
+------
+El modal se compactó otra vez:
+- menor ancho y altura;
+- resumen superior más bajo;
+- tarjetas informativas más pequeñas;
+- lista de profesores más densa;
+- detalle derecho más compacto;
+- botones inferiores más pequeños;
+- menos negritas.
+
+FINALIZACIÓN
+------------
+Cuando la restauración termina correctamente, los tres botones inferiores se
+sustituyen por un único botón:
+
+Aceptar
+
+El mensaje final muestra:
+- perfiles verificados;
+- registros de asignaturas;
+- programas con metadatos.
+
+RESPALDO AUTOMÁTICO
+-------------------
+Sigue desactivado. La descarga de respaldo es manual.
+
+ARCHIVOS A SUBIR
+----------------
+1. backup.js -> sustituir
+2. realtime-sync.js -> sustituir
+3. bootstrap-profile.js -> sustituir
+4. edit-restore-authority.js -> NUEVO
+5. index.html -> dejar solo la línea de INDEX_FINAL_V69.txt
+
+YA NO USAR
+----------
+restore-edit-guard.js
+
+NO CAMBIAN
+----------
+firestore.rules
+build-cloudflare.sh
+wrangler.jsonc
+deploy-pages.yml
+
+deploy-pages.yml: NO SE ACTUALIZA.
+
+PRUEBA CLAVE
+------------
+1. Restaurar Ianesa.
+2. Verificar mensaje de éxito con sus 280 registros (si ese respaldo tiene 280).
+3. Deshabilitar edición.
+4. Habilitar edición.
+5. Abrir/refrescar el perfil del profesor.
+6. Sus respuestas deben seguir presentes.
+7. El documento remoto tendrá una revisión superior a la anterior.

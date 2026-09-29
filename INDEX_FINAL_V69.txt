@@ -1,0 +1,22 @@
+PERFIL DIN V69 · FINAL DE index.html
+========================================
+
+Quite cualquier carga directa de:
+- app.js
+- realtime-sync.js
+- restore-edit-guard.js
+- edit-restore-authority.js
+- backup.js
+
+Deje UNA SOLA línea al final:
+
+<script type="module" src="bootstrap-profile.js?v=20260929-69"></script>
+</body>
+</html>
+
+bootstrap-profile.js cargará:
+1. preflight de restauración;
+2. app.js;
+3. edit-restore-authority.js;
+4. realtime-sync.js;
+5. backup.js.
