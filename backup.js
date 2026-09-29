@@ -1,6 +1,6 @@
 /*
   Perfil Académico Docente DIN
-  Respaldo / restauración integral V5
+  Respaldo / restauración integral V6
   2026-09-29
 
   Cambios clave:
@@ -20,7 +20,7 @@ import {
 } from 'https://www.gstatic.com/firebasejs/10.13.2/firebase-firestore.js';
 
 const BACKUP_FORMAT = 'PAD_DIN_FIRESTORE_BACKUP';
-const BACKUP_VERSION = 5;
+const BACKUP_VERSION = 6;
 let loadedBackup = null;
 let restoreBusy = false;
 let authUnsub = null;
@@ -225,24 +225,92 @@ function closeModal(){$('restoreModal')?.classList.add('hidden');document.body.c
 function profileEntry(uid){return (loadedBackup?.collections?.profiles||[]).find(x=>x.id===uid)||null;}
 function detailHtml(entry){
   if(!entry)return '<div class="restore-detail-empty">Seleccione un profesor.</div>';
-  const d=entry.data||{},p=d.profile||{},e=p.extra||{},s=teacherSummary(entry),planning=d.planningByPeriod||{};
-  const formations=Object.entries(e).filter(([k,v])=>/^f\d+a$/.test(k)&&String(v||'').trim()).length;
-  const teaching=Object.entries(e).filter(([k,v])=>/^d\d+a$/.test(k)&&String(v||'').trim()).length;
-  const jobs=Object.entries(e).filter(([k,v])=>/^l\d+a$/.test(k)&&String(v||'').trim()).length;
+  const d=entry.data||{},p=d.profile||{},e=p.extra||{},s=teacherSummary(entry);
+  const answers=d.answers&&typeof d.answers==='object'?d.answers:{};
+  const planning=d.planningByPeriod&&typeof d.planningByPeriod==='object'?d.planningByPeriod:{};
+
+  const values=Object.values(answers).filter(x=>x&&typeof x==='object');
+  const xCount=values.filter(a=>a.status==='X').length;
+  const xxCount=values.filter(a=>a.status==='XX').length;
+  const offCount=values.filter(a=>a.status==='off').length;
+  const pendingCount=values.filter(a=>a.status==='pending').length;
+  const naCount=values.filter(a=>a.status==='na').length;
+  const favCount=values.filter(a=>a.ideal===true).length;
+
+  const formation=[
+    [e.f1a,e.f1b],[e.f2a,e.f2b],[e.f3a,e.f3b],[e.f4a,e.f4b],[e.f5a,e.f5b],[e.f6a,e.f6b],[e.f7a,e.f7b]
+  ].filter(row=>row.some(Boolean));
+  const teaching=[
+    [e.d1a,e.d1c],[e.d2a,e.d2c],[e.d3a,e.d3c],[e.d4a,e.d4c]
+  ].filter(row=>row.some(Boolean));
+  const jobs=[
+    [e.l1a,e.l1b,e.l1c],[e.l2a,e.l2b,e.l2c],[e.l3a,e.l3b,e.l3c],[e.l4a,e.l4b,e.l4c],[e.l5a,e.l5b,e.l5c]
+  ].filter(row=>row.some(Boolean));
+
+  const sample=(rows,labels)=>rows.length
+    ? `<ul class="backup-real-data">${rows.map(row=>`<li>${row.map((v,i)=>v?`<span><b>${labels[i]}:</b> ${esc(v)}</span>`:'').filter(Boolean).join(' · ')}</li>`).join('')}</ul>`
+    : '<span class="backup-empty-line">Sin registros en esta sección.</span>';
+
   return `
-    <div class="detail-professor"><strong>${esc(s.name)}</strong><span>${esc(s.email||s.uid)}</span></div>
-    <div class="detail-grid">
-      <div><b>Datos del profesor</b><span>${formations} formación · ${teaching} docencia · ${jobs} experiencia laboral</span></div>
-      <div><b>Asignaturas registradas</b><span>${s.counts.answers} registros · ${s.counts.answered} revisados</span></div>
-      <div><b>Materias favoritas</b><span>${s.counts.favorites}</span></div>
-      <div><b>Programas con metadatos</b><span>${s.counts.programMeta}</span></div>
-      <div><b>Comisiones / planeación</b><span>${s.counts.planningPeriods} periodo(s)</span></div>
-      <div><b>Estado del perfil</b><span>${d.submittedPeriod?`Finalizado: ${esc(String(d.submittedPeriod))}`:'No marcado como finalizado'}</span></div>
-      <div><b>Revisión respaldada</b><span>${Number(d.dataRevision||0)}</span></div>
-      <div><b>Último cambio del respaldo</b><span>${Number(d.clientUpdatedAt||0)?esc(fmtDate(Number(d.clientUpdatedAt))):'Sin fecha técnica'}</span></div>
+    <div class="detail-professor">
+      <strong>${esc(s.name)}</strong>
+      <span>${esc(s.email||s.uid)}</span>
+      <span>${esc(p.gradoAcademico||'')} ${p.categoria?`· ${esc(p.categoria)}`:''}</span>
     </div>
-    <div class="detail-note">Al restablecer, se recuperarán <b>profile, answers, programMeta, planningByPeriod, estado de finalización y permisos asociados al perfil</b>. Los metadatos de sincronización se renovarán para que esta versión restaurada sea la más reciente.</div>
-    <button type="button" class="restore-one-btn" data-restore-one="${esc(entry.id)}">Restablecer esta versión de ${esc(s.name)}</button>`;
+
+    <div class="backup-data-proof">
+      <strong>Contenido real guardado en este respaldo</strong>
+      <span>Este panel lee directamente el JSON seleccionado; no es una estimación.</span>
+    </div>
+
+    <div class="detail-grid">
+      <div><b>Asignaturas guardadas</b><span>${Object.keys(answers).length} registros</span></div>
+      <div><b>Competencia</b><span>X: ${xCount} · XX: ${xxCount}</span></div>
+      <div><b>Deshabilitadas / N.A.</b><span>${offCount} / ${naCount}</span></div>
+      <div><b>Pendientes</b><span>${pendingCount}</span></div>
+      <div><b>Favoritas</b><span>${favCount}</span></div>
+      <div><b>Programas con metadatos</b><span>${Object.keys(d.programMeta||{}).length}</span></div>
+      <div><b>Comisiones / planeación</b><span>${Object.keys(planning).length} periodo(s)</span></div>
+      <div><b>Estado del perfil</b><span>${d.submittedPeriod?`Finalizado: ${esc(String(d.submittedPeriod))}`:'No finalizado'}</span></div>
+      <div><b>Revisión respaldada</b><span>${Number(d.dataRevision||0)}</span></div>
+      <div><b>Último cambio respaldado</b><span>${Number(d.clientUpdatedAt||0)?esc(fmtDate(Number(d.clientUpdatedAt))):'Sin fecha técnica'}</span></div>
+    </div>
+
+    <details class="backup-detail-section" open>
+      <summary>Datos del profesor respaldados</summary>
+      <div class="backup-profile-values">
+        <span><b>Apellido paterno:</b> ${esc(p.apPat||'—')}</span>
+        <span><b>Apellido materno:</b> ${esc(p.apMat||'—')}</span>
+        <span><b>Nombres:</b> ${esc(p.nombres||'—')}</span>
+        <span><b>Categoría:</b> ${esc(p.categoria||'—')}</span>
+        <span><b>Grado académico:</b> ${esc(p.gradoAcademico||'—')}</span>
+      </div>
+    </details>
+
+    <details class="backup-detail-section">
+      <summary>Formación profesional (${formation.length})</summary>
+      ${sample(formation,['Estudio','Institución'])}
+    </details>
+
+    <details class="backup-detail-section">
+      <summary>Experiencia docente (${teaching.length})</summary>
+      ${sample(teaching,['Institución','Periodo'])}
+    </details>
+
+    <details class="backup-detail-section">
+      <summary>Experiencia laboral (${jobs.length})</summary>
+      ${sample(jobs,['Organización','Cargo','Periodo'])}
+    </details>
+
+    <div class="detail-note">
+      Al restablecer se sustituirá el documento del profesor por esta versión respaldada:
+      <b>profile, answers, programMeta, planningByPeriod, estado de finalización y permisos asociados al perfil</b>.
+      Después se genera una revisión técnica nueva para que móvil y escritorio adopten esta versión.
+    </div>
+
+    <button type="button" class="restore-one-btn" data-restore-one="${esc(entry.id)}">
+      Restablecer exactamente esta versión de ${esc(s.name)}
+    </button>`;
 }
 function showDetail(uid){
   selectedPreviewUid=uid;
@@ -385,6 +453,16 @@ function styles(){
   .restore-columns{display:grid;grid-template-columns:minmax(0,1.15fr) minmax(320px,.85fr);gap:14px}.restore-section{margin-top:14px;padding:14px;border:1px solid #d6e4ed;border-radius:15px;background:white}.restore-section-title{display:flex;justify-content:space-between;gap:12px;margin-bottom:10px}.restore-section-title h3{margin:0;color:#0b3554;font-size:.95rem}.restore-section-title p{margin:3px 0 0;color:#657989;font-size:.73rem}.restore-section-title>span{padding:5px 9px;border-radius:999px;background:#eef6fb;color:#174e70;font-size:.7rem;font-weight:900;white-space:nowrap}.restore-tools{display:grid;grid-template-columns:auto auto minmax(180px,1fr);gap:7px;margin-bottom:9px}.restore-tools button,.restore-tools input{min-height:34px;border-radius:8px;border:1px solid #bfd0dc;background:white;color:#244b66;padding:6px 9px}.restore-list{max-height:350px;overflow:auto;border:1px solid #dae5ec;border-radius:12px}.restore-row{display:grid;grid-template-columns:20px 22px minmax(0,1fr) auto;gap:9px;align-items:center;padding:10px 11px;border-bottom:1px solid #edf2f5;cursor:pointer}.restore-row:hover{background:#f0f7fb}.restore-row[hidden]{display:none!important}.restore-check{width:17px;height:17px;accent-color:#0c6595}.tick{width:21px;height:21px;border-radius:7px;background:#e9f4fa;position:relative}.restore-check:checked+.tick:after{content:'✓';position:absolute;inset:0;display:grid;place-items:center;color:#0c6595;font-weight:900}.teacher b,.teacher small{display:block}.teacher b{color:#143c59;font-size:.79rem}.teacher small{color:#718392;font-size:.66rem;margin-top:2px}.inspect-btn{border:1px solid #bad0dd;background:white;color:#164d70;border-radius:8px;padding:5px 8px;font-size:.68rem;font-weight:800}.restore-detail-empty{display:grid;place-items:center;min-height:260px;text-align:center;color:#7a8d9a;padding:20px}.detail-professor{padding-bottom:10px;border-bottom:1px solid #e2e9ee}.detail-professor strong,.detail-professor span{display:block}.detail-professor strong{color:#123e5c;font-size:1rem}.detail-professor span{color:#6c7f8d;font-size:.72rem;margin-top:3px}.detail-grid{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:11px}.detail-grid>div{padding:9px;border-radius:9px;background:#f3f8fb;border:1px solid #dfebf2}.detail-grid b,.detail-grid span{display:block}.detail-grid b{font-size:.7rem;color:#254d68}.detail-grid span{font-size:.68rem;color:#657988;margin-top:3px}.detail-note{margin-top:10px;padding:9px;border-radius:9px;background:#fff8e9;border:1px solid #edd19a;color:#665127;font-size:.7rem;line-height:1.35}.restore-one-btn{width:100%;margin-top:10px;border:1px solid #0a5e8e;background:#0b6697;color:white;border-radius:9px;padding:10px;font-weight:900}
   .restore-option{display:flex;gap:10px;padding:10px;border:1px solid #dbe5ec;border-radius:11px;background:#fbfdff;margin-top:7px}.restore-option input{width:17px;height:17px;accent-color:#0c6595}.restore-option b,.restore-option small{display:block}.restore-option b{color:#21445e;font-size:.77rem}.restore-option small{color:#718391;font-size:.68rem;margin-top:3px}.restore-option.locked{background:#f6f8fa}.restore-safety{margin-top:14px;padding:11px 13px;border:1px solid #edd19a;border-radius:12px;background:#fff8e9;color:#6c5425;font-size:.73rem;line-height:1.4}.restore-progress{margin-top:13px;padding:11px;border:1px solid #cfdfeb;border-radius:12px;background:white}.restore-progress.hidden{display:none!important}.restore-progress>div{height:9px;border-radius:999px;overflow:hidden;background:#e4edf3}.restore-progress i{display:block;width:0;height:100%;background:linear-gradient(90deg,#0a6697,#35a883);transition:width .25s}.restore-progress span{display:block;margin-top:6px;color:#3d5d73;font-size:.72rem;font-weight:700}.restore-status{margin-top:10px;min-height:18px;font-size:.74rem}.restore-status[data-kind=ok]{color:#176036;font-weight:800}.restore-status[data-kind=working]{color:#0e5d8c}.restore-status[data-kind=error]{color:#9a3322;font-weight:800}
   .restore-foot{display:flex;justify-content:flex-end;gap:8px;padding:14px 22px;border-top:1px solid #dce7ed;background:white}.restore-foot button{min-height:39px;padding:8px 14px;border-radius:9px;font-weight:900}.restore-foot .secondary{border:1px solid #c8d5dd;background:white;color:#405b6d}.restore-foot .primary{border:1px solid #0a5e8e;background:#0b6697;color:white}.restore-foot .danger{border:1px solid #b65a49;background:#fff2ee;color:#8b3425}.confirm-overlay{position:absolute;inset:0;z-index:10;display:grid;place-items:center;background:rgba(8,29,45,.62);padding:20px}.confirm-card{width:min(520px,92%);padding:21px;border-radius:17px;background:white;text-align:center}.confirm-icon{display:grid;place-items:center;width:46px;height:46px;margin:auto;border-radius:13px;background:#fff0e8;color:#a44a2e;font-size:25px;font-weight:900}.confirm-note{padding:9px 11px;background:#f4f8fb;border-radius:9px;text-align:left;font-size:.73rem;color:#526a7a}.confirm-card label{display:flex;gap:8px;margin:12px 0;padding:9px;border:1px solid #d7e2e9;border-radius:9px;text-align:left;font-size:.73rem}.confirm-actions{display:flex;justify-content:center;gap:8px}.confirm-actions button{padding:8px 12px;border-radius:8px;font-weight:900}
+
+  .backup-data-proof{margin-top:10px;padding:10px 11px;border-radius:10px;background:#eaf8ef;border:1px solid #b8ddc3;color:#165b31}
+  .backup-data-proof strong,.backup-data-proof span{display:block}.backup-data-proof span{margin-top:3px;font-size:.68rem;color:#4e7560}
+  .backup-detail-section{margin-top:9px;border:1px solid #dce7ed;border-radius:10px;background:#fff;overflow:hidden}
+  .backup-detail-section summary{cursor:pointer;padding:9px 10px;background:#f3f8fb;color:#244d68;font-size:.72rem;font-weight:900}
+  .backup-profile-values{display:grid;grid-template-columns:1fr 1fr;gap:7px;padding:10px}
+  .backup-profile-values span{font-size:.69rem;color:#536c7c}
+  .backup-real-data{margin:0;padding:9px 12px 10px 26px;color:#526a7a;font-size:.68rem;line-height:1.4}
+  .backup-real-data li+li{margin-top:5px}.backup-empty-line{display:block;padding:9px 10px;color:#81909b;font-size:.68rem}
+
   @media(max-width:900px){.restore-modal{padding:6px}.restore-panel{width:100%;max-height:97vh;border-radius:14px}.restore-body{padding:12px}.restore-columns{grid-template-columns:1fr}.restore-summary{grid-template-columns:1fr 1fr}.restore-tools{grid-template-columns:1fr 1fr}.restore-tools input{grid-column:1/-1}.restore-foot{flex-wrap:wrap}.restore-foot button{flex:1 1 180px}}
   @media(max-width:1179px){#backupRestoreCard{grid-column:1/-1}}
   `;

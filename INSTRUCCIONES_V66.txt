@@ -1,0 +1,78 @@
+PERFIL DIN V66 · CORRECCIÓN DE FLUJO Y RESTAURACIÓN
+===================================================
+
+DIAGNÓSTICO
+-----------
+1. currentProgramIndex se conserva en localStorage. Por eso, si la última sesión
+   quedó en Programa 8, al volver a Datos del profesor y avanzar nuevamente la
+   interfaz abre Programa 8.
+2. saveAndNextProgram() sí está diseñado para avanzar secuencialmente; el problema
+   principal era comenzar desde el índice almacenado.
+3. La captura puede parecer "saltable" hacia Revisión cuando el perfil está marcado
+   como finalizado/solo lectura. V66 separa claramente modo edición de modo consulta.
+4. La captura del respaldo mostrada NO está vacía: en la imagen se observan
+   280 registros y 280 revisados para Ianesa. Lo que estaba pobre era la vista
+   de detalle: mostraba contadores, no los valores capturados.
+5. realtime-sync.js está en el repositorio, pero el index.html actual no lo carga.
+
+ARCHIVOS DE ESTE PAQUETE
+------------------------
+backup.js
+  V6. Muestra contenido real del JSON: nombre, categoría, grado, formación,
+  experiencia docente/laboral y desglose X/XX/off/pendiente/favoritas.
+
+realtime-sync.js
+  V2. Detecta adminRestoreToken y fuerza la adopción de una restauración
+  administrativa en otros dispositivos.
+
+APP_JS_CAMBIOS_V66.txt
+  Cambios exactos y pequeños para aplicar en app.js.
+
+INDEX_FINAL_V66.txt
+  Tres scripts finales correctos.
+
+ORDEN DE ACTUALIZACIÓN
+----------------------
+1. Aplicar APP_JS_CAMBIOS_V66.txt en app.js.
+2. Sustituir backup.js.
+3. Sustituir realtime-sync.js.
+4. Actualizar las 3 líneas finales de index.html.
+5. Commit.
+6. Esperar GitHub Pages y Workers.
+7. Ctrl+F5.
+
+PRUEBA 1 · FLUJO
+----------------
+- Abrir Datos del profesor.
+- Continuar.
+- Debe decir Programa 1 de 8.
+- "Guardar y seguir" debe llevar a Programa 2, después 3, etc.
+- En Programa 8, si falta cualquier materia de programas anteriores,
+  debe volver al pendiente exacto en lugar de permitir impresión.
+
+PRUEBA 2 · RESPALDO
+-------------------
+- Descargar respaldo total.
+- Cargar el JSON.
+- Elegir Ianesa -> Ver contenido.
+- Debe mostrar datos reales y 280 registros si ese es el contenido del JSON.
+- El botón "Restablecer exactamente esta versión..." aplica el respaldo.
+
+PRUEBA 3 · RESTAURACIÓN
+-----------------------
+- Restaurar un profesor.
+- Se descarga respaldo preventivo específico del profesor.
+- Firestore se verifica.
+- Abrir/recargar el perfil del profesor.
+- Debe tomar la versión restaurada.
+- Si ya estaba abierto en otro dispositivo, realtime-sync.js V2 detectará
+  adminRestoreToken y recargará esa versión.
+
+NO SE MODIFICAN
+---------------
+firestore.rules
+build-cloudflare.sh
+wrangler.jsonc
+deploy-pages.yml
+
+deploy-pages.yml: NO SE ACTUALIZA.

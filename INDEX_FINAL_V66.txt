@@ -1,0 +1,15 @@
+PERFIL DIN V66 · FINAL DE index.html
+====================================
+
+Debe quedar EXACTAMENTE:
+
+<script type="module" src="app.js?v=20260929-66"></script>
+<script type="module" src="realtime-sync.js?v=20260929-2"></script>
+<script type="module" src="backup.js?v=20260929-6"></script>
+</body>
+</html>
+
+IMPORTANTE:
+En la versión actual del repositorio realtime-sync.js existe, pero index.html
+no lo está cargando. Esta línea es indispensable para que una restauración
+administrativa se refleje en una sesión que ya está abierta.
