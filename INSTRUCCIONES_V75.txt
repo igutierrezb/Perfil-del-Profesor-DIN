@@ -1,0 +1,95 @@
+PERFIL DIN V75 · SOLUCIÓN DEFINITIVA DEL PROBLEMA MOSTRADO
+==========================================================
+
+QUÉ SE DETECTÓ
+--------------
+El repositorio actualmente publicado sigue cargando directamente:
+
+app.js?v=20260928-1
+backup.js?v=20260929-2
+
+No está cargando los archivos secuenciales de V71-V74.
+Por eso el problema persistía aunque se hubieran creado versiones posteriores.
+
+V75 simplifica la solución y NO altera app.js.
+
+REGLA DE V75
+------------
+Mientras el profesor tenga edición activa:
+
+1. Las tres pestañas superiores:
+   - Datos del profesor
+   - Perfil por programa
+   - Revisión e impresión
+
+   son únicamente INDICADORES.
+   No sirven para navegar.
+
+2. La navegación válida es exclusivamente:
+   - botón inferior de Paso 1;
+   - Anterior / Guardar y seguir de Paso 2;
+   - botón del último programa para ir a revisión.
+
+3. El botón inferior de Paso 1 conserva la validación ORIGINAL de app.js:
+   si Datos del profesor están incompletos, no pasa a Paso 2.
+
+4. Al entrar a Paso 2:
+   - currentProgramIndex local se fuerza a 0;
+   - también se limpian posiciones antiguas de PAD_UTEQ_PROFILE_<UID>;
+   - si app.js ya había recuperado internamente Programa 8, V75 utiliza
+     goToCaptureIssue(0,0,0) para cambiar el índice INTERNO real a Programa 1.
+
+   Esta última parte es la diferencia crítica respecto de intentos anteriores.
+
+5. NO se modifica:
+   - profile
+   - answers
+   - programMeta
+   - planningByPeriod
+   - submittedPeriod
+   - Firestore
+
+   Solo se corrige navegación/posición.
+
+6. Si Administración reabre edición:
+   - la información anterior permanece;
+   - las pestañas superiores vuelven a ser indicadores;
+   - el flujo vuelve a Paso 1;
+   - al continuar a Paso 2 inicia en Programa 1.
+
+ARCHIVOS A SUBIR
+----------------
+1. sequence-guard.js -> NUEVO
+2. index.html -> modificar únicamente el bloque final según INDEX_FINAL_V75.txt
+
+app.js:
+NO SE MODIFICA en V75.
+
+PRUEBA EXACTA
+-------------
+Caso de Ianesa / profesor con 0 de 240:
+
+A. Iniciar sesión.
+B. Intentar clicar "Perfil por programa" arriba:
+   NO debe cambiar de pantalla.
+C. Intentar clicar "Revisión e impresión" arriba:
+   NO debe cambiar de pantalla.
+D. Completar/confirmar Paso 1 con el botón inferior.
+E. Paso 2 debe abrir:
+   Programa 1 de 8
+   nunca Programa 8 de 8.
+F. Avanzar con Guardar y seguir.
+G. Solo el flujo inferior permite llegar a revisión.
+
+PERFIL FINALIZADO SIN EDICIÓN
+-----------------------------
+Cuando ya no existe edición activa, las pestañas superiores vuelven a poder
+utilizarse para consulta/reimpresión.
+
+DEPLOY
+------
+deploy-pages.yml: NO SE ACTUALIZA.
+
+Cloudflare Workers:
+después del commit espere el build automático. Si Workers no despliega
+automáticamente, ejecute una nueva implementación del commit actual.

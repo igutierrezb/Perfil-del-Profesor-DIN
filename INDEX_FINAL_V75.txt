@@ -1,0 +1,45 @@
+PERFIL DIN V75 · REEMPLAZO EXACTO AL FINAL DE index.html
+========================================================
+
+IMPORTANTE:
+El index.html actualmente publicado todavía carga:
+
+<script type="module" src="app.js?v=20260928-1"></script>
+<script type="module" src="backup.js?v=20260929-2"></script>
+
+Por eso las versiones V71-V74 no estaban controlando realmente la navegación.
+
+REEMPLACE DESDE:
+
+<script src="firebase-config.js?v=20260928-1"></script>
+
+HASTA:
+
+</body>
+</html>
+
+POR ESTE BLOQUE:
+
+<script src="firebase-config.js?v=20260928-1"></script>
+<script src="catalog.js?v=20260928-1"></script>
+
+<script src="https://cdn.jsdelivr.net/npm/xlsx-js-style@1.2.0/dist/xlsx.bundle.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/jspdf@2.5.1/dist/jspdf.umd.min.js"></script>
+
+<script src="https://accounts.google.com/gsi/client" async defer></script>
+
+<!-- V75 debe ejecutarse ANTES de app.js -->
+<script src="sequence-guard.js?v=20260929-75"></script>
+
+<script type="module" src="app.js?v=20260929-75"></script>
+</body>
+</html>
+
+NO cargue:
+- backup.js
+- flow-sequence.js
+- bootstrap-profile.js
+- edit-restore-authority.js
+- restore-edit-guard.js
+- realtime-sync.js antiguo

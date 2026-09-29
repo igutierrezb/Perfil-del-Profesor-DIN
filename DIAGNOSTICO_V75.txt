@@ -1,0 +1,24 @@
+DIAGNÓSTICO V75
+===============
+
+Estado observado directamente en el repositorio actual:
+
+index.html:
+- carga firebase-config.js
+- carga catalog.js
+- carga librerías Excel/PDF
+- carga Google Identity Services
+- carga app.js?v=20260928-1
+- carga backup.js?v=20260929-2
+
+No carga:
+- bootstrap-persistence.js
+- flow-sequence.js
+- ninguna de las guardias V71/V72/V73/V74
+
+Esto explica por qué la pantalla continuaba permitiendo:
+- clic directo en las pestañas superiores;
+- recuperación de Programa 8 desde currentProgramIndex guardado.
+
+La corrección V75 se coloca ANTES de app.js y bloquea el evento en fase capture,
+por lo que app.js nunca recibe los clics superiores durante edición.
