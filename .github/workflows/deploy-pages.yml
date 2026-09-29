@@ -25,7 +25,7 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Prepare site
+      - name: Build production site
         shell: bash
         env:
           FIREBASE_API_KEY: ${{ secrets.FIREBASE_API_KEY }}
@@ -33,30 +33,7 @@ jobs:
           FIREBASE_PROJECT_ID: ${{ secrets.FIREBASE_PROJECT_ID }}
           FIREBASE_APP_ID: ${{ secrets.FIREBASE_APP_ID }}
           GOOGLE_CLIENT_ID: ${{ secrets.GOOGLE_CLIENT_ID }}
-        run: |
-          set -euo pipefail
-          test -n "$FIREBASE_API_KEY"
-          test -n "$FIREBASE_PROJECT_ID"
-          test -n "$FIREBASE_APP_ID"
-          test -n "$GOOGLE_CLIENT_ID"
-
-          rm -rf dist
-          mkdir -p dist
-          # Copia todos los archivos estáticos del repositorio y evita publicar metadatos Git.
-          find . -maxdepth 1 -type f ! -name 'firebase-config.js' -exec cp {} dist/ \;
-
-          cat > dist/firebase-config.js <<EOF
-          window.FIREBASE_CONFIG = {
-            apiKey: "$FIREBASE_API_KEY",
-            authDomain: "$FIREBASE_AUTH_DOMAIN",
-            projectId: "$FIREBASE_PROJECT_ID",
-            appId: "$FIREBASE_APP_ID"
-          };
-
-          window.PAD_GOOGLE_CLIENT_ID = "$GOOGLE_CLIENT_ID";
-          window.PAD_ALLOWED_DOMAIN = "uteq.edu.mx";
-          window.PAD_ADMIN_EMAIL = "ivan.gutierrez@uteq.edu.mx";
-          EOF
+        run: bash build-cloudflare.sh
 
       - name: Configure Pages
         uses: actions/configure-pages@v5
