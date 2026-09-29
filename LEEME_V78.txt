@@ -1,0 +1,95 @@
+PERFIL ACADÉMICO DOCENTE DIN · V78
+===================================
+
+OBJETIVO
+--------
+Corregir el problema de navegación sin poner en riesgo la información ya
+capturada ni alterar los elementos visuales que funcionan correctamente.
+
+QUÉ CORRIGE
+-----------
+1. Un profesor en edición no puede usar las pestañas superiores para saltarse pasos.
+2. Datos del profesor debe confirmarse antes de Perfil por programa.
+3. Perfil por programa SIEMPRE comienza en Programa 1 al iniciar/reabrir edición.
+4. El botón Anterior en Programa 1 vuelve a Datos del profesor; nunca va al Programa 8.
+5. Guardar y seguir obliga al recorrido 1 → 2 → ... → último programa.
+6. Revisión solo se habilita después de completar toda la secuencia y validateAll().
+7. Una entrega antigua no permite saltar directamente a Revisión cuando se reabre edición.
+8. Finalizar tiene una segunda validación independiente.
+9. Se elimina del index la carga de backup.js (módulo manual solicitado anteriormente).
+10. Se conserva el respaldo interno por UID y el guardado Firestore de app.js.
+
+PILARES PRESERVADOS
+-------------------
+- NO se modifica Firestore ni se borran documentos.
+- NO se cambia profile, answers, programMeta ni planningByPeriod.
+- NO se cambia catalog.js.
+- NO se cambia styles.css.
+- NO se cambia mobile.css.
+- NO se cambia firestore.rules.
+- NO se cambia firebase-config.js.
+- NO se cambia la estructura responsive.
+- NO se cambia el guardado progresivo existente.
+- NO se elimina la copia local PAD_UTEQ_PROFILE_<UID>.
+- NO se altera la consulta/reimpresión cuando el perfil está en solo lectura.
+
+CÓMO APLICARLO
+--------------
+Requisito: Node.js instalado.
+
+1. Coloque APLICAR_V78.mjs dentro de la carpeta del repositorio
+   Perfil-del-Profesor-DIN.
+
+2. Verifique que en esa misma carpeta estén:
+      app.js
+      index.html
+
+3. Abra Terminal / PowerShell en esa carpeta.
+
+4. Ejecute:
+      node APLICAR_V78.mjs
+
+5. Si todo coincide con la versión que fue analizada, aparecerá:
+      ✅ V78 aplicada correctamente.
+
+6. Revise que se hayan creado:
+      _respaldo_antes_v78/
+      V78_APLICADO.txt
+
+7. En GitHub debe actualizar solamente:
+      app.js
+      index.html
+
+NO SUBA la carpeta _respaldo_antes_v78.
+
+PRUEBA DE ACEPTACIÓN
+--------------------
+A. Profesor nuevo/incompleto
+   - No puede saltar por las pestañas superiores.
+   - Paso 1 incompleto no avanza.
+   - Paso 1 completo abre Programa 1.
+   - Anterior desde Programa 1 vuelve a Datos del profesor.
+   - Guardar y seguir avanza secuencialmente.
+   - Revisión no abre si existe un pendiente.
+
+B. Profesor finalizado con edición reabierta
+   - Conserva todos sus datos.
+   - Vuelve a Datos del profesor.
+   - Al confirmar entra en Programa 1 con información precargada.
+   - Debe recorrer los programas en orden.
+   - No puede usar el envío anterior como atajo a Revisión.
+
+C. Profesor finalizado en solo lectura
+   - Conserva navegación de consulta e impresión.
+
+D. Móvil
+   - No se cambia mobile.css.
+   - Los controles inferiores conservan el layout responsive existente.
+   - Las pestañas superiores permanecen visibles como indicadores.
+
+CLOUDFLARE / GITHUB
+-------------------
+Después de subir app.js e index.html, Cloudflare debe volver a compilar/desplegar
+como normalmente lo hace.
+
+deploy-pages.yml: NO SE ACTUALIZA.
