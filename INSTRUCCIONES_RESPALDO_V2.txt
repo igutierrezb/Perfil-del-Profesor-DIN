@@ -1,0 +1,66 @@
+RESPALDO INTEGRAL V2 · PERFIL ACADÉMICO DOCENTE DIN
+===================================================
+
+QUÉ CAMBIA
+----------
+Esta versión corrige la inserción visual del módulo de respaldo.
+
+OBJETIVO VISUAL
+---------------
+- El cuadro de "Comisiones" se mantiene funcional.
+- En escritorio, se compacta horizontalmente para ocupar una sola columna.
+- Debajo de ese cuadro se inserta el módulo "Respaldo integral".
+- En pantallas medianas o móviles, el módulo se acomoda en ancho completo sin romper el diseño.
+
+CONDICIÓN PERMANENTE DE SEGURIDAD
+---------------------------------
+- No se modifica app.js.
+- No se modifican reglas de Firestore.
+- No se modifica la lógica que ya funciona.
+- El módulo de respaldo sigue siendo SOLO DE LECTURA.
+- No crea, no edita y no elimina información.
+
+ARCHIVOS A USAR
+---------------
+1) backup.js  -> sustituye el backup.js anterior por este nuevo archivo.
+2) index.html -> asegúrate de tener la línea:
+
+   <script type="module" src="backup.js?v=20260929-2"></script>
+
+Si antes tenías:
+
+   <script type="module" src="backup.js?v=20260929-1"></script>
+
+cámbiala por:
+
+   <script type="module" src="backup.js?v=20260929-2"></script>
+
+Eso obliga al navegador a cargar la versión nueva y evita que se quede en caché.
+
+CAMBIO EN index.html
+--------------------
+Debe quedar al final algo similar a:
+
+<script type="module" src="app.js?v=20260928-1"></script>
+<script type="module" src="backup.js?v=20260929-2"></script>
+</body>
+</html>
+
+DÓNDE APARECERÁ
+---------------
+Dentro de la sección administrativa, justo debajo de "Comisiones".
+
+USO
+---
+1. Sube backup.js nuevo.
+2. Actualiza el query string en index.html a ?v=20260929-2.
+3. Haz commit.
+4. Espera a que despliegue en GitHub Pages y Workers.
+5. Recarga con Ctrl + F5.
+6. Inicia sesión con la cuenta administradora.
+7. En Administración debe aparecer la tarjeta "Respaldo integral".
+8. Presiona "Descargar respaldo completo (.json)".
+
+DEPLOY-PAGES.YML
+----------------
+NO se actualiza.
