@@ -1,0 +1,175 @@
+PERFIL ACADÉMICO DOCENTE DIN · V79
+===================================
+
+Esta versión parte del código que sigue actualmente en la rama main del repositorio
+Perfil-del-Profesor-DIN.
+
+HALLAZGO PRINCIPAL
+------------------
+La rama main aún carga:
+  app.js?v=20260928-1
+  backup.js?v=20260929-2
+
+y app.js aún contiene:
+  - currentProgramIndex restaurado desde LocalStorage;
+  - navegación circular en prevProgram();
+  - las pestañas superiores enlazadas directamente a window.go();
+  - reviewAvailable() habilitado por una entrega previa;
+  - validateProfile() que guarda datos al validar.
+
+Esto explica que el problema continúe aunque en el repositorio existan archivos
+V74, V77 o V78: esos archivos auxiliares no forman parte del runtime activo.
+
+QUÉ HACE V79
+------------
+V79 corrige directamente app.js, que es el archivo que sí se ejecuta.
+
+1. DATOS DEL PROFESOR
+   Deben validarse y confirmarse mediante el botón inferior.
+
+2. PERFIL POR PROGRAMA
+   Cada nueva sesión/reapertura de edición comienza en Programa 1.
+   La información ya capturada aparece precargada.
+
+3. ORDEN
+   Guardar y seguir obliga al recorrido:
+      Programa 1 → 2 → 3 → ... → último.
+
+4. ANTERIOR
+   Desde Programa 1 vuelve a Datos del profesor.
+   Ya no existe Programa 1 → Programa 8.
+
+5. PESTAÑAS SUPERIORES
+   Durante edición son indicadores, no atajos.
+   En un perfil finalizado/solo lectura conservan su utilidad de consulta.
+
+6. REVISIÓN
+   Solo se desbloquea cuando:
+   - Paso 1 fue confirmado;
+   - se llegó secuencialmente al final;
+   - validateAll() confirma que no existen pendientes.
+
+7. FINALIZAR
+   Tiene un segundo candado independiente de la interfaz.
+
+8. PERSISTENCIA
+   Se conserva:
+   - LocalStorage general;
+   - PAD_UTEQ_PROFILE_<UID>;
+   - Firestore;
+   - dataRevision;
+   - syncPending;
+   - reintentos de nube;
+   - checkpoint al cerrar sesión.
+
+9. VALIDACIÓN
+   validateProfile() deja de guardar automáticamente cada vez que la interfaz
+   solo quiere comprobar el estado. Esto reduce revisiones y escrituras
+   artificiales sin quitar el autoguardado real.
+
+10. RESPALDO MANUAL
+    Se elimina únicamente la carga de backup.js, como ya se había solicitado.
+    No se elimina la copia interna de seguridad por UID.
+
+CAMBIO SUSTANCIAL / IMPLICACIONES
+---------------------------------
+Sí hay un cambio importante de comportamiento:
+
+- currentProgramIndex deja de persistirse como "avance".
+- Al recargar o reabrir edición, el profesor vuelve a Paso 1 y después Programa 1.
+- NO vuelve a capturar lo que ya hizo: la información aparece precargada.
+- Tendrá que recorrer nuevamente los programas para llegar a Revisión.
+- Esto sacrifica un poco de comodidad de "volver exactamente a Programa 7",
+  pero elimina el problema estructural de entrar directamente al último programa.
+
+No hay migración de Firestore ni cambio de estructura de datos.
+
+RIESGO QUE ESTA VERSIÓN NO INTENTA REDISEÑAR
+--------------------------------------------
+La plataforma guarda el perfil completo en un documento Firestore. Si el MISMO
+profesor edita simultáneamente desde dos dispositivos antes de que cada uno
+sincronice, continúa existiendo un modelo de "última versión que llega a nube".
+V79 no cambia ese esquema para evitar introducir una migración riesgosa mientras
+corregimos el flujo.
+
+Uso normal recomendado:
+- se puede cambiar de móvil a escritorio;
+- espere a que aparezca "Sincronizado" antes de continuar en el otro dispositivo;
+- evite capturar simultáneamente en ambos.
+
+Si posteriormente se requiere edición concurrente real sin posibilidad de
+conflicto, conviene una fase independiente con almacenamiento por programa/campo
+o transacciones/versionado.
+
+CÓMO APLICAR
+------------
+Requisito: Node.js.
+
+1. Descargue el ZIP.
+2. Copie APLICAR_V79.mjs a la raíz del repositorio, junto a app.js.
+3. Abra PowerShell o Terminal en esa carpeta.
+4. Ejecute:
+
+   node APLICAR_V79.mjs
+
+5. Si todas las comprobaciones pasan, creará:
+   _respaldo_antes_v79/
+   V79_APLICADA.txt
+
+6. Suba/reemplace en GitHub solamente:
+   app.js
+   index.html
+
+7. NO suba _respaldo_antes_v79.
+
+8. Espere la compilación de Cloudflare y haga Ctrl+F5.
+
+PRUEBAS DE ACEPTACIÓN
+---------------------
+CASO 1 · PROFESOR INCOMPLETO
+- No puede saltar usando las pestañas 1/2/3.
+- Paso 1 incompleto no permite avanzar.
+- Paso 1 completo abre Programa 1.
+- Un programa incompleto no deja avanzar.
+- Revisión no abre antes de terminar todos.
+
+CASO 2 · PROFESOR CON DATOS PREVIOS
+- Conserva sus respuestas.
+- Paso 2 abre Programa 1, no Programa 8.
+- Respuestas anteriores aparecen precargadas.
+
+CASO 3 · PERFIL FINALIZADO + EDICIÓN REABIERTA
+- No se borra nada.
+- Vuelve a Paso 1.
+- Después entra a Programa 1.
+- Debe revisar secuencialmente.
+- La entrega anterior no sirve de atajo.
+
+CASO 4 · PERFIL FINALIZADO SIN EDICIÓN
+- Puede consultar/reimprimir como antes.
+
+CASO 5 · MÓVIL
+- No se modifica mobile.css.
+- No se modifican tamaños, tablas, botones ni breakpoints.
+- Se conserva el flujo inferior ya existente.
+
+REVERTIR
+--------
+Si necesitara volver inmediatamente:
+
+   node REVERTIR_V79.mjs
+
+Esto recupera app.js e index.html desde _respaldo_antes_v79/.
+
+ARCHIVOS QUE NO CAMBIAN
+-----------------------
+catalog.js
+styles.css
+mobile.css
+firebase-config.js
+firestore.rules
+build-cloudflare.sh
+wrangler.jsonc
+.github/workflows/deploy-pages.yml
+
+deploy-pages.yml: NO SE ACTUALIZA.
