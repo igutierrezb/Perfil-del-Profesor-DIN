@@ -1,0 +1,32 @@
+PERFIL DIN V70 · CAMBIO FINAL DE index.html
+========================================
+
+OBJETIVO
+--------
+Eliminar totalmente el módulo de respaldo/restauración y dejar únicamente
+persistencia automática y sincronización del perfil.
+
+AL FINAL DE index.html
+----------------------
+Quite cualquier carga de:
+
+- backup.js
+- realtime-sync.js
+- restore-edit-guard.js
+- edit-restore-authority.js
+- bootstrap-profile.js anterior
+- app.js cargado directamente
+
+Deje solamente:
+
+<script type="module" src="bootstrap-persistence.js?v=20260929-70"></script>
+</body>
+</html>
+
+bootstrap-persistence.js cargará en orden:
+1. la verificación inicial Firestore/localStorage;
+2. app.js;
+3. persistence-live.js.
+
+NO BORRE app.js DEL REPOSITORIO.
+Solo deje de cargarlo directamente desde index.html.

@@ -1,0 +1,23 @@
+PERFIL DIN V70 · RESULTADO DE PRUEBAS
+===================================
+
+OK: 5 pruebas de precedencia superadas
+
+Casos verificados:
+- nube con revisión superior;
+- copia local con revisión superior;
+- nube vacía no borra captura local;
+- nube válida recupera local vacío;
+- desempate por fecha cuando la revisión coincide.
+
+Además se revisó el app.js actual y se confirmó:
+- persist() incrementa dataRevision y guarda copia por UID;
+- syncProfileToCloud() usa Firestore con merge:true;
+- signOutApp() ejecuta checkpoint antes de cerrar sesión;
+- finalizeCurrentProfile() hace sincronización previa y final;
+- setTeacherEditAccess() usa merge:true y solo modifica banderas de edición;
+- la información académica no se elimina al concluir ni al habilitar edición.
+
+Nota:
+Las pruebas automáticas incluidas son pruebas de lógica/precedencia. La prueba final
+con Firebase real debe hacerse en el sitio publicado siguiendo INSTRUCCIONES_V70.txt.

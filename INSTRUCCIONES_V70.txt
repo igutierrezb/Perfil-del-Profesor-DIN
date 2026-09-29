@@ -1,0 +1,127 @@
+PERFIL ACADÉMICO DOCENTE DIN · V70
+PERSISTENCIA ROBUSTA SIN MÓDULO DE RESPALDOS
+=============================================
+
+DECISIÓN DE DISEÑO
+------------------
+Se elimina completamente la restauración manual de respaldos.
+
+La plataforma queda apoyada en dos capas automáticas:
+
+1. FIRESTORE
+   Fuente persistente principal por UID institucional.
+
+2. LOCALSTORAGE POR UID
+   Capa local de recuperación cuando la red falla o la nube todavía no confirma.
+
+El app.js actual ya contiene mecanismos importantes que se conservan:
+- persistencia en localStorage en cada cambio;
+- copia PAD_UTEQ_PROFILE_<UID>;
+- dataRevision;
+- localUpdatedAt / cloudUpdatedAt;
+- syncPending;
+- guardado progresivo en Firestore;
+- reintentos automáticos;
+- checkpoint antes de cerrar sesión;
+- checkpoint al finalizar el perfil;
+- recuperación de copia local si Firestore no responde;
+- protección contra una nube vacía accidental.
+
+V70 añade una capa de arranque y una capa multidispositivo.
+
+ARCHIVOS NUEVOS
+---------------
+bootstrap-persistence.js
+persistence-live.js
+
+QUÉ GARANTIZA V70
+-----------------
+A) CERRAR SESIÓN
+Antes del sign-out, app.js captura los valores visibles, persiste localmente y
+realiza un checkpoint directo a Firestore. La copia por UID permanece guardada.
+
+B) VOLVER A INICIAR SESIÓN
+bootstrap-persistence.js compara Firestore contra PAD_UTEQ_PROFILE_<UID> antes
+de arrancar la interfaz.
+
+- Si Firestore es más nuevo: carga Firestore.
+- Si la copia local es más nueva: no la destruye; app.js la recupera y la sube.
+- Si Firestore aparece vacío accidentalmente: no sustituye datos locales válidos.
+
+C) PERFIL FINALIZADO
+Finalizar NO borra profile, answers, programMeta ni planningByPeriod.
+Solo cambia el estado de finalización y bloquea la edición. La información
+permanece disponible para consulta e impresión.
+
+D) HABILITAR / DESHABILITAR EDICIÓN
+El app.js actual usa setDoc(..., {merge:true}) y modifica solamente:
+- individualEditEnabled
+- individualEditDisabled
+- reopenedAt
+- reopenedBy
+- individualEditUpdatedAt
+
+Por tanto habilitar/deshabilitar edición NO debe borrar información académica.
+Los scripts de restauración que estaban complicando este flujo dejan de cargarse.
+
+E) MÓVIL / ESCRITORIO
+persistence-live.js escucha Firestore. Si otro dispositivo guarda una revisión
+superior, la copia más nueva se adopta. Si el usuario está escribiendo en un campo,
+espera a que termine antes de recargar.
+
+F) SIN INTERNET
+La captura continúa conservándose en PAD_UTEQ y PAD_UTEQ_PROFILE_<UID>.
+app.js marca syncPending y reintenta al recuperar conexión.
+
+PRUEBAS LÓGICAS REALIZADAS
+--------------------------
+Se validaron estos escenarios de precedencia:
+
+1. Nube revisión 12 / local revisión 11 -> gana nube.
+2. Nube revisión 11 / local revisión 12 -> se conserva local.
+3. Nube vacía / local con captura -> local NO se borra.
+4. Nube con captura / local vacío -> se recupera nube.
+5. Misma revisión / nube con fecha más nueva -> gana nube.
+6. Perfil finalizado -> los datos permanecen; solo se bloquea edición.
+7. Habilitar edición -> merge:true modifica banderas, no answers/profile/programMeta.
+8. Cierre de sesión -> app.js fuerza checkpoint y conserva copia por UID.
+
+ORDEN DE ACTUALIZACIÓN
+----------------------
+1. Suba bootstrap-persistence.js.
+2. Suba persistence-live.js.
+3. Modifique el final de index.html según INDEX_FINAL_V70.txt.
+4. NO cargue backup.js ni los scripts de restauración.
+5. Commit.
+6. Espere GitHub Pages / Cloudflare Workers.
+7. Ctrl+F5.
+
+PRUEBA FUNCIONAL RECOMENDADA
+----------------------------
+Use un profesor de prueba:
+
+1. Capture varias materias.
+2. Espere que indique "Sincronizado".
+3. Cierre sesión.
+4. Vuelva a entrar: deben seguir exactamente las mismas materias.
+5. Finalice el perfil.
+6. Cierre y vuelva a entrar: debe seguir visible completo en solo lectura.
+7. Administración: habilite edición.
+8. Vuelva a entrar con el profesor: toda la información debe permanecer.
+9. Cambie una materia en móvil.
+10. Abra/recupere foco en escritorio: debe adoptar la revisión más reciente.
+
+IMPORTANTE
+----------
+La única función administrativa que deliberadamente puede vaciar información
+sigue siendo "Eliminar asignaturas capturadas" o "Eliminar perfil completo".
+Esas acciones tienen confirmación específica y no forman parte de la edición normal.
+
+ARCHIVOS QUE NO CAMBIAN
+-----------------------
+firestore.rules
+build-cloudflare.sh
+wrangler.jsonc
+deploy-pages.yml
+
+deploy-pages.yml: NO SE ACTUALIZA.

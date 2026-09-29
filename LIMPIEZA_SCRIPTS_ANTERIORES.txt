@@ -1,0 +1,17 @@
+ARCHIVOS ANTERIORES QUE YA NO SE UTILIZAN
+========================================
+
+Puede dejarlos en el repositorio sin que causen efecto, pero ya NO deben
+aparecer en index.html:
+
+backup.js
+realtime-sync.js
+restore-edit-guard.js
+edit-restore-authority.js
+bootstrap-profile.js
+
+Si desea limpiar el repositorio más adelante, puede eliminarlos después de
+comprobar V70. No es necesario eliminarlos para que V70 funcione.
+
+El módulo visual "Respaldo y restauración" desaparecerá porque backup.js
+ya no será cargado.
