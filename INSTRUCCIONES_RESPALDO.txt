@@ -1,0 +1,100 @@
+RESPALDO INTEGRAL · PERFIL DEL PROFESOR DIN
+============================================
+
+OBJETIVO
+--------
+Agregar una opción segura para descargar un respaldo externo de la información
+central almacenada en Firestore.
+
+ESTA PRIMERA VERSIÓN ES DELIBERADAMENTE SOLO DE LECTURA.
+No contiene restauración, porque primero queremos comprobar que el respaldo se
+genera correctamente sin poner en riesgo la información existente.
+
+ARCHIVO NUEVO
+-------------
+backup.js
+
+Este archivo:
+- solo puede ejecutar el respaldo si la sesión corresponde a la cuenta
+  administradora configurada en PAD_ADMIN_EMAIL;
+- lee settings/app;
+- lee todos los documentos de profiles;
+- lee todos los documentos de audit;
+- descarga un único archivo JSON;
+- NO usa setDoc, addDoc, updateDoc ni deleteDoc;
+- NO modifica Firestore;
+- NO modifica localStorage;
+- NO altera la lógica actual de app.js.
+
+CAMBIO ÚNICO EN index.html
+--------------------------
+Justo después de esta línea existente:
+
+<script type="module" src="app.js?v=20260928-1"></script>
+
+agrega esta línea:
+
+<script type="module" src="backup.js?v=20260929-1"></script>
+
+Debe quedar así:
+
+<script type="module" src="app.js?v=20260928-1"></script>
+<script type="module" src="backup.js?v=20260929-1"></script>
+</body>
+</html>
+
+No necesitas agregar HTML manual para el botón.
+backup.js inserta automáticamente la tarjeta "Respaldo integral" dentro de
+Administración, después de "Exportación Excel".
+
+CÓMO USARLO
+-----------
+1. Sube backup.js a la raíz del repositorio.
+2. Agrega la línea indicada a index.html.
+3. Haz commit en main.
+4. Espera a que terminen los despliegues.
+5. Entra con la cuenta administradora.
+6. Abre Administración.
+7. Pulsa "Descargar respaldo completo (.json)".
+8. Guarda el archivo descargado en una ubicación segura.
+
+NOMBRE DEL ARCHIVO
+------------------
+Ejemplo:
+respaldo-perfil-din_2026-09-29_09-15-30.json
+
+CONTENIDO
+---------
+El JSON incluye:
+- metadatos del respaldo;
+- projectId;
+- fecha y hora de exportación;
+- settings;
+- profiles;
+- audit;
+- IDs originales de cada documento;
+- Timestamp/GeoPoint/DocumentReference etiquetados para una futura restauración.
+
+DEPLOY-PAGES.YML
+----------------
+NO se modifica.
+
+El workflow actual copia todos los archivos estáticos de la raíz a dist, por lo
+que backup.js será incluido automáticamente en GitHub Pages.
+
+BUILDCLOUDFLARE
+---------------
+NO se modifica.
+
+El build actual de Cloudflare copia los archivos estáticos de la raíz a dist,
+por lo que backup.js también será incluido automáticamente.
+
+SIGUIENTE ETAPA
+---------------
+Después de generar y revisar al menos un respaldo real, se puede añadir una
+función de "Restaurar respaldo" protegida con:
+- acceso exclusivo del administrador;
+- validación del formato y projectId;
+- respaldo automático previo;
+- doble confirmación;
+- restauración sin borrado masivo accidental.
