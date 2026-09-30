@@ -1,6 +1,6 @@
 import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.13.2/firebase-app.js';
 import { getAuth, GoogleAuthProvider, signInWithCredential, signOut, onAuthStateChanged, setPersistence, browserLocalPersistence } from 'https://www.gstatic.com/firebasejs/10.13.2/firebase-auth.js';
-import { getFirestore, doc, getDoc, setDoc, collection, getDocs, onSnapshot, serverTimestamp, addDoc, runTransaction } from 'https://www.gstatic.com/firebasejs/10.13.2/firebase-firestore.js';
+import { getFirestore, doc, getDoc, setDoc, updateDoc, collection, getDocs, onSnapshot, serverTimestamp, addDoc, runTransaction } from 'https://www.gstatic.com/firebasejs/10.13.2/firebase-firestore.js';
 
 
 const $=id=>document.getElementById(id);
@@ -32,12 +32,15 @@ const workflowState={
   expectedProgramIndex:0,
   reviewUnlocked:false
 };
-let newSemesterCount=5,programEditorSemesters=[],auth=null,currentUser=null,authReady=false,db=null,cloudSettingsUnsub=null,cloudProfileMetaUnsub=null,remoteProfileLoaded=false,cloudAvailable=false,cloudSaveTimer=null,cloudRetryTimer=null,countdownTimer=null,lastSavedAt=store.lastSavedAt||null,editingCommonRuleId=null,editingProgramId=null,teacherAdminCache={};
+let newSemesterCount=5,programEditorSemesters=[],auth=null,currentUser=null,authReady=false,db=null,cloudSettingsUnsub=null,cloudProfileMetaUnsub=null,remoteProfileLoaded=false,cloudAvailable=false,cloudSaveTimer=null,cloudRetryTimer=null,countdownTimer=null,lastSavedAt=store.lastSavedAt||null,editingCommonRuleId=null,editingProgramId=null,teacherAdminCache={},previousTeacherAdminCache={};
 let planningCommissionEditorIndex=null;
 let planningCommissionDraft=emptyCommission();
 let cloudSyncInFlight=false;
 let bootstrapComplete=false;
 let authPersistenceReady=Promise.resolve();
+let remoteProfileShadow=null;
+let sessionConflictKnown=false;
+let teacherAdminCacheLoaded=false;
 
 /* =========================================================
    V84 · ARRANQUE RESILIENTE Y SESIÓN ÚNICA TRANSFERIBLE
@@ -49,8 +52,8 @@ let authPersistenceReady=Promise.resolve();
 const CLOUD_READ_TIMEOUT_MS=6000;
 const CLOUD_WRITE_UI_TIMEOUT_MS=1400;
 const SESSION_STATUS_READ_TIMEOUT_MS=3500;
-const SESSION_HEARTBEAT_MS=30000;
-const SESSION_STALE_MS=90000;
+const SESSION_HEARTBEAT_MS=45000;
+const SESSION_STALE_MS=120000;
 const SESSION_RETRY_MS=0;
 let activeSessionId='';
 let sessionHasControl=false;
@@ -176,6 +179,7 @@ function stopSessionHeartbeat(){
 }
 async function heartbeatSession(){
   if(!db||!currentUser||!sessionHasControl||!activeSessionId||isAdmin())return;
+  if(document.visibilityState==='hidden')return;
   try{
     const ref=doc(db,'profileSessions',currentUser.uid);
     await runTransaction(db,async tx=>{
@@ -505,6 +509,7 @@ function watchSessionDocument(ref){
     const heartbeat=Number(d.heartbeatMs)||0;
 
     if(active===activeSessionId){
+      sessionConflictKnown=false;
       sessionTransferRequested=false;
       hideSessionTransferModal();
       const confirmedHandoff=String(d.lastHandoffToSessionId||'')===activeSessionId;
@@ -533,6 +538,7 @@ function watchSessionDocument(ref){
     }
 
     if(active){
+      sessionConflictKnown=true;
       sessionConflictDevice=activeDevice;
       const waiting=requestId===activeSessionId;
       if(waiting)sessionTransferRequested=true;
@@ -545,6 +551,7 @@ function watchSessionDocument(ref){
         waiting||stale?'warn':'readonly'
       );
     }else{
+      sessionConflictKnown=false;
       sessionSnapshotCache=d;
       updateSessionStatus('Perfil disponible · puede continuar aquí','warn');
       showSessionTransferModal({device:'otro dispositivo',waiting:false,stale:true});
@@ -571,7 +578,8 @@ async function requestSingleDeviceControl(){
   const initial=await withTimeout(getDoc(ref),SESSION_STATUS_READ_TIMEOUT_MS,null);
   if(!initial){
     sessionHasControl=false;
-    updateSessionStatus('Perfil disponible · no se pudo verificar la sesión activa','warn');
+    sessionConflictKnown=false;
+    updateSessionStatus('Modo local seguro · sesión remota no disponible','warn');
     return false;
   }
   const d=initial.exists()?initial.data():{};
@@ -586,6 +594,7 @@ async function requestSingleDeviceControl(){
   }
 
   sessionHasControl=false;
+  sessionConflictKnown=true;
   sessionTransferModalDismissed=false;
   sessionConflictDevice=device;
   const stale=sessionIsStale(active,heartbeat);
@@ -626,7 +635,7 @@ async function releaseSessionIfOwned(){
 }
 
 const allowedDomain=(window.PAD_ALLOWED_DOMAIN||'uteq.edu.mx').toLowerCase();
-const PAD_BUILD_VERSION='V87.1-2026-09-30';
+const PAD_BUILD_VERSION='V88-2026-09-30';
 window.PAD_BUILD_VERSION=PAD_BUILD_VERSION;
 const adminEmail=(window.PAD_ADMIN_EMAIL||'ivan.gutierrez@uteq.edu.mx').toLowerCase();
 const googleClientId=String(window.PAD_GOOGLE_CLIENT_ID||'').trim();
@@ -820,14 +829,15 @@ function individualEditBlocked(){
 }
 function editingAllowed(){
   if(currentUser&&(!bootstrapComplete||sessionActivationBusy))return false;
-  if(!isAdmin()&&!sessionHasControl)return false;
-  // El administrador siempre conserva acceso después de completar el arranque.
-  // Un permiso individual puede reabrir SOLO ese perfil.
-  // Un bloqueo individual impide editar aunque la captura general esté abierta.
   if(isAdmin())return true;
   if(deadlinePassed())return false;
   if(individualEditBlocked())return false;
-  return individualEditOverride() || (!cfg.editingLocked && !submissionLockedForCurrentPeriod());
+  const administrativelyAllowed=individualEditOverride() || (!cfg.editingLocked && !submissionLockedForCurrentPeriod());
+  if(!administrativelyAllowed)return false;
+  // V88: una falla temporal del servicio de sesión no bloquea la captura local.
+  // Solo se bloquea cuando existe evidencia de otro dispositivo con el control.
+  if(sessionConflictKnown&&!sessionHasControl)return false;
+  return true;
 }
 function sequentialProfessorMode(){
   return !isAdmin() && editingAllowed();
@@ -1249,18 +1259,68 @@ function resetLocalTeacherData({keepProfile=false}={}){
   applyEditState();
   updateNavState();
 }
+function cloneTeacherData(value){
+  try{return JSON.parse(JSON.stringify(value??{}))}catch(_){return {}}
+}
+function mergeProfilePreservingRemote(remoteProfile={},localProfile={}){
+  const out={...cloneTeacherData(remoteProfile),...cloneTeacherData(localProfile)};
+  out.extra={...(remoteProfile?.extra||{}),...(localProfile?.extra||{})};
+  out.rowCounts={...(remoteProfile?.rowCounts||{}),...(localProfile?.rowCounts||{})};
+  return out;
+}
+function mergeRecordPreservingRemote(remoteRecord={},localRecord={}){
+  return {...cloneTeacherData(remoteRecord),...cloneTeacherData(localRecord)};
+}
+function updateRemoteProfileShadow(data){
+  if(!data||typeof data!=='object')return;
+  remoteProfileShadow={
+    profile:cloneTeacherData(data.profile||remoteProfileShadow?.profile||{}),
+    answers:cloneTeacherData(data.answers||remoteProfileShadow?.answers||{}),
+    programMeta:cloneTeacherData(data.programMeta||remoteProfileShadow?.programMeta||{}),
+    planningByPeriod:cloneTeacherData(data.planningByPeriod||remoteProfileShadow?.planningByPeriod||{})
+  };
+}
+function preserveUserBackupForRecovery(reason='respaldo preventivo'){
+  if(!currentUser)return false;
+  const backup=readUserBackup();
+  if(!backupHasTeacherData(backup))return false;
+  try{
+    const key=`PAD_UTEQ_RECOVERY_${currentUser.uid}_${Date.now()}`;
+    localStorage.setItem(key,JSON.stringify({reason,savedAt:Date.now(),backup}));
+    return true;
+  }catch(e){console.warn('No fue posible crear copia local preventiva',e);return false}
+}
+async function archiveTeacherProfileBeforeChange(uid,reason){
+  if(!isAdmin()||!db)throw new Error('Archivo administrativo no disponible.');
+  const ref=doc(db,'profiles',uid);
+  const snap=await getDoc(ref);
+  if(!snap.exists())throw new Error('El perfil seleccionado no existe.');
+  const data=snap.data()||{};
+  const archiveId=String(Date.now());
+  await setDoc(doc(db,'profileArchives',uid,'snapshots',archiveId),{
+    ...data,
+    archivedUid:uid,
+    archiveReason:reason,
+    archivedAt:serverTimestamp(),
+    archivedAtMs:Date.now(),
+    archivedBy:currentUser?.email||''
+  });
+  return data;
+}
+
 function profileCloudPayload({releaseEditOverride=false}={}){
+  const remote=remoteProfileShadow||{};
   const payload={
     uid:currentUser?.uid||'',
     email:currentUser?.email||'',
     displayName:currentUser?.displayName||'',
-    profile:store.profile||{},
-    answers:JSON.parse(JSON.stringify(answers)),
-    programMeta:JSON.parse(JSON.stringify(programMeta)),
+    profile:mergeProfilePreservingRemote(remote.profile||{},store.profile||{}),
+    answers:mergeRecordPreservingRemote(remote.answers||{},answers),
+    programMeta:mergeRecordPreservingRemote(remote.programMeta||{},programMeta),
     period:cfg.periodo,
     submittedPeriod:store.submittedPeriod||null,
     finalizedAtMs:store.finalizedAtMs||null,
-    planningByPeriod:JSON.parse(JSON.stringify(planningByPeriod)),
+    planningByPeriod:mergeRecordPreservingRemote(remote.planningByPeriod||{},planningByPeriod),
     clientUpdatedAt:Number(store.localUpdatedAt)||Date.now(),
     dataRevision:Number(store.dataRevision)||0,
     writerSessionId:activeSessionId||null,
@@ -1295,7 +1355,9 @@ async function syncProfileToCloud({reason='guardado automático',releaseEditOver
   cloudSyncInFlight=true;
   const version=Number(store.localUpdatedAt)||Date.now();
   try{
-    await setDoc(doc(db,'profiles',currentUser.uid),profileCloudPayload({releaseEditOverride}),{merge:true});
+    const safePayload=profileCloudPayload({releaseEditOverride});
+    await setDoc(doc(db,'profiles',currentUser.uid),safePayload,{merge:true});
+    updateRemoteProfileShadow(safePayload);
     if((Number(store.localUpdatedAt)||0)<=version){
       store.cloudUpdatedAt=version;
       store.syncPending=false;
@@ -1332,7 +1394,9 @@ async function forceProfileCheckpointToCloud(reason='checkpoint de seguridad'){
   }
   if(!sessionCanWrite()){updateCloudStatus('Guardado local seguro · esperando control de edición','warn');return false;}
   try{
-    await setDoc(doc(db,'profiles',currentUser.uid),profileCloudPayload(),{merge:true});
+    const safePayload=profileCloudPayload();
+    await setDoc(doc(db,'profiles',currentUser.uid),safePayload,{merge:true});
+    updateRemoteProfileShadow(safePayload);
     store.cloudUpdatedAt=Number(store.localUpdatedAt)||Date.now();
     store.syncPending=false;
     try{
@@ -1411,6 +1475,7 @@ async function loadRemoteProfile({preferRemote=false}={}){
     if(!snap)throw new Error('Tiempo de espera agotado al recuperar el perfil');
     if(snap.exists()){
       const d=snap.data()||{};
+      updateRemoteProfileShadow(d);
       sessionWriteSeq=Math.max(sessionWriteSeq,Number(d.sessionWriteSeq)||0);
       store.sessionWriteSeq=sessionWriteSeq;
       const backup=readUserBackup();
@@ -1418,6 +1483,7 @@ async function loadRemoteProfile({preferRemote=false}={}){
 
       // Una eliminación administrativa explícita prevalece sobre cualquier respaldo local antiguo.
       if(d.deletedByAdmin===true){
+        preserveUserBackupForRecovery('Perfil marcado como eliminado por Administración');
         clearUserBackup(currentUser.uid);
         resetLocalTeacherData({keepProfile:false});
         store.profileDeletionToken=d.profileDeletionToken||null;
@@ -1463,7 +1529,6 @@ async function loadRemoteProfile({preferRemote=false}={}){
         (!(localRevision>0 && remoteRevision>0) && localUpdatedAt>remoteUpdatedAt)
       );
       const preserveLocalAgainstEmptyCloud=
-        !preferRemote &&
         !!backup &&
         localHasData &&
         !remoteHasData &&
@@ -1597,12 +1662,14 @@ async function initCloud(){
       return;
     }
     const d=s.data()||{};
+    updateRemoteProfileShadow(d);
     sessionWriteSeq=Math.max(sessionWriteSeq,Number(d.sessionWriteSeq)||0);
     store.sessionWriteSeq=sessionWriteSeq;
 
 
     if(d.deletedByAdmin===true){
       if(!isAdmin()){
+        preserveUserBackupForRecovery('Perfil marcado como eliminado por Administración');
         clearUserBackup(currentUser?.uid);
         resetLocalTeacherData({keepProfile:false});
         store.profileDeletionToken=d.profileDeletionToken||null;
@@ -1634,6 +1701,7 @@ async function initCloud(){
 
 
     if(explicitProgramReset&&!isAdmin()){
+      preserveUserBackupForRecovery('Reinicio administrativo de asignaturas');
       answers={};
       programMeta={};
       store.answers=answers;
@@ -1689,23 +1757,22 @@ async function initCloud(){
   });
 }
 async function loadTeachersForExport(){
-  if(!db||!isAdmin())return [{name:fullName()||'(Profesor sin nombre)',category:store.profile?.categoria||'',answers,programMeta,planningByPeriod,email:currentUser?.email||''}];
-  try{
-    const snap=await getDocs(collection(db,'profiles'));
-    const rows=[];
-    snap.forEach(ds=>{
-      const d=ds.data();
-      if(d.deletedByAdmin===true)return;
-      const p=d.profile||{};
-      const cached=previousTeacherAdminCache[ds.id]||{};
-      const name=[p.apPat,p.apMat,p.nombres].filter(Boolean).join(' ')||cached.name||d.displayName||d.email||'(Sin nombre)';
-      rows.push({name,category:p.categoria||'',answers:d.answers||{},programMeta:d.programMeta||{},planningByPeriod:d.planningByPeriod||{},email:d.email||'',uid:ds.id,submittedPeriod:d.submittedPeriod||null,finalizedAtMs:Number(d.finalizedAtMs)||null});
-    });
-    return rows.length?rows:[{name:fullName()||'(Profesor sin nombre)',category:store.profile?.categoria||'',answers,programMeta,planningByPeriod,email:currentUser?.email||''}];
-  }catch(e){
-    console.warn('No fue posible leer todos los perfiles',e);
+  if(!db||!isAdmin()){
     return [{name:fullName()||'(Profesor sin nombre)',category:store.profile?.categoria||'',answers,programMeta,planningByPeriod,email:currentUser?.email||''}];
   }
+  const snap=await getDocs(collection(db,'profiles'));
+  const rows=[];
+  snap.forEach(ds=>{
+    const d=ds.data()||{};
+    if(d.deletedByAdmin===true)return;
+    if(!cloudHasTeacherData(d)&&!d.email&&!d.displayName)return;
+    const p=d.profile||{};
+    const cached=previousTeacherAdminCache[ds.id]||teacherAdminCache[ds.id]||{};
+    const name=[p.apPat,p.apMat,p.nombres].filter(Boolean).join(' ')||cached.name||d.displayName||d.email||'(Sin nombre)';
+    rows.push({name,category:p.categoria||cached.categoria||'',answers:d.answers||{},programMeta:d.programMeta||{},planningByPeriod:d.planningByPeriod||{},email:d.email||cached.email||'',uid:ds.id,submittedPeriod:d.submittedPeriod||null,finalizedAtMs:Number(d.finalizedAtMs)||null});
+  });
+  if(!rows.length)throw new Error('Firestore respondió, pero no devolvió perfiles con información. No se generará un Excel vacío.');
+  return rows;
 }
 function teacherAnswer(t,pid,s,c,name){
   if(isEnglish(name))return {status:'na',origins:[],ideal:false};
@@ -4311,13 +4378,15 @@ async function renderTeacherAdminList(){
   try{
     const snap=await getDocs(collection(db,'profiles'));
     const rows=[];
-    const previousTeacherAdminCache=teacherAdminCache;
+    previousTeacherAdminCache={...teacherAdminCache};
     teacherAdminCache={};
     snap.forEach(ds=>{
       const d=ds.data()||{};
       if(d.deletedByAdmin===true)return;
+      if(!cloudHasTeacherData(d)&&!d.email&&!d.displayName)return;
       const p=d.profile||{};
-      const name=[p.apPat,p.apMat,p.nombres].filter(Boolean).join(' ')||d.displayName||d.email||'(Sin nombre)';
+      const cached=previousTeacherAdminCache[ds.id]||{};
+      const name=[p.apPat,p.apMat,p.nombres].filter(Boolean).join(' ')||cached.name||d.displayName||d.email||'(Sin nombre)';
       const captureProgress=teacherCaptureProgress(d.answers||{});
       const row={
         uid:ds.id,
@@ -4334,6 +4403,7 @@ async function renderTeacherAdminList(){
       };
       rows.push(row);teacherAdminCache[row.uid]=row;
     });
+    teacherAdminCacheLoaded=true;
     rows.sort((a,b)=>a.name.localeCompare(b.name,'es',{sensitivity:'base'}));
     const done=rows.filter(x=>x.submittedPeriod===cfg.periodo).length;
     summary.innerHTML=`<b>${rows.length}</b> profesor${rows.length===1?'':'es'} con información · <b>${done}</b> concluido${done===1?'':'s'} en ${cfg.periodo}`;
@@ -4509,13 +4579,13 @@ No se modificará ni eliminará ningún dato. El profesor podrá consultar e imp
 
   try{
     // V87: una sola escritura. No se descarga nuevamente toda la colección.
-    await setDoc(doc(db,'profiles',uid),{
+    await updateDoc(doc(db,'profiles',uid),{
       individualEditEnabled:!!enable,
       individualEditDisabled:!enable,
       reopenedAt:enable?serverTimestamp():null,
       reopenedBy:enable?(currentUser.email||''):null,
       individualEditUpdatedAt:serverTimestamp()
-    },{merge:true});
+    });
 
     r.individualEditEnabled=!!enable;
     r.individualEditDisabled=!enable;
@@ -4573,8 +4643,9 @@ window.resetTeacherProgramProfile=async function(uid){
 
 
   try{
+    await archiveTeacherProfileBeforeChange(uid,'Antes de reiniciar asignaturas capturadas');
     const resetToken=`${Date.now()}-${uid}`;
-    await setDoc(doc(db,'profiles',uid),{
+    await updateDoc(doc(db,'profiles',uid),{
       answers:{},
       programMeta:{},
       submittedPeriod:null,
@@ -4585,7 +4656,7 @@ window.resetTeacherProgramProfile=async function(uid){
       programProfileResetAt:serverTimestamp(),
       programProfileResetBy:currentUser?.email||'',
       updatedAt:serverTimestamp()
-    },{merge:true});
+    });
     await writeAudit(`Asignaturas capturadas eliminadas por Administración: ${r.email||uid}`);
     toast('Asignaturas eliminadas. El profesor iniciará nuevamente el Perfil por programa.');
     await renderTeacherAdminList();
@@ -4601,49 +4672,34 @@ window.deleteTeacherProfile=async function(uid){
   const r=teacherAdminCache[uid]||{};
   const who=r.name||r.email||'este profesor';
 
-
   const ok=confirmAdministrativeDeletion(
-    `¿CONFIRMAR eliminación COMPLETA del perfil de ${who}?\n\n`+
-    `Se eliminarán datos del profesor, formación, experiencia, respuestas por asignatura, niveles, áreas, coordinaciones, favoritas y el estado de finalización.\n\n`+
-    `En su próximo ingreso comenzará desde cero. Esta acción NO elimina su cuenta institucional.\n\n`+
-    `Esta acción no se puede deshacer desde esta pantalla.`,
-    'la eliminación COMPLETA del perfil'
+    `¿CONFIRMAR retiro del perfil activo de ${who}?\n\n`+
+    `REGLA DE ORO V88: la información capturada NO se borrará. Antes del retiro se creará una copia íntegra en profileArchives y el documento original conservará sus datos académicos.\n\n`+
+    `El profesor dejará de aparecer como perfil activo hasta que se restaure administrativamente.`,
+    'el retiro del perfil activo'
   );
   if(!ok)return;
 
-
   try{
+    await archiveTeacherProfileBeforeChange(uid,'Antes de retirar perfil activo');
     const deletionToken=`DEL-${Date.now()}-${uid}`;
-    await setDoc(doc(db,'profiles',uid),{
-      uid,
-      email:r.email||'',
-      displayName:r.name||'',
+    await updateDoc(doc(db,'profiles',uid),{
       deletedByAdmin:true,
       profileDeletionToken:deletionToken,
       deletedAt:serverTimestamp(),
       deletedBy:currentUser?.email||'',
-      profile:{},
-      answers:{},
-      programMeta:{},
-      planningByPeriod:{},
-      submittedPeriod:null,
-      finalizedAtMs:null,
       individualEditEnabled:false,
-      individualEditDisabled:false,
-      profileResetToken:null,
+      individualEditDisabled:true,
       updatedAt:serverTimestamp()
     });
-    await writeAudit(`Perfil completo eliminado por Administración: ${r.email||uid}`);
-    toast('Perfil completo eliminado. En su próximo ingreso el profesor comenzará desde cero.');
+    await writeAudit(`Perfil retirado sin borrar datos: ${r.email||uid}`);
+    toast('Perfil retirado. Los datos académicos permanecen conservados y existe una copia de archivo.');
     await renderTeacherAdminList();
   }catch(e){
     console.error(e);
-    alert('No fue posible eliminar el perfil completo. Verifique las reglas de Firestore.');
+    alert('No fue posible retirar el perfil. No se modificó ningún dato porque la copia de seguridad no pudo confirmarse.');
   }
 }
-
-
-
 
 
 
@@ -4881,7 +4937,7 @@ function renderAdmin(){
   if(st){st.textContent=cfg.editingLocked?'Edición desactivada':'Edición activa';st.className='edit-mode-status '+(cfg.editingLocked?'locked':'open')}
   if(btn){btn.textContent=cfg.editingLocked?'Activar edición de perfiles':'Desactivar edición de perfiles';btn.className='edit-mode-btn '+(cfg.editingLocked?'activate':'deactivate')}
   if(!editingProgramId && !$('newProgramSemesters')?.children?.length)renderSemesterEditors();
-  renderProgramAdminList();renderCustomPrograms();renderRules();renderTransversalAdmin();renderAcademicRelationsTree();applyEditState();renderTeacherAdminList()
+  renderProgramAdminList();renderCustomPrograms();renderRules();renderTransversalAdmin();renderAcademicRelationsTree();applyEditState();if(!teacherAdminCacheLoaded)renderTeacherAdminList()
 }
 function normalizeEditorSemesterValues(values){
   if(!Array.isArray(values))return [];
@@ -5776,6 +5832,12 @@ function setupPlanningAutoSave(){
   });
 }
 function setupResilienceGuards(){
+  document.addEventListener('visibilitychange',()=>{
+    if(document.visibilityState==='visible'&&sessionHasControl){
+      heartbeatSession().catch(()=>{});
+    }
+  });
+
   window.addEventListener('online',()=>{
     if(store.syncPending){
       updateCloudStatus('Conexión recuperada · sincronizando…','warn');
