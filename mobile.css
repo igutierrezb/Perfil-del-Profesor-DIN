@@ -727,3 +727,127 @@
     min-height:44px!important;
   }
 }
+
+
+/* =========================================================
+   V89 · Comisiones en móvil
+   ========================================================= */
+@media screen and (max-width:780px){
+  .commission-list-toolbar{
+    align-items:stretch!important;
+    flex-direction:column!important;
+  }
+  .commission-toolbar-add{
+    width:100%!important;
+    min-height:46px!important;
+    font-size:13px!important;
+  }
+  .commission-summary-card{
+    display:grid!important;
+    grid-template-columns:minmax(0,1fr) auto!important;
+    gap:7px 10px!important;
+    padding:11px!important;
+  }
+  .commission-summary-name,
+  .commission-summary-hours,
+  .commission-summary-schedule{
+    grid-column:1!important;
+  }
+  .commission-summary-actions{
+    grid-column:2!important;
+    grid-row:1 / span 3!important;
+    display:flex!important;
+    flex-direction:column!important;
+    align-self:stretch!important;
+    margin-top:0!important;
+    width:auto!important;
+  }
+  .commission-summary-actions button{
+    flex:1 1 auto!important;
+    min-width:82px!important;
+    min-height:42px!important;
+  }
+  .commission-summary-cell>strong{
+    white-space:normal!important;
+    overflow:visible!important;
+    text-overflow:clip!important;
+    font-size:11px!important;
+  }
+  .commission-editor{
+    padding:12px!important;
+  }
+  .commission-editor-head{
+    align-items:stretch!important;
+  }
+  .commission-editor-cancel.compact{
+    min-height:40px!important;
+  }
+  .commission-editor-fields{
+    grid-template-columns:1fr!important;
+  }
+  .commission-editor-fields label{
+    grid-column:1!important;
+  }
+  .commission-editor-fields input{
+    min-height:46px!important;
+    font-size:16px!important;
+  }
+  .commission-schedule-question{
+    flex-wrap:wrap!important;
+  }
+  .commission-schedule-question>span{
+    flex:1 0 100%!important;
+    margin-bottom:3px!important;
+    font-size:11px!important;
+  }
+  .commission-schedule-question .mini-choice{
+    min-height:38px!important;
+    padding:0 8px!important;
+  }
+  .commission-schedule-grid{
+    padding:9px!important;
+  }
+  .compact-schedule{
+    grid-template-columns:1fr!important;
+    gap:7px!important;
+  }
+  .compact-day{
+    padding:8px!important;
+  }
+  .compact-day>b{
+    text-align:left!important;
+    font-size:11px!important;
+    margin-bottom:6px!important;
+  }
+  .compact-slots{
+    grid-template-columns:repeat(3,minmax(0,1fr))!important;
+    gap:5px!important;
+  }
+  .compact-slot span{
+    min-height:38px!important;
+    font-size:9.5px!important;
+  }
+}
+@media screen and (max-width:420px){
+  .commission-summary-card{
+    grid-template-columns:1fr!important;
+  }
+  .commission-summary-actions{
+    grid-column:1!important;
+    grid-row:auto!important;
+    flex-direction:row!important;
+  }
+  .commission-summary-actions button{
+    min-width:0!important;
+  }
+  .commission-editor-head{
+    display:block!important;
+  }
+  .commission-editor-cancel.compact{
+    width:100%!important;
+    margin-top:8px!important;
+  }
+  .compact-slots{
+    grid-template-columns:repeat(2,minmax(0,1fr))!important;
+  }
+}

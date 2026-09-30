@@ -4,9 +4,9 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Perfil Académico Docente · División Industrial UTEQ</title>
-<meta name="pad-build" content="V86-2026-09-30">
-<link rel="stylesheet" href="styles.css?v=20260930-86">
-<link rel="stylesheet" href="mobile.css?v=20260930-86">
+<meta name="pad-build" content="V90-2026-09-30">
+<link rel="stylesheet" href="styles.css?v=20260930-90">
+<link rel="stylesheet" href="mobile.css?v=20260930-90">
 <meta name="theme-color" content="#0b2b46">
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-capable" content="yes">
@@ -63,7 +63,7 @@
     <div class="hero-side">
       <div class="hero-chip">Formato institucional · EA-F-86</div>
       <div id="authStatus" class="auth-status">Sin sesión</div>
-      <div class="save-cloud-line"><span id="lastSaved">Guardado local</span><span id="cloudStatus">Sincronización pendiente</span><span id="sessionStatus" class="session-status neutral">Verificando dispositivo…</span></div>
+      <div class="save-cloud-line"><span id="lastSaved">Guardado local</span><span id="cloudStatus">Guardado manual en nube</span><span id="sessionStatus" class="session-status neutral">Verificando dispositivo…</span></div>
       <div class="auth-buttons">
         <button id="btnLogin" class="ghost" onclick="signIn()">Ingresar con cuenta institucional</button>
         <button id="btnLogout" class="ghost hidden" onclick="signOutApp()">Cerrar sesión</button>
@@ -198,7 +198,7 @@
         </div>
 
 
-        <div id="planningCommissionsFields" class="planning-conditional">
+        <div id="planningCommissionsFields" class="planning-conditional hidden">
           <div class="commissions-help">
             Por cada comisión capture su nombre y las horas autorizadas. Si requiere un bloqueo específico para su atención, seleccione los días y horarios correspondientes.
           </div>
@@ -224,7 +224,7 @@
         </div>
 
 
-        <div id="planningProjectFields" class="planning-conditional planning-project-grid">
+        <div id="planningProjectFields" class="planning-conditional planning-project-grid hidden">
           <label>Nombre del proyecto
             <input id="planningProjectName" placeholder="Nombre del proyecto">
           </label>
@@ -674,6 +674,6 @@
 <script src="catalog.js?v=20260929-80"></script>
 <script src="https://accounts.google.com/gsi/client" async defer></script>
 
-<script type="module" src="app.js?v=20260930-88"></script>
+<script type="module" src="app.js?v=20260930-90"></script>
 </body>
 </html>

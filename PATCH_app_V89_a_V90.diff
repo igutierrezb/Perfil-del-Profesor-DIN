@@ -1,0 +1,968 @@
+diff --git a/mnt/data/Perfil-DIN-V89-Comisiones/app.js b/app.js
+index 184c39c..b4ba8c8 100644
+--- a/mnt/data/Perfil-DIN-V89-Comisiones/app.js
++++ b/app.js
+@@ -37,6 +37,9 @@ let planningCommissionEditorIndex=null;
+ let planningCommissionEditorOpen=false;
+ let planningCommissionDraft=emptyCommission();
+ let cloudSyncInFlight=false;
++let manualSaveInFlight=false;
++let cloudTeacherFingerprintKnown=false;
++let lastCloudTeacherFingerprint='';
+ let bootstrapComplete=false;
+ let authPersistenceReady=Promise.resolve();
+ let remoteProfileShadow=null;
+@@ -44,11 +47,12 @@ let sessionConflictKnown=false;
+ let teacherAdminCacheLoaded=false;
+ 
+ /* =========================================================
+-   V84 · ARRANQUE RESILIENTE Y SESIÓN ÚNICA TRANSFERIBLE
++   V90 · ARRANQUE RESILIENTE, SESIÓN ÚNICA Y GUARDADO MANUAL
+    - El perfil se muestra desde la copia local sin esperar a Firestore.
+    - La negociación entre dispositivos ocurre en segundo plano.
+    - El dispositivo anterior guarda antes de ceder el control.
+    - No hay toma forzada mientras el heartbeat anterior siga vigente.
++   - La captura del profesor no se autoguarda en Firestore.
+    ========================================================= */
+ const CLOUD_READ_TIMEOUT_MS=6000;
+ const CLOUD_WRITE_UI_TIMEOUT_MS=1400;
+@@ -163,6 +167,8 @@ function nextSessionWriteSeq(){
+ }
+ async function refreshSessionWriteSeqFromCloud(){
+   if(!db||!currentUser)return;
++  // V90: loadRemoteProfile/onSnapshot ya obtienen sessionWriteSeq. Evita una lectura redundante.
++  if(remoteProfileLoaded)return;
+   try{
+     const snap=await withTimeout(getDoc(doc(db,'profiles',currentUser.uid)),2500,null);
+     if(!snap||!snap.exists())return;
+@@ -208,16 +214,7 @@ function startSessionHeartbeat(){
+ function captureVisibleStateBeforeHandoff(){
+   try{
+     if($('apPat')){
+-      const extra={};
+-      document.querySelectorAll('[data-g]').forEach(x=>extra[x.dataset.g]=x.value.trim());
+-      store.profile={
+-        apPat:$('apPat')?.value.trim()||store.profile?.apPat||'',
+-        apMat:$('apMat')?.value.trim()||store.profile?.apMat||'',
+-        nombres:$('nombres')?.value.trim()||store.profile?.nombres||'',
+-        categoria:$('categoria')?.value||store.profile?.categoria||'',
+-        gradoAcademico:$('gradoAcademico')?.value||store.profile?.gradoAcademico||'',
+-        extra
+-      };
++      store.profile=profileFromInputs();
+     }
+     if(planningEnabled()&&$('commissionsBlock')){
+       try{collectPlanning()}catch(_){}
+@@ -339,7 +336,7 @@ async function activateSessionControl({preferRemote=false}={}){
+   applyEditState();
+   updateNavState();
+   if(store.syncPending){
+-    syncProfileToCloud({reason:'sincronización al obtener control de edición'}).catch(()=>scheduleCloudRetry());
++    updateCloudStatus('Cambios locales pendientes · pulse Guardar y continuar','warn');
+   }
+   return true;
+ }
+@@ -636,7 +633,7 @@ async function releaseSessionIfOwned(){
+ }
+ 
+ const allowedDomain=(window.PAD_ALLOWED_DOMAIN||'uteq.edu.mx').toLowerCase();
+-const PAD_BUILD_VERSION='V89-2026-09-30';
++const PAD_BUILD_VERSION='V90-2026-09-30';
+ window.PAD_BUILD_VERSION=PAD_BUILD_VERSION;
+ const adminEmail=(window.PAD_ADMIN_EMAIL||'ivan.gutierrez@uteq.edu.mx').toLowerCase();
+ const googleClientId=String(window.PAD_GOOGLE_CLIENT_ID||'').trim();
+@@ -1142,8 +1139,129 @@ function cloudHasTeacherData(data){
+ }
+ 
+ 
++// =========================================================
++// V90 · CONTROL DE CAMBIOS Y GUARDADO MANUAL EN FIRESTORE
++// =========================================================
++const FINGERPRINT_IGNORED_KEYS=new Set(['updatedAtMs','completedAtMs']);
++function canonicalTeacherValue(value,key=''){
++  if(FINGERPRINT_IGNORED_KEYS.has(key))return undefined;
++  if(Array.isArray(value))return value.map(v=>canonicalTeacherValue(v)).filter(v=>v!==undefined);
++  if(value&&typeof value==='object'){
++    const out={};
++    Object.keys(value).sort().forEach(k=>{
++      const normalized=canonicalTeacherValue(value[k],k);
++      if(normalized!==undefined)out[k]=normalized;
++    });
++    return out;
++  }
++  return value===undefined?null:value;
++}
++function teacherComparableState(data={}){
++  return {
++    profile:cloneTeacherData(data.profile||{}),
++    answers:cloneTeacherData(data.answers||{}),
++    programMeta:cloneTeacherData(data.programMeta||{}),
++    planningByPeriod:cloneTeacherData(data.planningByPeriod||{}),
++    submittedPeriod:data.submittedPeriod||null,
++    finalizedAtMs:Number(data.finalizedAtMs)||null
++  };
++}
++function currentTeacherComparableState(){
++  return teacherComparableState({
++    profile:store.profile||{},
++    answers,
++    programMeta,
++    planningByPeriod,
++    submittedPeriod:store.submittedPeriod||null,
++    finalizedAtMs:Number(store.finalizedAtMs)||null
++  });
++}
++function teacherFingerprint(data={}){
++  return JSON.stringify(canonicalTeacherValue(teacherComparableState(data)));
++}
++function currentTeacherFingerprint(){
++  return JSON.stringify(canonicalTeacherValue(currentTeacherComparableState()));
++}
++function setCloudTeacherFingerprint(data={}){
++  lastCloudTeacherFingerprint=teacherFingerprint(data);
++  cloudTeacherFingerprintKnown=true;
++}
++function teacherHasUnsavedCloudChanges(){
++  if(!cloudTeacherFingerprintKnown)return !!store.syncPending;
++  return currentTeacherFingerprint()!==lastCloudTeacherFingerprint;
++}
++function persistStoreSnapshot(){
++  try{
++    localStorage.setItem('PAD_UTEQ',JSON.stringify(store));
++    saveUserBackup();
++  }catch(e){
++    console.warn('No fue posible conservar el estado local',e);
++  }
++}
++function refreshManualSaveStatus(){
++  const pending=teacherHasUnsavedCloudChanges();
++  store.syncPending=pending;
++  if(currentUser){
++    updateCloudStatus(
++      pending?'Cambios locales sin guardar en nube':'Sin cambios pendientes',
++      pending?'warn':'ok'
++    );
++  }
++  return pending;
++}
++async function saveTeacherChangesNow(reason='guardado manual'){
++  if(manualSaveInFlight){
++    toast('Ya hay un guardado en curso.');
++    return {ok:false,wrote:false,busy:true};
++  }
++  if(!db||!currentUser||!remoteProfileLoaded){
++    updateCloudStatus('Nube no disponible · cambios conservados localmente','warn');
++    toast('No se pudo confirmar el guardado en nube. No se avanzó.');
++    return {ok:false,wrote:false};
++  }
++  if(!isAdmin()&&individualEditBlocked()){
++    updateCloudStatus('Edición bloqueada por Administración · datos conservados','readonly');
++    return {ok:false,wrote:false};
++  }
++  if(!sessionCanWrite()){
++    updateCloudStatus('Sin control de edición · cambios conservados localmente','warn');
++    toast('Este dispositivo no tiene el control de edición. No se avanzó.');
++    return {ok:false,wrote:false};
++  }
++
++  if(cloudTeacherFingerprintKnown&&!teacherHasUnsavedCloudChanges()){
++    store.syncPending=false;
++    persistStoreSnapshot();
++    updateCloudStatus('Sin cambios nuevos · no se realizó escritura','ok');
++    return {ok:true,wrote:false};
++  }
++
++  manualSaveInFlight=true;
++  updateCloudStatus('Guardando cambios…','warn');
++  try{
++    const before=currentTeacherFingerprint();
++    const ok=await forceProfileCheckpointToCloud(reason);
++    if(!ok){
++      toast('No se pudo confirmar el guardado en nube. Tus cambios siguen en este dispositivo.');
++      return {ok:false,wrote:false};
++    }
++    // Si algo cambió durante la escritura, no avanzamos con cambios todavía pendientes.
++    if(currentTeacherFingerprint()!==before){
++      store.syncPending=true;
++      persistStoreSnapshot();
++      updateCloudStatus('Se guardó una versión, pero hay cambios nuevos pendientes','warn');
++      toast('Se detectaron cambios nuevos durante el guardado. Guarda nuevamente para continuar.');
++      return {ok:false,wrote:true};
++    }
++    updateCloudStatus('Cambios guardados en nube','ok');
++    return {ok:true,wrote:true};
++  }finally{
++    manualSaveInFlight=false;
++  }
++}
++
+ function persist(options={}){
+-  const {touch=true,schedule=true}=options;
++  const {touch=true}=options;
+   cfg.periodo=cfg.periodo||'SEP 2026 - AGO 2027';
+   const now=Date.now();
+   store.cfg=cfg;
+@@ -1158,11 +1276,19 @@ function persist(options={}){
+   store.planningByPeriod=planningByPeriod;
+   store.currentProgramIndex=0;
+   store.lastSavedAt=now;
+-  if(touch){
++
++  const fingerprint=currentTeacherFingerprint();
++  const previousLocalFingerprint=String(store.lastLocalTeacherFingerprint||'');
++  const teacherDataChanged=!previousLocalFingerprint || fingerprint!==previousLocalFingerprint;
++  if(touch&&teacherDataChanged){
+     store.localUpdatedAt=now;
+     store.dataRevision=(Number(store.dataRevision)||0)+1;
+-    store.syncPending=true;
+   }
++  store.lastLocalTeacherFingerprint=fingerprint;
++  store.syncPending=cloudTeacherFingerprintKnown
++    ? fingerprint!==lastCloudTeacherFingerprint
++    : (!!store.syncPending || (touch&&teacherDataChanged));
++
+   lastSavedAt=store.lastSavedAt;
+   try{
+     localStorage.setItem('PAD_UTEQ',JSON.stringify(store));
+@@ -1172,7 +1298,10 @@ function persist(options={}){
+     updateCloudStatus('Error de almacenamiento local','warn');
+   }
+   updateLastSavedUI();
+-  if(schedule)scheduleCloudProfileSave();
++  // V90: persist() NUNCA escribe en Firestore. La nube se toca sólo desde una acción manual.
++  if(currentUser&&store.syncPending){
++    updateCloudStatus('Cambios locales sin guardar en nube','warn');
++  }
+ }
+ function statusBox(errors,title){return `<div class="status-box bad"><b>${title}</b><ul>${errors.map(x=>`<li>${x}</li>`).join('')}</ul></div>`}
+ function updatePeriodBadges(){ $('periodBadgeGate').textContent=`Periodo de vigencia · ${cfg.periodo}`; $('periodBadgeInline').textContent=`Periodo de vigencia · ${cfg.periodo}`; }
+@@ -1185,7 +1314,7 @@ function updateCloudStatus(text,kind='neutral'){
+ function updateLastSavedUI(){
+   const el=$('lastSaved');if(!el)return;
+   if(!lastSavedAt){el.textContent='Sin cambios guardados';return}
+-  el.textContent=`Último guardado: ${new Intl.DateTimeFormat('es-MX',{hour:'2-digit',minute:'2-digit'}).format(new Date(lastSavedAt))}`;
++  el.textContent=`Borrador local: ${new Intl.DateTimeFormat('es-MX',{hour:'2-digit',minute:'2-digit'}).format(new Date(lastSavedAt))}`;
+ }
+ function globalSettingsPayload(){
+   return {
+@@ -1292,8 +1421,11 @@ function updateRemoteProfileShadow(data){
+     profile:cloneTeacherData(data.profile||remoteProfileShadow?.profile||{}),
+     answers:cloneTeacherData(data.answers||remoteProfileShadow?.answers||{}),
+     programMeta:cloneTeacherData(data.programMeta||remoteProfileShadow?.programMeta||{}),
+-    planningByPeriod:cloneTeacherData(data.planningByPeriod||remoteProfileShadow?.planningByPeriod||{})
++    planningByPeriod:cloneTeacherData(data.planningByPeriod||remoteProfileShadow?.planningByPeriod||{}),
++    submittedPeriod:Object.prototype.hasOwnProperty.call(data,'submittedPeriod')?(data.submittedPeriod||null):(remoteProfileShadow?.submittedPeriod||null),
++    finalizedAtMs:Object.prototype.hasOwnProperty.call(data,'finalizedAtMs')?(Number(data.finalizedAtMs)||null):(Number(remoteProfileShadow?.finalizedAtMs)||null)
+   };
++  setCloudTeacherFingerprint(remoteProfileShadow);
+ }
+ function preserveUserBackupForRecovery(reason='respaldo preventivo'){
+   if(!currentUser)return false;
+@@ -1342,92 +1474,119 @@ function profileCloudPayload({releaseEditOverride=false}={}){
+     sessionWriteSeq:nextSessionWriteSeq(),
+     updatedAt:serverTimestamp()
+   };
+-  // Los controles administrativos nunca viajan en el autoguardado del profesor.
++  // Los controles administrativos nunca viajan en el guardado manual del profesor.
+   // La única excepción es cerrar una reapertura individual al finalizar de nuevo.
+   if(releaseEditOverride)payload.individualEditEnabled=false;
+   return payload;
+ }
+-function scheduleCloudRetry(delay=5000){
++function scheduleCloudRetry(){
++  // V90: no existen reintentos automáticos de escritura del perfil.
++  // Se conserva esta función para compatibilidad con llamadas antiguas, pero sólo informa estado.
+   clearTimeout(cloudRetryTimer);
+-  if(!currentUser||!store.syncPending||(!isAdmin()&&individualEditBlocked()))return;
+-  cloudRetryTimer=setTimeout(()=>{
+-    if(navigator.onLine===false||!sessionCanWrite()){
+-      scheduleCloudRetry(Math.min(delay*2,30000));
+-      return;
+-    }
+-    syncProfileToCloud({reason:'reintento automático'}).then(ok=>{
+-      if(!ok&&store.syncPending)scheduleCloudRetry(Math.min(delay*2,30000));
+-    }).catch(()=>scheduleCloudRetry(Math.min(delay*2,30000)));
+-  },delay);
++  if(!currentUser||!store.syncPending)return;
++  updateCloudStatus(
++    navigator.onLine===false
++      ?'Sin conexión · cambios conservados localmente'
++      :'Cambios locales pendientes · use Guardar y continuar',
++    'warn'
++  );
+ }
+-async function syncProfileToCloud({reason='guardado automático',releaseEditOverride=false}={}){
+-  if(!db||!currentUser||!remoteProfileLoaded||cloudSyncInFlight)return false;
++async function syncProfileToCloud({reason='guardado manual',releaseEditOverride=false,force=false}={}){
++  if(!db||!currentUser||cloudSyncInFlight)return false;
+   if(!isAdmin()&&individualEditBlocked()){
+     updateCloudStatus('Edición bloqueada por Administración · datos conservados','readonly');
+     return false;
+   }
+-  if(!sessionCanWrite()){updateCloudStatus('Guardado local seguro · esperando control de edición','warn');scheduleCloudRetry();return false;}
++  if(!sessionCanWrite()){
++    updateCloudStatus('Sin control de edición · cambios conservados localmente','warn');
++    return false;
++  }
++
++  const fingerprintBefore=currentTeacherFingerprint();
++  if(!force&&!releaseEditOverride&&cloudTeacherFingerprintKnown&&fingerprintBefore===lastCloudTeacherFingerprint){
++    store.syncPending=false;
++    persistStoreSnapshot();
++    updateCloudStatus('Sin cambios nuevos · no se realizó escritura','ok');
++    return true;
++  }
++
+   cloudSyncInFlight=true;
+   const version=Number(store.localUpdatedAt)||Date.now();
+   try{
+     const safePayload=profileCloudPayload({releaseEditOverride});
+     await setDoc(doc(db,'profiles',currentUser.uid),safePayload,{merge:true});
+     updateRemoteProfileShadow(safePayload);
+-    if((Number(store.localUpdatedAt)||0)<=version){
+-      store.cloudUpdatedAt=version;
+-      store.syncPending=false;
+-      try{
+-        localStorage.setItem('PAD_UTEQ',JSON.stringify(store));
+-        saveUserBackup();
+-      }catch(_){}
+-    }
+-    updateCloudStatus('Sincronizado','ok');
+-    clearTimeout(cloudRetryTimer);
++    lastCloudTeacherFingerprint=fingerprintBefore;
++    cloudTeacherFingerprintKnown=true;
++    store.cloudUpdatedAt=version;
++    store.lastCloudSavedAt=Date.now();
++    store.syncPending=currentTeacherFingerprint()!==lastCloudTeacherFingerprint;
++    store.lastLocalTeacherFingerprint=currentTeacherFingerprint();
++    persistStoreSnapshot();
++    updateCloudStatus(
++      store.syncPending?'Guardado confirmado · hay cambios nuevos pendientes':'Cambios guardados en nube',
++      store.syncPending?'warn':'ok'
++    );
+     return true;
+   }catch(e){
+     console.warn(`Guardado en nube no disponible (${reason})`,e);
+     store.syncPending=true;
+-    try{localStorage.setItem('PAD_UTEQ',JSON.stringify(store));saveUserBackup()}catch(_){}
+-    updateCloudStatus('Guardado local · nube pendiente','warn');
+-    scheduleCloudRetry();
++    persistStoreSnapshot();
++    updateCloudStatus('Cambios locales sin guardar en nube','warn');
+     return false;
+   }finally{
+     cloudSyncInFlight=false;
+   }
+ }
+ function scheduleCloudProfileSave(){
+-  if(!db||!currentUser||!remoteProfileLoaded||(!isAdmin()&&individualEditBlocked()))return;
++  // V90: compatibilidad. Deliberadamente NO programa escrituras automáticas.
+   clearTimeout(cloudSaveTimer);
+-  // Agrupa pulsaciones rápidas para reducir escrituras y latencia percibida.
+-  cloudSaveTimer=setTimeout(()=>syncProfileToCloud({reason:'guardado progresivo agrupado'}),4500);
++  if(currentUser&&store.syncPending){
++    updateCloudStatus('Cambios locales sin guardar en nube','warn');
++  }
+ }
+-async function forceProfileCheckpointToCloud(reason='checkpoint de seguridad'){
++async function forceProfileCheckpointToCloud(reason='guardado manual',options={}){
++  const force=!!options.force;
+   if(!db||!currentUser)return false;
+   if(!isAdmin()&&individualEditBlocked()){
+     updateCloudStatus('Edición bloqueada por Administración · datos conservados','readonly');
+     return false;
+   }
+-  if(!sessionCanWrite()){updateCloudStatus('Guardado local seguro · esperando control de edición','warn');return false;}
++  if(!sessionCanWrite()){
++    updateCloudStatus('Sin control de edición · cambios conservados localmente','warn');
++    return false;
++  }
++
++  const fingerprintBefore=currentTeacherFingerprint();
++  if(!force&&cloudTeacherFingerprintKnown&&fingerprintBefore===lastCloudTeacherFingerprint){
++    store.syncPending=false;
++    store.lastLocalTeacherFingerprint=fingerprintBefore;
++    persistStoreSnapshot();
++    updateCloudStatus('Sin cambios nuevos · no se realizó escritura','ok');
++    return true;
++  }
++
+   try{
+     const safePayload=profileCloudPayload();
+     await setDoc(doc(db,'profiles',currentUser.uid),safePayload,{merge:true});
+     updateRemoteProfileShadow(safePayload);
++    lastCloudTeacherFingerprint=fingerprintBefore;
++    cloudTeacherFingerprintKnown=true;
+     store.cloudUpdatedAt=Number(store.localUpdatedAt)||Date.now();
+-    store.syncPending=false;
+-    try{
+-      localStorage.setItem('PAD_UTEQ',JSON.stringify(store));
+-      saveUserBackup();
+-    }catch(_){}
+-    updateCloudStatus('Sincronizado','ok');
++    store.lastCloudSavedAt=Date.now();
++    store.syncPending=currentTeacherFingerprint()!==lastCloudTeacherFingerprint;
++    store.lastLocalTeacherFingerprint=currentTeacherFingerprint();
++    persistStoreSnapshot();
++    updateCloudStatus(
++      store.syncPending?'Guardado confirmado · hay cambios nuevos pendientes':'Cambios guardados en nube',
++      store.syncPending?'warn':'ok'
++    );
+     return true;
+   }catch(e){
+     console.warn(`No fue posible confirmar ${reason}`,e);
+     store.syncPending=true;
+-    try{
+-      localStorage.setItem('PAD_UTEQ',JSON.stringify(store));
+-      saveUserBackup();
+-    }catch(_){}
+-    updateCloudStatus('Guardado local seguro · nube pendiente','warn');
++    persistStoreSnapshot();
++    updateCloudStatus('Cambios locales sin guardar en nube','warn');
+     return false;
+   }
+ }
+@@ -1445,6 +1604,7 @@ function applyProfileContent(data){
+   store.planningByPeriod=planningByPeriod;
+ }
+ function renderLoadedProfile(){
++  store.lastLocalTeacherFingerprint=currentTeacherFingerprint();
+   localStorage.setItem('PAD_UTEQ',JSON.stringify({
+     ...store,cfg,customPrograms,programOverrides,disabledPrograms,
+     programAcronyms,commonRules,transversalRules,currentProgramIndex:0,lastSavedAt
+@@ -1573,7 +1733,7 @@ async function loadRemoteProfile({preferRemote=false}={}){
+         store.syncPending=true;
+         renderLoadedProfile();
+         remoteProfileLoaded=true;
+-        updateCloudStatus('Cambios locales recuperados · sincronización pendiente','warn');
++        updateCloudStatus('Cambios locales recuperados · guardado manual pendiente','warn');
+         scheduleCloudRetry();
+       }else{
+         applyProfileContent(d);
+@@ -1593,6 +1753,7 @@ async function loadRemoteProfile({preferRemote=false}={}){
+         toast('Perfil finalizado. Puede consultarlo e imprimirlo nuevamente. Si requiere editar algo, consulte a su JUCA.');
+       }
+     }else{
++      setCloudTeacherFingerprint({});
+       const backup=readUserBackup();
+       if(backupHasTeacherData(backup)){
+         // Firestore todavía no contiene el documento, pero existe una copia válida del mismo UID.
+@@ -1609,16 +1770,17 @@ async function loadRemoteProfile({preferRemote=false}={}){
+         store.syncPending=true;
+         renderLoadedProfile();
+         remoteProfileLoaded=true;
+-        updateCloudStatus('Perfil recuperado · copia en nube pendiente','warn');
++        updateCloudStatus('Perfil recuperado · guardado manual en nube pendiente','warn');
+         scheduleCloudRetry();
+       }else{
+         resetLocalTeacherData({keepProfile:false});
+         remoteProfileLoaded=true;
+-        updateCloudStatus('Perfil nuevo · sincronización activa','ok');
++        updateCloudStatus('Perfil nuevo · guardado manual listo','ok');
+       }
+     }
+   }catch(e){
+     remoteProfileLoaded=true;
++    cloudTeacherFingerprintKnown=false;
+     console.warn('Perfil remoto no disponible',e);
+     const backup=readUserBackup();
+     if(backup){
+@@ -1630,7 +1792,7 @@ async function loadRemoteProfile({preferRemote=false}={}){
+       store.syncPending=true;
+       renderLoadedProfile();
+     }
+-    updateCloudStatus('Modo local · sincronización pendiente','warn');
++    updateCloudStatus('Modo local · guardado manual pendiente','warn');
+     scheduleCloudRetry();
+   }
+ }
+@@ -1669,9 +1831,8 @@ async function initCloud(){
+       if(remoteProfileLoaded&&!isAdmin()){
+         const backup=readUserBackup();
+         if(backupHasTeacherData(backup)){
+-          updateCloudStatus('Respaldo local conservado · esperando sincronización','warn');
++          updateCloudStatus('Respaldo local conservado · guardado manual pendiente','warn');
+           store.syncPending=true;
+-          scheduleCloudRetry();
+         }
+       }
+       return;
+@@ -1753,7 +1914,7 @@ async function initCloud(){
+         clearTimeout(cloudRetryTimer);
+         updateCloudStatus('Edición bloqueada por Administración · datos conservados','readonly');
+       }else if(priorDisabled&&!store.individualEditDisabled&&store.syncPending&&sessionCanWrite()){
+-        scheduleCloudProfileSave();
++        updateCloudStatus('Edición habilitada · cambios locales pendientes de guardado manual','warn');
+       }
+       applyEditState();updateNavState();
+       toast(store.individualEditDisabled
+@@ -1953,78 +2114,48 @@ window.signIn=async function(){
+ }
+ window.signOutApp=async function(){
+   const uid=currentUser?.uid||null;
+-
+-
+   try{
+     if(uid){
+-      // Capturar texto visible aún pendiente del debounce.
+       try{
+-        if($('apPat')){
+-          const extra={};
+-          document.querySelectorAll('[data-g]').forEach(x=>extra[x.dataset.g]=x.value.trim());
+-          store.profile={
+-            apPat:$('apPat')?.value.trim()||store.profile?.apPat||'',
+-            apMat:$('apMat')?.value.trim()||store.profile?.apMat||'',
+-            nombres:$('nombres')?.value.trim()||store.profile?.nombres||'',
+-            categoria:$('categoria')?.value||store.profile?.categoria||'',
+-            gradoAcademico:$('gradoAcademico')?.value||store.profile?.gradoAcademico||'',
+-            extra
+-          };
+-        }
++        if($('apPat'))store.profile=profileFromInputs();
+         if(planningEnabled()&&$('commissionsBlock')){
+           try{collectPlanning()}catch(_){}
+         }
++        persist({touch:true,schedule:false});
+       }catch(e){
+         console.warn('No fue posible capturar el último estado visual antes del cierre',e);
+       }
+-
+-
+-      // Nueva revisión local del estado final.
+-      try{persist({touch:true,schedule:false})}
+-      catch(e){console.warn('Checkpoint local previo al cierre',e)}
+       saveUserBackup();
+ 
+-
+-      // Guardado directo a Firestore; no depende de remoteProfileLoaded.
+-      if(db&&currentUser){
+-        let timeoutId;
+-        try{
+-          await Promise.race([
+-            forceProfileCheckpointToCloud('checkpoint final antes de cerrar sesión'),
+-            new Promise(resolve=>{
+-              timeoutId=setTimeout(()=>{
+-                console.warn('La confirmación de nube excedió 5 s; se conserva el respaldo por UID.');
+-                resolve(false);
+-              },5000);
+-            })
+-          ]);
+-        }finally{
+-          if(timeoutId)clearTimeout(timeoutId);
++      // V90: cerrar sesión NO escribe automáticamente el perfil en Firestore.
++      if(teacherHasUnsavedCloudChanges()){
++        const closeAnyway=confirm(
++          'Hay cambios que todavía no se han guardado en la nube. Permanecerán respaldados en este dispositivo, pero no estarán disponibles en otro dispositivo hasta que use “Guardar y continuar”.\n\n¿Desea cerrar sesión de todos modos?'
++        );
++        if(!closeAnyway){
++          updateCloudStatus('Cambios locales pendientes · sesión conservada','warn');
++          return false;
+         }
+       }
+-
+-
+-      // Reafirmar respaldo persistente del UID.
+-      saveUserBackup();
+     }
+ 
+-
+     await releaseSessionIfOwned();
+     if(auth)await signOut(auth);
+-  }finally{
++
+     // Se elimina sólo la copia de trabajo compartida por privacidad.
+     // Se conservan PAD_UTEQ_PROFILE_<UID> y PAD_UTEQ_GLOBAL_SETTINGS.
+     localStorage.removeItem('PAD_UTEQ');
+-
+-
+     try{
+       [...Object.keys(sessionStorage)]
+         .filter(k=>k.startsWith('PAD_CAPTURE_ORIENTATION_'))
+         .forEach(k=>sessionStorage.removeItem(k));
+     }catch(_){}
+-
+-
+     location.reload();
++    return true;
++  }catch(e){
++    console.error('No fue posible cerrar la sesión',e);
++    toast('No fue posible cerrar la sesión. Intente nuevamente.');
++    return false;
+   }
+ }
+ 
+@@ -2046,6 +2177,9 @@ function initAuth(){
+   onAuthStateChanged(auth,async user=>{
+     currentUser=user;
+     remoteProfileLoaded=false;
++    remoteProfileShadow=null;
++    cloudTeacherFingerprintKnown=false;
++    lastCloudTeacherFingerprint='';
+     bootstrapComplete=false;
+     authReady=false;
+     sessionHasControl=false;
+@@ -2081,7 +2215,7 @@ function initAuth(){
+     }
+     authReady=true;
+     updateAuthUI();
+-    updateSessionStatus('Perfil disponible · verificando sincronización…','warn');
++    updateSessionStatus('Perfil disponible · verificando nube…','warn');
+     applyEditState();
+     updateNavState();
+ 
+@@ -2089,7 +2223,7 @@ function initAuth(){
+       await initCloud();
+     }catch(e){
+       console.warn('El arranque en nube quedó pendiente; se conserva el modo local',e);
+-      updateCloudStatus('Modo local · sincronización pendiente','warn');
++      updateCloudStatus('Modo local · guardado manual pendiente','warn');
+       scheduleCloudRetry();
+     }finally{
+       bootstrapComplete=true;
+@@ -2276,7 +2410,6 @@ window.planningModeChanged=function(){
+   const record=collectPlanning();
+   updatePlanningConditionalUI();
+   persist({schedule:false});
+-  scheduleCloudProfileSave();
+   updateNavState();
+   applyPlanningEditState();
+   if(record.commissionMode==='yes'&&!planningCommissionEditorOpen){
+@@ -2331,7 +2464,6 @@ window.savePlanningCommission=function(){
+   planningCommissionEditorOpen=false;
+   planningCommissionDraft=emptyCommission();
+   persist({schedule:false});
+-  scheduleCloudProfileSave();
+   renderPlanningCommissions();
+   updateNavState();
+   toast('Comisión guardada.');
+@@ -2392,7 +2524,6 @@ window.removePlanningCommission=function(index){
+   planningCommissionEditorOpen=false;
+   planningCommissionDraft=emptyCommission();
+   persist({schedule:false});
+-  scheduleCloudProfileSave();
+   renderPlanningCommissions();
+   updateNavState();
+   toast('Comisión eliminada. Puede agregar otra cuando lo requiera.');
+@@ -2502,10 +2633,17 @@ window.savePlanning=async function(show=false){
+   record.completedAtMs=Date.now();
+   record.updatedAtMs=Date.now();
+   planningByPeriod[cfg.periodo]=record;
++  persist({schedule:false});
++
++  const saved=await saveTeacherChangesNow('guardado manual de Comisiones');
++  if(!saved.ok){
++    if($('planningErrors'))$('planningErrors').innerHTML='<div class="status-box bad"><b>No se confirmó el guardado en nube.</b><br>La información permanece conservada en este dispositivo. Inténtelo nuevamente antes de avanzar.</div>';
++    return false;
++  }
++
+   if($('planningErrors'))$('planningErrors').innerHTML='<div class="status-box ok"><b>Comisiones guardadas.</b><br>La información queda disponible para consulta y para el concentrado administrativo.</div>';
+-  persist();
+   updateNavState();
+-  if(show)toast('Comisiones guardadas.');
++  if(show)toast(saved.wrote?'Comisiones guardadas en nube.':'Sin cambios nuevos; no fue necesaria otra escritura.');
+   Promise.resolve(writeAudit('Comisiones y consideraciones académicas guardadas'))
+     .catch(e=>console.warn('Auditoría de Comisiones pendiente',e));
+   return true;
+@@ -2785,7 +2923,10 @@ function loadProfile(){
+ function profileFromInputs(){
+   const extra={};
+   document.querySelectorAll('[data-g]').forEach(x=>extra[x.dataset.g]=x.value.trim());
++  // Conserva campos superiores heredados que no forman parte de la interfaz actual.
++  // Los campos visibles y extra se reemplazan de forma controlada con lo capturado.
+   return {
++    ...cloneTeacherData(store.profile||{}),
+     apPat:$('apPat')?.value.trim()||'',
+     apMat:$('apMat')?.value.trim()||'',
+     nombres:$('nombres')?.value.trim()||'',
+@@ -2965,7 +3106,15 @@ function validateProfile(opts={}){
+   return{ok:!errors.length,errors,checks}
+ }
+ 
+-window.saveSection=function(){if(!requireEditing())return;collectProfile();writeAudit('Sección de perfil guardada');toast('Avances guardados.')}
++window.saveSection=async function(){
++  if(!requireEditing())return false;
++  collectProfile();
++  const saved=await saveTeacherChangesNow('guardado manual de Datos del profesor');
++  if(!saved.ok)return false;
++  writeAudit('Sección de perfil guardada');
++  toast(saved.wrote?'Datos guardados en nube.':'Sin cambios nuevos; no fue necesaria otra escritura.');
++  return true;
++}
+ window.continueToCapture=async function(){
+   if(!requireEditing())return false;
+   try{document.activeElement?.blur()}catch(_){}
+@@ -3005,7 +3154,6 @@ window.continueToCapture=async function(){
+         $('planningCommissionsCard')?.scrollIntoView({behavior:'smooth',block:'center'});
+         return false;
+       }
+-      // Si se dejó vacío y confirmó continuar sin comisión, conservar una decisión explícita.
+       if(!record.commissionMode){
+         record.commissionMode='na';
+         const noCommission=document.querySelector('input[name="planningCommissionMode"][value="na"]');
+@@ -3027,23 +3175,25 @@ window.continueToCapture=async function(){
+     record.completedAtMs=Date.now();
+     record.updatedAtMs=Date.now();
+     planningByPeriod[cfg.periodo]=record;
+-    persist({schedule:false});
+     if($('planningErrors'))$('planningErrors').innerHTML='';
+-    withTimeout(writeAudit('Comisiones y consideraciones académicas revisadas al continuar'),1200,false)
+-      .catch(e=>console.warn('Auditoría pendiente',e));
+   }
+ 
++  // V90: consolidar el estado local; todavía NO se cambia de pantalla.
++  store.profile=profileFromInputs();
++  persist({schedule:false});
++
++  // Guardado manual obligatorio. Si no hubo cambios reales, se omite la escritura.
++  const saved=await saveTeacherChangesNow('Guardar y continuar: Datos del profesor');
++  if(!saved.ok)return false;
++
+   clearRequiredHighlights();
+   document.querySelectorAll('#perfil .mobile-required-focus').forEach(el=>el.classList.remove('mobile-required-focus'));
+-
+-  // Una sola persistencia local antes de navegar. La nube se confirma después en segundo plano.
+-  store.profile=profileFromInputs();
+   workflowState.profileConfirmed=true;
+   workflowState.expectedProgramIndex=0;
+   workflowState.reviewUnlocked=false;
+   currentProgramIndex=0;
+   store.currentProgramIndex=0;
+-  persist({schedule:false});
++  persist({touch:false,schedule:false});
+   renderCurrentProgram();
+   activateViewDirect('captura');
+ 
+@@ -3059,23 +3209,9 @@ window.continueToCapture=async function(){
+     showCaptureOrientationIfNeeded(true);
+   });
+ 
+-  // La nube ya no puede detener el paso 1 → paso 2.
+-  if(cloudAvailable&&currentUser&&sessionCanWrite()){
+-    withTimeout(
+-      forceProfileCheckpointToCloud('avance de Datos del profesor a Perfil por programa'),
+-      CLOUD_WRITE_UI_TIMEOUT_MS,
+-      false
+-    ).then(ok=>{
+-      if(!ok){
+-        updateCloudStatus('Guardado local seguro · nube sincronizando en segundo plano','warn');
+-        scheduleCloudRetry();
+-      }
+-    }).catch(()=>scheduleCloudRetry());
+-  }else if(currentUser){
+-    store.syncPending=true;
+-    try{localStorage.setItem('PAD_UTEQ',JSON.stringify(store));saveUserBackup()}catch(_){}
+-    scheduleCloudRetry();
+-  }
++  withTimeout(writeAudit('Datos del profesor y Comisiones confirmados al continuar'),1200,false)
++    .catch(e=>console.warn('Auditoría pendiente',e));
++  toast(saved.wrote?'Cambios guardados. Continúe con Programa 1.':'Sin cambios nuevos. Continúe con Programa 1.');
+   return true;
+ }
+ 
+@@ -3822,37 +3958,42 @@ window.prevProgram=function(){
+   scrollTo({top:$('captura').offsetTop-55,behavior:'smooth'});
+ }
+ 
+-window.saveCurrentProgramProgress=function(show=true){
++window.saveCurrentProgramProgress=async function(show=true){
+   if(!requireEditing())return false;
+-  persist();
++  persist({schedule:false});
++  const saved=await saveTeacherChangesNow('guardado manual del Perfil por programa');
++  if(!saved.ok)return false;
+   updateProgress();
+   lockRevisionNav();
+   writeAudit('Avance de Perfil por programa guardado manualmente');
+-  if(show)toast('Avances guardados. Puede continuar después desde este punto.');
++  if(show)toast(saved.wrote?'Avances guardados en nube.':'Sin cambios nuevos; no fue necesaria otra escritura.');
+   return true;
+ }
+ 
+-window.saveAndNextProgram=function(){
++window.saveAndNextProgram=async function(){
+   if(sequentialProfessorMode()){
+     if(!workflowState.profileConfirmed){
+       window.go('perfil',true);
+       toast('Confirme primero Datos del profesor.');
+-      return;
++      return false;
+     }
+ 
+     if(currentProgramIndex!==workflowState.expectedProgramIndex){
+       currentProgramIndex=Math.max(0,Math.min(workflowState.expectedProgramIndex,programs().length-1));
+       renderCurrentProgram();
+       toast('La revisión debe continuar en el programa que corresponde al orden de captura.');
+-      return;
++      return false;
+     }
+   }
+ 
+-  if(!canLeaveCurrentProgram())return;
++  if(!canLeaveCurrentProgram())return false;
+ 
+   captureValidationEmphasis=false;
+-  persist();
+-  toast('Programa guardado.');
++  persist({schedule:false});
++  const saved=await saveTeacherChangesNow(`Guardar y continuar: Programa ${currentProgramIndex+1}`);
++  if(!saved.ok)return false;
++
++  toast(saved.wrote?'Programa guardado en nube.':'Programa sin cambios nuevos; no fue necesaria otra escritura.');
+ 
+   if(currentProgramIndex>=programs().length-1){
+     const v=validateAll();
+@@ -3861,13 +4002,13 @@ window.saveAndNextProgram=function(){
+       workflowState.reviewUnlocked=false;
+       showCaptureErrors(v.errors);
+       toast('Todavía existen datos o materias pendientes.');
+-      return;
++      return false;
+     }
+ 
+     workflowState.expectedProgramIndex=programs().length;
+     workflowState.reviewUnlocked=true;
+     validateAndReview(true);
+-    return;
++    return true;
+   }
+ 
+   currentProgramIndex++;
+@@ -3877,6 +4018,7 @@ window.saveAndNextProgram=function(){
+   renderCurrentProgram();
+   updateNavState();
+   scrollTo({top:$('captura').offsetTop-55,behavior:'smooth'});
++  return true;
+ }
+ 
+ function validateCapture(stats=null){
+@@ -4098,31 +4240,49 @@ async function finalizeCurrentProfile(){
+     throw new Error('No se puede finalizar sin concluir el recorrido secuencial.');
+   }
+ 
+-  persist();
+-  const preSyncOk=await syncProfileToCloud({reason:'sincronización previa a finalización'});
++  // V90: finalizar es una acción manual crítica. Primero debe existir una copia confirmada en nube.
++  persist({schedule:false});
++  const preSyncOk=await syncProfileToCloud({reason:'guardado previo a finalización'});
++  if(!preSyncOk){
++    updateCloudStatus('No se pudo confirmar la nube · el perfil NO fue finalizado','warn');
++    return {preSyncOk:false,finalSyncOk:false,finalized:false};
++  }
++
++  const previousFinalState={
++    submittedPeriod:store.submittedPeriod||null,
++    finalizedAtMs:Number(store.finalizedAtMs)||null,
++    individualEditEnabled:!!store.individualEditEnabled,
++    individualEditDisabled:!!store.individualEditDisabled
++  };
+ 
+   store.submittedPeriod=cfg.periodo;
+   store.finalizedAtMs=Date.now();
+   store.individualEditEnabled=false;
+   store.individualEditDisabled=false;
+-  persist();
++  persist({schedule:false});
+ 
+-  const finalSyncOk=await syncProfileToCloud({reason:'confirmación de finalización',releaseEditOverride});
+-  store.finalizationCloudConfirmed=!!finalSyncOk;
+-  store.syncPending=!finalSyncOk;
+-  try{localStorage.setItem('PAD_UTEQ',JSON.stringify(store));saveUserBackup()}catch(_){}
++  const finalSyncOk=await syncProfileToCloud({reason:'confirmación manual de finalización',releaseEditOverride,force:true});
++  if(!finalSyncOk){
++    // Si la confirmación falla, el cliente no se bloquea como finalizado.
++    store.submittedPeriod=previousFinalState.submittedPeriod;
++    store.finalizedAtMs=previousFinalState.finalizedAtMs;
++    store.individualEditEnabled=previousFinalState.individualEditEnabled;
++    store.individualEditDisabled=previousFinalState.individualEditDisabled;
++    store.finalizationCloudConfirmed=false;
++    store.syncPending=true;
++    persist({schedule:false});
++    updateCloudStatus('No se confirmó la finalización en nube · vuelva a intentarlo','warn');
++    applyEditState();updateNavState();
++    return {preSyncOk:true,finalSyncOk:false,finalized:false};
++  }
+ 
+-  updateCloudStatus(
+-    finalSyncOk?'Perfil finalizado y sincronizado':'Perfil finalizado localmente · nube pendiente',
+-    finalSyncOk?'ok':'warn'
+-  );
+-  await writeAudit(
+-    finalSyncOk
+-      ?'Perfil finalizado y sincronizado para impresión/guardado PDF'
+-      :'Perfil finalizado localmente; sincronización pendiente'
+-  );
++  store.finalizationCloudConfirmed=true;
++  store.syncPending=false;
++  persistStoreSnapshot();
++  updateCloudStatus('Perfil finalizado y sincronizado','ok');
++  await writeAudit('Perfil finalizado y sincronizado para impresión/guardado PDF');
+   applyEditState();updateNavState();
+-  return {preSyncOk,finalSyncOk};
++  return {preSyncOk:true,finalSyncOk:true,finalized:true};
+ }
+ 
+ function profileDocumentBaseName(){
+@@ -4291,15 +4451,13 @@ window.printProfile=async function(){
+ 
+ 
+   const result=await finalizeCurrentProfile();
++  if(!result.finalized){
++    toast('No se confirmó la finalización en nube. El perfil permanece editable y sus datos están conservados localmente.');
++    return;
++  }
+   buildPrint();
+   updateReviewFinalizeUI();
+-
+-
+-  toast(
+-    result.finalSyncOk
+-      ?'Perfil concluido. La edición quedó bloqueada. Para cualquier modificación posterior, consulte a su JUCA.'
+-      :'Perfil concluido y bloqueado. La nube se sincronizará automáticamente; para cualquier modificación posterior, consulte a su JUCA.'
+-  );
++  toast('Perfil concluido. La edición quedó bloqueada. Para cualquier modificación posterior, consulte a su JUCA.');
+   await openProfilePrintDialog();
+ }
+ 
+@@ -5863,7 +6021,7 @@ function setupAutoSave(){
+     clearTimeout(timer);
+     timer=setTimeout(()=>{
+       store.profile=profileFromInputs();
+-      persist();
++      persist({schedule:false});
+       updateProfileStepIndicator();
+     },550);
+   });
+@@ -5871,7 +6029,7 @@ function setupAutoSave(){
+     if(!editingAllowed()||!isProfileField(e.target))return;
+     clearTimeout(timer);
+     store.profile=profileFromInputs();
+-    persist();
++    persist({schedule:false});
+     updateProfileStepIndicator();
+   });
+ }
+@@ -5914,8 +6072,7 @@ function setupResilienceGuards(){
+ 
+   window.addEventListener('online',()=>{
+     if(store.syncPending){
+-      updateCloudStatus('Conexión recuperada · sincronizando…','warn');
+-      syncProfileToCloud({reason:'conexión recuperada'});
++      updateCloudStatus('Conexión recuperada · cambios pendientes de guardado manual','warn');
+     }
+   });
+ 
+@@ -5933,9 +6090,13 @@ function setupResilienceGuards(){
+     }catch(_){}
+   });
+ 
+-  window.addEventListener('beforeunload',()=>{
++  window.addEventListener('beforeunload',e=>{
+     try{
+       if(currentUser)captureProfileLocallyWithoutCloud();
++      if(currentUser&&teacherHasUnsavedCloudChanges()){
++        e.preventDefault();
++        e.returnValue='';
++      }
+     }catch(_){}
+   });
+ }

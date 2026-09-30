@@ -11160,3 +11160,121 @@ button.is-busy::after{
 .session-transfer-actions .primary{
   box-shadow:0 5px 14px rgba(18,79,116,.18);
 }
+
+
+/* =========================================================
+   V89 · Comisiones funcionales, compactas y seguras
+   ========================================================= */
+.commission-list-toolbar{
+  display:flex!important;
+  align-items:center!important;
+  justify-content:space-between!important;
+  gap:12px!important;
+  margin:9px 0 8px!important;
+  padding:9px 10px!important;
+  border:1px solid #d7e4ea!important;
+  border-radius:10px!important;
+  background:#f8fbfc!important;
+}
+.commission-list-toolbar-copy{
+  display:flex!important;
+  flex-direction:column!important;
+  gap:2px!important;
+  min-width:0!important;
+}
+.commission-list-toolbar-copy strong{
+  color:#214f65!important;
+  font-size:10px!important;
+}
+.commission-list-toolbar-copy span{
+  color:#6b7d86!important;
+  font-size:8.5px!important;
+}
+.commission-toolbar-add{
+  flex:0 0 auto!important;
+  min-height:34px!important;
+  margin-left:0!important;
+  padding:6px 11px!important;
+  border-radius:9px!important;
+  font-size:9px!important;
+}
+.commission-editor-head{
+  display:flex!important;
+  align-items:flex-start!important;
+  justify-content:space-between!important;
+  gap:10px!important;
+  margin-bottom:10px!important;
+}
+.commission-editor-subtitle{
+  margin-top:2px!important;
+  color:#667b86!important;
+  font-size:8.5px!important;
+  line-height:1.35!important;
+}
+.commission-editor-cancel.compact{
+  min-height:30px!important;
+  padding:5px 9px!important;
+  flex:0 0 auto!important;
+}
+.commission-editor-fields{
+  grid-template-columns:minmax(220px,1fr) minmax(120px,160px)!important;
+  align-items:end!important;
+}
+.commission-summary-list{
+  gap:6px!important;
+}
+.commission-summary-card{
+  display:grid!important;
+  grid-template-columns:minmax(170px,1.05fr) minmax(70px,.35fr) minmax(260px,1.7fr) auto!important;
+  align-items:center!important;
+  gap:9px!important;
+  padding:8px 10px!important;
+  border-radius:10px!important;
+}
+.commission-summary-cell{
+  min-width:0!important;
+  display:flex!important;
+  flex-direction:column!important;
+  gap:1px!important;
+}
+.commission-summary-cell>span{
+  color:#70828a!important;
+  font-size:7px!important;
+  font-weight:800!important;
+  text-transform:uppercase!important;
+  letter-spacing:.035em!important;
+}
+.commission-summary-cell>strong{
+  min-width:0!important;
+  overflow:hidden!important;
+  text-overflow:ellipsis!important;
+  white-space:nowrap!important;
+  color:#285d46!important;
+  font-size:9.5px!important;
+  line-height:1.25!important;
+}
+.commission-summary-hours strong{
+  color:#3c5e6e!important;
+}
+.commission-summary-schedule strong{
+  color:#4e665b!important;
+  font-weight:750!important;
+}
+.commission-summary-actions{
+  margin:0!important;
+}
+.commission-summary-actions button{
+  min-height:32px!important;
+}
+.commission-editor .commission-schedule-question{
+  margin-top:10px!important;
+  padding-top:10px!important;
+}
+.commission-editor .commission-schedule-grid{
+  border:1px solid #e0e8ec!important;
+}
+.profile-edit-locked .commission-toolbar-add,
+.profile-edit-locked .commission-summary-actions button,
+.profile-edit-locked .commission-editor-actions button{
+  cursor:not-allowed!important;
+}
