@@ -10530,3 +10530,127 @@ body.capture-orientation-open{overflow:hidden!important}
 .main-nav button.flow-indicator-only:disabled .nav-ico{
   opacity:.88;
 }
+
+
+/* =========================================================
+   V81 · Sesión única, stepper y revisión final
+   ========================================================= */
+.session-status{
+  display:inline-flex;
+  align-items:center;
+  gap:5px;
+  padding:4px 8px;
+  border-radius:999px;
+  border:1px solid rgba(255,255,255,.26);
+  font-size:9px;
+  font-weight:800;
+  white-space:nowrap;
+}
+.session-status.ok{background:rgba(64,170,120,.18);color:#e9fff5}
+.session-status.warn{background:rgba(215,166,57,.18);color:#fff5d6}
+.session-status.readonly{background:rgba(211,94,94,.18);color:#ffe9e9}
+.session-status.neutral{background:rgba(255,255,255,.08);color:#fff}
+
+.main-nav button{
+  position:relative;
+}
+.main-nav button.complete:not(.active) .nav-num{
+  background:#2f8b69;
+  color:#fff;
+  font-size:0;
+}
+.main-nav button.complete:not(.active) .nav-num::after{
+  content:"✓";
+  font-size:12px;
+}
+.main-nav button.active{
+  box-shadow:inset 0 -2px 0 #2d6e9e;
+}
+.main-nav button.locked:not(.active){
+  opacity:.58;
+}
+.main-nav button.locked:not(.active)::after{
+  content:"";
+  position:absolute;
+  left:13px;
+  right:13px;
+  bottom:3px;
+  height:2px;
+  border-radius:999px;
+  background:#dce5eb;
+}
+
+.review-readiness{
+  padding:14px 16px;
+  border-color:#d6e3eb;
+  background:linear-gradient(110deg,#fbfdff,#f5faf8);
+}
+.readiness-title{
+  font-size:11px;
+  font-weight:900;
+  color:#234e67;
+  margin-bottom:9px;
+  text-transform:uppercase;
+  letter-spacing:.06em;
+}
+.readiness-grid{
+  display:grid;
+  grid-template-columns:repeat(4,minmax(0,1fr));
+  gap:8px;
+}
+.readiness-grid span{
+  padding:9px 10px;
+  border-radius:10px;
+  border:1px solid #dbe5ea;
+  background:#fff;
+  font-size:10px;
+  font-weight:800;
+}
+.readiness-grid span.ok{border-color:#b9ddce;background:#edf8f3;color:#276249}
+.readiness-grid span.pending{border-color:#efd7a5;background:#fff8e8;color:#7a5a16}
+
+.profile-edit-locked .session-status.readonly{
+  animation:none;
+}
+
+
+/* =========================================================
+   V82 · guardado separado, validación visible y flujo
+   ========================================================= */
+.flow-buttons{
+  align-items:stretch;
+}
+.flow-save-stack,
+.program-save-actions{
+  display:flex;
+  flex-direction:column;
+  gap:7px;
+  align-items:stretch;
+}
+.flow-save-stack .save-progress-btn,
+.program-save-actions .save-progress-btn{
+  background:#fff;
+  color:#35566c;
+  border:1px solid #b9cbd6;
+  font-weight:800;
+}
+.flow-save-stack .save-progress-btn:hover,
+.program-save-actions .save-progress-btn:hover{
+  background:#f3f7fa;
+}
+.program-save{
+  align-items:flex-end;
+}
+.program-save-actions{
+  min-width:220px;
+  margin-left:auto;
+}
+.course.validation-pending{
+  outline:2px solid rgba(205,132,42,.42);
+  outline-offset:-2px;
+  background:linear-gradient(90deg,rgba(255,246,224,.92),rgba(255,252,245,.82));
+  box-shadow:inset 4px 0 0 rgba(205,132,42,.62);
+}
+.course.validation-pending .name{
+  font-weight:800;
+}

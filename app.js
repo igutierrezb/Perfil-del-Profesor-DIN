@@ -1,6 +1,6 @@
 import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.13.2/firebase-app.js';
 import { getAuth, GoogleAuthProvider, signInWithCredential, signOut, onAuthStateChanged, setPersistence, browserLocalPersistence } from 'https://www.gstatic.com/firebasejs/10.13.2/firebase-auth.js';
-import { getFirestore, doc, getDoc, setDoc, deleteDoc, collection, getDocs, onSnapshot, serverTimestamp, addDoc } from 'https://www.gstatic.com/firebasejs/10.13.2/firebase-firestore.js';
+import { getFirestore, doc, getDoc, setDoc, deleteDoc, collection, getDocs, onSnapshot, serverTimestamp, addDoc, runTransaction } from 'https://www.gstatic.com/firebasejs/10.13.2/firebase-firestore.js';
 
 
 const $=id=>document.getElementById(id);
@@ -34,8 +34,267 @@ const workflowState={
 };
 let newSemesterCount=5,programEditorSemesters=[],auth=null,currentUser=null,authReady=false,db=null,cloudSettingsUnsub=null,cloudProfileMetaUnsub=null,remoteProfileLoaded=false,cloudAvailable=false,cloudSaveTimer=null,cloudRetryTimer=null,countdownTimer=null,lastSavedAt=store.lastSavedAt||null,editingCommonRuleId=null,editingProgramId=null,teacherAdminCache={};
 let cloudSyncInFlight=false;
+
+/* =========================================================
+   V81 · SESIÓN ÚNICA TRANSFERIBLE ENTRE DISPOSITIVOS
+   ========================================================= */
+const SESSION_HEARTBEAT_MS=10000;
+const SESSION_STALE_MS=35000;
+const SESSION_HANDOFF_WAIT_MS=3500;
+let activeSessionId='';
+let sessionHasControl=false;
+let sessionDocUnsub=null;
+let sessionHeartbeatTimer=null;
+let sessionHandoffBusy=false;
+let sessionWriteSeq=Number(store.sessionWriteSeq)||0;
+
+function sessionStorageKey(){
+  return currentUser?.uid?`PAD_UTEQ_SESSION_${currentUser.uid}`:'PAD_UTEQ_SESSION';
+}
+function getOrCreateSessionId(){
+  const key=sessionStorageKey();
+  try{
+    const existing=sessionStorage.getItem(key);
+    if(existing)return existing;
+    const id=(crypto?.randomUUID?.()||`${Date.now()}-${Math.random().toString(36).slice(2)}`);
+    sessionStorage.setItem(key,id);
+    return id;
+  }catch(_){
+    return `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+  }
+}
+function deviceLabel(){
+  const ua=navigator.userAgent||'';
+  const mobile=/Android|iPhone|iPad|Mobile/i.test(ua);
+  const platform=navigator.userAgentData?.platform||navigator.platform||'';
+  return mobile?`Móvil${platform?` · ${platform}`:''}`:`Escritorio${platform?` · ${platform}`:''}`;
+}
+function updateSessionStatus(text,kind='neutral'){
+  const el=$('sessionStatus');
+  if(!el)return;
+  el.textContent=text;
+  el.className=`session-status ${kind}`;
+}
+function sessionCanWrite(){
+  return isAdmin() || (!!currentUser && sessionHasControl && !!activeSessionId);
+}
+function nextSessionWriteSeq(){
+  sessionWriteSeq=Math.max(sessionWriteSeq,Number(store.sessionWriteSeq)||0)+1;
+  store.sessionWriteSeq=sessionWriteSeq;
+  return sessionWriteSeq;
+}
+function stopSessionHeartbeat(){
+  clearInterval(sessionHeartbeatTimer);
+  sessionHeartbeatTimer=null;
+}
+async function heartbeatSession(){
+  if(!db||!currentUser||!sessionHasControl||!activeSessionId||isAdmin())return;
+  try{
+    await setDoc(doc(db,'profileSessions',currentUser.uid),{
+      activeSessionId,
+      activeDevice:deviceLabel(),
+      activeEmail:currentUser.email||'',
+      heartbeatMs:Date.now(),
+      heartbeatAt:serverTimestamp()
+    },{merge:true});
+  }catch(e){
+    console.warn('No fue posible actualizar heartbeat de sesión',e);
+  }
+}
+function startSessionHeartbeat(){
+  stopSessionHeartbeat();
+  heartbeatSession();
+  sessionHeartbeatTimer=setInterval(heartbeatSession,SESSION_HEARTBEAT_MS);
+}
+function captureVisibleStateBeforeHandoff(){
+  try{
+    if($('apPat')){
+      const extra={};
+      document.querySelectorAll('[data-g]').forEach(x=>extra[x.dataset.g]=x.value.trim());
+      store.profile={
+        apPat:$('apPat')?.value.trim()||store.profile?.apPat||'',
+        apMat:$('apMat')?.value.trim()||store.profile?.apMat||'',
+        nombres:$('nombres')?.value.trim()||store.profile?.nombres||'',
+        categoria:$('categoria')?.value||store.profile?.categoria||'',
+        gradoAcademico:$('gradoAcademico')?.value||store.profile?.gradoAcademico||'',
+        extra
+      };
+    }
+    if(planningEnabled()&&$('commissionsBlock')){
+      try{collectPlanning()}catch(_){}
+    }
+    persist();
+  }catch(e){
+    console.warn('No fue posible consolidar la interfaz antes del traspaso',e);
+  }
+}
+async function handoffSessionTo(requestedId,requestedDevice='otro dispositivo'){
+  if(sessionHandoffBusy||!sessionHasControl||!requestedId||requestedId===activeSessionId)return;
+  sessionHandoffBusy=true;
+  updateSessionStatus(`Transfiriendo edición a ${requestedDevice}…`,'warn');
+  try{
+    captureVisibleStateBeforeHandoff();
+    await forceProfileCheckpointToCloud('traspaso de sesión a otro dispositivo');
+    await setDoc(doc(db,'profileSessions',currentUser.uid),{
+      activeSessionId:requestedId,
+      activeDevice:requestedDevice,
+      activeEmail:currentUser.email||'',
+      heartbeatMs:Date.now(),
+      heartbeatAt:serverTimestamp(),
+      takeoverRequestedSessionId:null,
+      takeoverRequestedDevice:null,
+      takeoverRequestedAtMs:null,
+      lastHandoffAt:serverTimestamp()
+    },{merge:true});
+    sessionHasControl=false;
+    stopSessionHeartbeat();
+    applyEditState();
+    updateSessionStatus('Solo lectura · la edición continuó en otro dispositivo','readonly');
+    toast('La edición continuó en otro dispositivo. Esta sesión quedó en modo consulta.');
+  }catch(e){
+    console.error('No fue posible completar el traspaso de sesión',e);
+    updateSessionStatus('No se pudo transferir la sesión · reintentando','warn');
+  }finally{
+    sessionHandoffBusy=false;
+  }
+}
+async function forceClaimSession(){
+  if(!db||!currentUser||isAdmin())return true;
+  const ref=doc(db,'profileSessions',currentUser.uid);
+  await runTransaction(db,async tx=>{
+    const snap=await tx.get(ref);
+    const data=snap.exists()?snap.data():{};
+    tx.set(ref,{
+      activeSessionId,
+      activeDevice:deviceLabel(),
+      activeEmail:currentUser.email||'',
+      heartbeatMs:Date.now(),
+      heartbeatAt:serverTimestamp(),
+      takeoverRequestedSessionId:null,
+      takeoverRequestedDevice:null,
+      takeoverRequestedAtMs:null
+    },{merge:true});
+  });
+  sessionHasControl=true;
+  startSessionHeartbeat();
+  updateSessionStatus('Editando en este dispositivo','ok');
+  applyEditState();
+  return true;
+}
+async function requestSingleDeviceControl(){
+  if(!db||!currentUser)return false;
+  if(isAdmin()){
+    sessionHasControl=true;
+    updateSessionStatus('Sesión administrativa','ok');
+    return true;
+  }
+  activeSessionId=getOrCreateSessionId();
+  const ref=doc(db,'profileSessions',currentUser.uid);
+
+  let immediate=false;
+  await runTransaction(db,async tx=>{
+    const snap=await tx.get(ref);
+    const d=snap.exists()?snap.data():{};
+    const other=String(d.activeSessionId||'');
+    const heartbeat=Number(d.heartbeatMs)||0;
+    const stale=!other || (Date.now()-heartbeat)>SESSION_STALE_MS || other===activeSessionId;
+    if(stale){
+      tx.set(ref,{
+        activeSessionId,
+        activeDevice:deviceLabel(),
+        activeEmail:currentUser.email||'',
+        heartbeatMs:Date.now(),
+        heartbeatAt:serverTimestamp(),
+        takeoverRequestedSessionId:null,
+        takeoverRequestedDevice:null,
+        takeoverRequestedAtMs:null
+      },{merge:true});
+      immediate=true;
+    }else{
+      tx.set(ref,{
+        takeoverRequestedSessionId:activeSessionId,
+        takeoverRequestedDevice:deviceLabel(),
+        takeoverRequestedAtMs:Date.now(),
+        takeoverRequestedAt:serverTimestamp()
+      },{merge:true});
+    }
+  });
+
+  if(sessionDocUnsub)sessionDocUnsub();
+  sessionDocUnsub=onSnapshot(ref,snap=>{
+    const d=snap.exists()?snap.data():{};
+    const active=String(d.activeSessionId||'');
+    const requestId=String(d.takeoverRequestedSessionId||'');
+    if(active===activeSessionId){
+      const changed=!sessionHasControl;
+      sessionHasControl=true;
+      startSessionHeartbeat();
+      updateSessionStatus('Editando en este dispositivo','ok');
+      if(changed)applyEditState();
+      if(requestId && requestId!==activeSessionId){
+        handoffSessionTo(requestId,String(d.takeoverRequestedDevice||'otro dispositivo'));
+      }
+    }else{
+      const had=sessionHasControl;
+      sessionHasControl=false;
+      stopSessionHeartbeat();
+      if(had){
+        applyEditState();
+        updateSessionStatus('Solo lectura · la edición está activa en otro dispositivo','readonly');
+        toast('Otra sesión tomó el control de edición. Esta sesión quedó en modo consulta.');
+      }else if(requestId===activeSessionId){
+        updateSessionStatus('Solicitando control al otro dispositivo…','warn');
+      }else{
+        updateSessionStatus('Esperando control de edición…','warn');
+      }
+    }
+  },e=>console.warn('No fue posible vigilar la sesión activa',e));
+
+  if(immediate){
+    sessionHasControl=true;
+    startSessionHeartbeat();
+    updateSessionStatus('Editando en este dispositivo','ok');
+    return true;
+  }
+
+  updateSessionStatus('Transfiriendo la edición a este dispositivo…','warn');
+  const start=Date.now();
+  while(Date.now()-start<SESSION_HANDOFF_WAIT_MS){
+    if(sessionHasControl)return true;
+    await new Promise(r=>setTimeout(r,150));
+  }
+
+  // La sesión anterior no respondió. Se toma el control.
+  await forceClaimSession();
+  return true;
+}
+async function releaseSessionIfOwned(){
+  if(!db||!currentUser||!activeSessionId||isAdmin())return;
+  try{
+    const ref=doc(db,'profileSessions',currentUser.uid);
+    await runTransaction(db,async tx=>{
+      const snap=await tx.get(ref);
+      if(!snap.exists())return;
+      const d=snap.data()||{};
+      sessionWriteSeq=Math.max(sessionWriteSeq,Number(d.sessionWriteSeq)||0);
+      store.sessionWriteSeq=sessionWriteSeq;
+      if(String(d.activeSessionId||'')!==activeSessionId)return;
+      tx.set(ref,{
+        activeSessionId:null,
+        activeDevice:null,
+        heartbeatMs:0,
+        heartbeatAt:serverTimestamp(),
+        takeoverRequestedSessionId:null,
+        takeoverRequestedDevice:null,
+        takeoverRequestedAtMs:null
+      },{merge:true});
+    });
+  }catch(e){console.warn('No fue posible liberar la sesión activa',e)}
+  sessionHasControl=false;
+  stopSessionHeartbeat();
+}
 const allowedDomain=(window.PAD_ALLOWED_DOMAIN||'uteq.edu.mx').toLowerCase();
-const PAD_BUILD_VERSION='V80-2026-09-29';
+const PAD_BUILD_VERSION='V82-2026-09-29';
 window.PAD_BUILD_VERSION=PAD_BUILD_VERSION;
 const adminEmail=(window.PAD_ADMIN_EMAIL||'ivan.gutierrez@uteq.edu.mx').toLowerCase();
 const googleClientId=String(window.PAD_GOOGLE_CLIENT_ID||'').trim();
@@ -158,7 +417,13 @@ function allPrograms(){
   });
   return [...base,...customPrograms];
 }
-function programs(){return allPrograms().filter(p=>!disabledPrograms.includes(p.id))}
+const PROGRAM_ORDER_V82=['ind_procesos','ind_plasticos','mec_auto','mec_ind','mec_moldes','auto_diseno','mantenimiento','nano'];
+function programs(){
+  const order=new Map(PROGRAM_ORDER_V82.map((id,i)=>[id,i]));
+  return allPrograms()
+    .filter(p=>!disabledPrograms.includes(p.id))
+    .sort((a,b)=>(order.get(a.id)??999)-(order.get(b.id)??999));
+}
 function key(pid,s,c){return `${pid}|${s}|${c}`}
 function academicDegree(){return String(store.profile?.gradoAcademico||'').trim();}
 function printedProfessorName(){
@@ -222,6 +487,7 @@ function individualEditBlocked(){
   return !!store.individualEditDisabled;
 }
 function editingAllowed(){
+  if(!isAdmin()&&!sessionHasControl)return false;
   // El administrador siempre conserva acceso.
   // Un permiso individual puede reabrir SOLO ese perfil.
   // Un bloqueo individual impide editar aunque la captura general esté abierta.
@@ -662,6 +928,8 @@ function profileCloudPayload(){
     planningByPeriod:JSON.parse(JSON.stringify(planningByPeriod)),
     clientUpdatedAt:Number(store.localUpdatedAt)||Date.now(),
     dataRevision:Number(store.dataRevision)||0,
+    writerSessionId:activeSessionId||null,
+    sessionWriteSeq:nextSessionWriteSeq(),
     updatedAt:serverTimestamp()
   };
 }
@@ -675,6 +943,7 @@ function scheduleCloudRetry(delay=5000){
 }
 async function syncProfileToCloud({reason='guardado automático'}={}){
   if(!db||!currentUser||!remoteProfileLoaded||cloudSyncInFlight)return false;
+  if(!sessionCanWrite()){updateCloudStatus('Solo lectura · edición activa en otro dispositivo','warn');return false;}
   cloudSyncInFlight=true;
   const version=Number(store.localUpdatedAt)||Date.now();
   try{
@@ -708,6 +977,7 @@ function scheduleCloudProfileSave(){
 }
 async function forceProfileCheckpointToCloud(reason='checkpoint de seguridad'){
   if(!db||!currentUser)return false;
+  if(!sessionCanWrite()){updateCloudStatus('Solo lectura · edición activa en otro dispositivo','warn');return false;}
   try{
     await setDoc(doc(db,'profiles',currentUser.uid),profileCloudPayload(),{merge:true});
     store.cloudUpdatedAt=Number(store.localUpdatedAt)||Date.now();
@@ -786,6 +1056,8 @@ async function loadRemoteProfile(){
     const snap=await getDoc(doc(db,'profiles',currentUser.uid));
     if(snap.exists()){
       const d=snap.data()||{};
+      sessionWriteSeq=Math.max(sessionWriteSeq,Number(d.sessionWriteSeq)||0);
+      store.sessionWriteSeq=sessionWriteSeq;
       const backup=readUserBackup();
 
 
@@ -940,6 +1212,7 @@ async function initCloud(){
     console.warn('Firestore settings no disponible',e);
     updateCloudStatus('Firestore pendiente de configurar','warn');
   }
+  await requestSingleDeviceControl();
   await loadRemoteProfile();
   if(cloudProfileMetaUnsub)cloudProfileMetaUnsub();
   cloudProfileMetaUnsub=onSnapshot(doc(db,'profiles',currentUser.uid),s=>{
@@ -959,6 +1232,8 @@ async function initCloud(){
       return;
     }
     const d=s.data()||{};
+    sessionWriteSeq=Math.max(sessionWriteSeq,Number(d.sessionWriteSeq)||0);
+    store.sessionWriteSeq=sessionWriteSeq;
 
 
     if(d.deletedByAdmin===true){
@@ -1267,6 +1542,7 @@ window.signOutApp=async function(){
     }
 
 
+    await releaseSessionIfOwned();
     if(auth)await signOut(auth);
   }finally{
     // Se elimina sólo la copia de trabajo compartida por privacidad.
@@ -1532,6 +1808,53 @@ window.removePlanningCommission=function(index){
 function clearPlanningValidation(){
   document.querySelectorAll('#commissionsBlock .planning-question-error').forEach(x=>x.classList.remove('planning-question-error'));
 }
+function commissionHasCapturedData(record){
+  const commissions=Array.isArray(record?.commissions)?record.commissions:[];
+  return record?.commissionMode==='yes' && commissions.some(c=>
+    String(c?.name||'').trim() ||
+    String(c?.authorizedHours??'').trim() ||
+    (Array.isArray(c?.reservedSlots)&&c.reservedSlots.length)
+  );
+}
+function validatePlanningForAdvance(opts={}){
+  if(!planningEnabled())return {ok:true,errors:[],firstCard:null,record:currentPlanningRecord(true)};
+  const record=opts.record||collectPlanning();
+  const errors=[];
+  let firstCard=null;
+  const mark=(id,msg)=>{
+    errors.push(msg);
+    if(!firstCard)firstCard=$(id);
+    if(opts.visual&&$(id))$(id).classList.add('planning-question-error');
+  };
+  if(opts.visual)clearPlanningValidation();
+
+  // Comisiones son opcionales. Solo se validan como bloque obligatorio si el profesor indicó que sí tiene.
+  if(record.commissionMode==='yes'){
+    const commissions=(record.commissions||[]);
+    if(!commissions.length)mark('planningCommissionsCard','Agregue al menos una comisión autorizada.');
+    commissions.forEach((c,i)=>{
+      if(!String(c.name||'').trim())mark('planningCommissionsCard',`Comisión ${i+1}: capture el nombre.`);
+      if(String(c.authorizedHours||'').trim()==='')mark('planningCommissionsCard',`Comisión ${i+1}: capture las horas autorizadas.`);
+      if(c.scheduleRequired==='yes' && !(c.reservedSlots||[]).length){
+        mark('planningCommissionsCard',`Comisión ${i+1}: seleccione al menos un día y horario específico.`);
+      }
+    });
+  }
+
+  // El proyecto conserva las reglas vigentes de V80/V81.
+  if(!['yes','na'].includes(record.projectMode)){
+    mark('planningProjectCard','Indique si participa en un proyecto avalado por la Universidad o seleccione No aplica.');
+  }else if(record.projectMode==='yes'){
+    if(!record.projectName)mark('planningProjectCard','Capture el nombre del proyecto.');
+    if(!record.projectRole)mark('planningProjectCard','Capture la responsabilidad que ocupa en el proyecto.');
+    if(String(record.projectHours||'').trim()==='')mark('planningProjectCard','Capture las horas autorizadas para el proyecto.');
+  }
+
+  if(opts.visual&&firstCard){
+    requestAnimationFrame(()=>firstCard.scrollIntoView({behavior:'smooth',block:'center'}));
+  }
+  return {ok:!errors.length,errors,firstCard,record};
+}
 function validatePlanning(opts={}){
   if(!planningEnabled())return {ok:true,errors:[],firstCard:null};
   const record=opts.collect===false?currentPlanningRecord(true):collectPlanning();
@@ -1604,8 +1927,8 @@ function shouldShowCaptureOrientation(){
   if(isAdmin()||(submissionLockedForCurrentPeriod()&&!individualEditOverride()))return false;
   try{return sessionStorage.getItem(captureOrientationSessionKey())!=='1'}catch(_){return true}
 }
-function showCaptureOrientationIfNeeded(){
-  if(!shouldShowCaptureOrientation())return;
+function showCaptureOrientationIfNeeded(force=false){
+  if(!force&&!shouldShowCaptureOrientation())return;
   const modal=$('captureOrientationModal');
   if(!modal)return;
   modal.classList.remove('hidden');
@@ -1692,8 +2015,22 @@ document.querySelectorAll('.main-nav button').forEach(b=>b.onclick=()=>{
 });
 
 function profileLooksComplete(){
-  const p=store.profile||{},e=p.extra||{};
-  return !!(p.apPat&&p.apMat&&p.nombres&&p.categoria&&e.f1a&&e.f1b&&e.d1a&&e.d1c&&e.l1a&&e.l1b&&e.l1c);
+  return validateProfile().ok;
+}
+function updateReviewReadiness(){
+  const el=$('reviewReadiness');if(!el)return;
+  const p=profileLooksComplete();
+  const capture=validateCapture();
+  const all=validateAll();
+  const stats=overallStats();
+  const completePrograms=programs().filter(pr=>programStats(pr).missing===0).length;
+  el.innerHTML=`<div class="readiness-title">Verificación previa</div>
+    <div class="readiness-grid">
+      <span class="${p?'ok':'pending'}">${p?'✓':'○'} Datos generales</span>
+      <span class="${completePrograms===programs().length?'ok':'pending'}">${completePrograms===programs().length?'✓':'○'} Programas ${completePrograms}/${programs().length}</span>
+      <span class="${capture.ok?'ok':'pending'}">${capture.ok?'✓':'○'} Materias ${stats.done}/${stats.total}</span>
+      <span class="${all.ok?'ok':'pending'}">${all.ok?'✓':'○'} ${all.ok?'Sin pendientes':'Pendientes por resolver'}</span>
+    </div>`;
 }
 function updateNavState(){
   const pBtn=document.querySelector('.main-nav button[data-view="perfil"]');
@@ -1708,6 +2045,7 @@ function updateNavState(){
   }
 
   const sequential=sequentialProfessorMode();
+  updateReviewReadiness();
   [pBtn,cBtn,rBtn].forEach(btn=>{
     if(!btn)return;
     btn.disabled=sequential;
@@ -1792,7 +2130,7 @@ function captureProfileLocallyWithoutCloud(){
 }
 
 function requiredProfileChecks(p,e){
-  return [
+  const checks=[
     {el:$('apPat'),missing:!p.apPat,msg:'Capture el apellido paterno.'},
     {el:$('apMat'),missing:!p.apMat,msg:'Capture el apellido materno.'},
     {el:$('nombres'),missing:!p.nombres,msg:'Capture los nombres.'},
@@ -1805,6 +2143,20 @@ function requiredProfileChecks(p,e){
     {el:document.querySelector('[data-g="l1b"]'),missing:!e.l1b,msg:'Capture el cargo de la primera línea de Experiencia laboral.'},
     {el:document.querySelector('[data-g="l1c"]'),missing:!e.l1c,msg:'Capture el periodo de la primera línea de Experiencia laboral.'}
   ];
+
+  for(let i=2;i<=5;i++){
+    const a=String(e[`l${i}a`]||'').trim();
+    const b=String(e[`l${i}b`]||'').trim();
+    const c=String(e[`l${i}c`]||'').trim();
+    const started=!!(a||b||c);
+    if(!started)continue;
+    checks.push(
+      {el:document.querySelector(`[data-g="l${i}a"]`),missing:!a,msg:`Experiencia laboral ${i}: capture la organización.`},
+      {el:document.querySelector(`[data-g="l${i}b"]`),missing:!b,msg:`Experiencia laboral ${i}: capture el puesto o cargo.`},
+      {el:document.querySelector(`[data-g="l${i}c"]`),missing:!c,msg:`Experiencia laboral ${i}: capture el periodo.`}
+    );
+  }
+  return checks;
 }
 function clearRequiredHighlights(){
   document.querySelectorAll('#perfil .required-field-error').forEach(el=>el.classList.remove('required-field-error'));
@@ -1866,18 +2218,32 @@ window.continueToCapture=async function(){
   }
 
   if(planningEnabled()){
-    const planningCheck=validatePlanning({visual:true});
+    const record=collectPlanning();
+    const hasCommission=commissionHasCapturedData(record);
+    if(record.commissionMode!=='na'&&!hasCommission){
+      const proceed=confirm('No tiene ninguna comisión capturada. ¿Está seguro de que desea continuar al Perfil por programa sin registrar alguna comisión?');
+      if(!proceed){
+        $('planningCommissionsCard')?.scrollIntoView({behavior:'smooth',block:'center'});
+        return false;
+      }
+    }
+
+    const planningCheck=validatePlanningForAdvance({visual:true,record});
     if(!planningCheck.ok){
       if($('planningErrors'))$('planningErrors').innerHTML=statusBox(
         planningCheck.errors,
-        'Complete Comisiones o seleccione No aplica antes de continuar.'
+        'Complete únicamente la información que haya indicado como aplicable antes de continuar.'
       );
-      toast('Complete el apartado de Comisiones antes de pasar al Perfil por programa.');
+      toast('Hay información iniciada que todavía está incompleta.');
       return false;
     }
 
-    const planningSaved=await savePlanning(false);
-    if(!planningSaved)return false;
+    record.completedAtMs=Date.now();
+    record.updatedAtMs=Date.now();
+    planningByPeriod[cfg.periodo]=record;
+    persist();
+    if($('planningErrors'))$('planningErrors').innerHTML='';
+    await writeAudit('Comisiones y consideraciones académicas revisadas al continuar');
   }
 
   clearRequiredHighlights();
@@ -1909,7 +2275,7 @@ window.continueToCapture=async function(){
   updateNavState();
   requestAnimationFrame(()=>{
     try{sessionStorage.removeItem(captureOrientationSessionKey())}catch(_){}
-    showCaptureOrientationIfNeeded();
+    showCaptureOrientationIfNeeded(true);
   });
   return true;
 }
@@ -2126,7 +2492,7 @@ function courseTransversalBadge(pid,s,c,name){
 }
 
 
-function programStats(p){let total=0,done=0,missing=0;p.semesters.forEach((sem,s)=>sem.forEach((name,c)=>{if(isEnglish(name))return;total++;const a=getAns(p.id,s,c,name);if(a.status!=='pending')done++;else missing++}));return{total,done,missing}}
+function programStats(p){let total=0,done=0,missing=0;p.semesters.forEach((sem,s)=>sem.forEach((name,c)=>{if(isEnglish(name))return;total++;const a=getAns(p.id,s,c,name);const incomplete=a.status==='pending'||(['X','XX'].includes(a.status)&&!(a.origins||[]).length);if(incomplete)missing++;else done++}));return{total,done,missing}}
 function overallStats(){
   let total=0,done=0,invalid=0,pending=[];
   const pendingLogical=new Map();
@@ -2167,6 +2533,7 @@ function captureIssues(){
   return issues;
 }
 let captureErrorModeActive=false;
+let captureValidationEmphasis=false;
 
 
 function captureIssuePanel(issues){
@@ -2228,6 +2595,7 @@ function refreshCaptureErrorState(){
   if(!issues.length&&profileCheck.ok){
     root.innerHTML='';
     captureErrorModeActive=false;
+    captureValidationEmphasis=false;
     toast('Captura corregida. Ya puede continuar a revisión.');
     return;
   }
@@ -2289,6 +2657,7 @@ function currentProgramIssues(){
 function showCurrentProgramBlock(issues){
   if(!issues?.length)return;
   captureErrorModeActive=true;
+  captureValidationEmphasis=true;
   const p=currentProgram();
   const mapped=issues.map(x=>({
     ...x,
@@ -2347,7 +2716,7 @@ function captureGuideHtml(){
       </div>
       <div class="capture-help-card reference-help-card">
         <b><span class="help-alert">!</span> 4. Coordinación</b>
-        <span>Marque <strong class="help-check">✓</strong> solo si <strong>ha coordinado previamente esa asignatura</strong>. <strong>No aparece en la impresión</strong>; es una referencia para el coordinador.</span>
+        <span>De forma <strong>opcional</strong>, marque <strong class="help-check">✓</strong> solo si <strong>ha coordinado previamente esa asignatura</strong>. <strong>No aparece en la impresión</strong>; es una referencia para el coordinador.</span>
       </div>
       <div class="capture-help-card reference-help-card">
         <b><span class="help-alert">!</span> 5. Favorita</b>
@@ -2394,7 +2763,7 @@ function renderCurrentProgram(){
     '1. Habilita la asignatura que puedes impartir',
     '2. Selecciona tu nivel de competencia: X = media · XX = alta',
     '3. Señala el origen del conocimiento: 1 formación · 2 experiencia docente · 3 experiencia laboral · o sus combinaciones 12, 13, 23, 123',
-    '4. Marca ✓ si ya has coordinado esa asignatura',
+    '4. Opcional: marca ✓ si ya has coordinado esa asignatura',
     '5. Opcional: marca ★ si es una de tus asignaturas favoritas'
   ];
   const guideText=`Guía rápida: ${guideSteps.join(' · ')}`;
@@ -2444,7 +2813,7 @@ function renderCurrentProgram(){
       const loc=`${currentProgramIndex}|${s}|${c}`;
 
 
-      h+=`<div class="course ${pending?'pending':''} ${a.status==='off'?'off':''} ${reviewed&&a.status!=='off'?'reviewed':''} ${na?'na na-clean':''} ${needsAttention?'needs-attention':''}" data-course-loc="${loc}">
+      h+=`<div class="course ${pending?'pending':''} ${a.status==='off'?'off':''} ${reviewed&&a.status!=='off'?'reviewed':''} ${na?'na na-clean':''} ${needsAttention?'needs-attention':''} ${captureValidationEmphasis&&needsAttention?'validation-pending':''}" data-course-loc="${loc}">
         <div class="name">${subjectCase(name)}${subjectHours(p.id,s,c)?` <small class="course-hours">(${subjectHours(p.id,s,c)} h)</small>`:''}${na?' · NO APLICA':''}${!na?courseTransversalBadge(p.id,s,c,name):''}</div>`;
 
 
@@ -2486,7 +2855,10 @@ function renderCurrentProgram(){
   h+=`</div></div>
     <div class="program-save">
       <small>${st.missing?'Las filas resaltadas indican información pendiente.':'Programa completo.'}</small>
-      <button class="save-btn" onclick="saveAndNextProgram()">${lastProgram?'Guardar y continuar a revisión →':'Guardar y seguir →'}</button>
+      <div class="program-save-actions">
+        <button class="save-progress-btn" onclick="saveCurrentProgramProgress(true)">Guardar avances</button>
+        <button class="save-btn" onclick="saveAndNextProgram()">${lastProgram?'Guardar y continuar a revisión →':'Guardar y continuar →'}</button>
+      </div>
     </div>
   </article>`;
 
@@ -2494,7 +2866,7 @@ function renderCurrentProgram(){
   $('programs').innerHTML=h;
   const flowBtn=$('flowNextBtn');
   if(flowBtn){
-    flowBtn.textContent=lastProgram?'Guardar y continuar a revisión →':'Guardar y seguir →';
+    flowBtn.textContent=lastProgram?'Guardar y continuar a revisión →':'Guardar y continuar →';
     flowBtn.onclick=()=>saveAndNextProgram();
   }
   requestAnimationFrame(adjustSemesterColumnWidths);
@@ -2519,6 +2891,16 @@ window.prevProgram=function(){
   scrollTo({top:$('captura').offsetTop-55,behavior:'smooth'});
 }
 
+window.saveCurrentProgramProgress=function(show=true){
+  if(!requireEditing())return false;
+  persist();
+  updateProgress();
+  lockRevisionNav();
+  writeAudit('Avance de Perfil por programa guardado manualmente');
+  if(show)toast('Avances guardados. Puede continuar después desde este punto.');
+  return true;
+}
+
 window.saveAndNextProgram=function(){
   if(sequentialProfessorMode()){
     if(!workflowState.profileConfirmed){
@@ -2537,6 +2919,7 @@ window.saveAndNextProgram=function(){
 
   if(!canLeaveCurrentProgram())return;
 
+  captureValidationEmphasis=false;
   persist();
   toast('Programa guardado.');
 
@@ -2616,6 +2999,7 @@ function showCaptureErrors(errs){
   }
 
   if(issues.length){
+    captureValidationEmphasis=true;
     currentProgramIndex=issues[0].pi;
     workflowState.expectedProgramIndex=currentProgramIndex;
     workflowState.reviewUnlocked=false;

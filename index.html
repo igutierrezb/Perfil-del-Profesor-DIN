@@ -61,7 +61,7 @@
     <div class="hero-side">
       <div class="hero-chip">Formato institucional · EA-F-86</div>
       <div id="authStatus" class="auth-status">Sin sesión</div>
-      <div class="save-cloud-line"><span id="lastSaved">Guardado local</span><span id="cloudStatus">Sincronización pendiente</span></div>
+      <div class="save-cloud-line"><span id="lastSaved">Guardado local</span><span id="cloudStatus">Sincronización pendiente</span><span id="sessionStatus" class="session-status neutral">Verificando dispositivo…</span></div>
       <div class="auth-buttons">
         <button id="btnLogin" class="ghost" onclick="signIn()">Ingresar con cuenta institucional</button>
         <button id="btnLogout" class="ghost hidden" onclick="signOutApp()">Cerrar sesión</button>
@@ -75,9 +75,9 @@
 
 
 <nav class="main-nav">
-  <button data-view="perfil" class="active"><span class="nav-num">1</span><span class="nav-ico" aria-hidden="true">▣</span> Datos del profesor</button>
-  <button data-view="captura"><span class="nav-num">2</span><span class="nav-ico" aria-hidden="true">▤</span> Perfil por programa</button>
-  <button data-view="revision" id="navRevision"><span class="nav-num">3</span><span class="nav-ico" aria-hidden="true">⌕</span> Revisión e impresión</button>
+  <button data-view="perfil" class="active"><span class="nav-num">1</span><span class="nav-ico" aria-hidden="true">▣</span><span class="nav-label">Datos del profesor</span></button>
+  <button data-view="captura"><span class="nav-num">2</span><span class="nav-ico" aria-hidden="true">▤</span><span class="nav-label">Perfil por programa</span></button>
+  <button data-view="revision" id="navRevision"><span class="nav-num">3</span><span class="nav-ico" aria-hidden="true">⌕</span><span class="nav-label">Revisión e impresión</span></button>
   <button data-view="admin" id="adminTab" class="admin-tab hidden"><span class="nav-num">4</span><span class="nav-ico" aria-hidden="true">⚙</span> Administración</button>
 </nav>
 
@@ -281,7 +281,10 @@
       <div class="program-name-flow" id="programFlowName"></div>
       <div class="flow-buttons">
         <button class="prev-emphasis" onclick="prevProgram()">← Anterior</button>
-        <button id="flowNextBtn" class="primary" onclick="saveAndNextProgram()">Guardar y seguir →</button>
+        <div class="flow-save-stack">
+          <button id="flowNextBtn" class="primary" onclick="saveAndNextProgram()">Guardar y continuar →</button>
+          <button class="save-progress-btn" onclick="saveCurrentProgramProgress(true)">Guardar avances</button>
+        </div>
       </div>
 
 
@@ -290,9 +293,6 @@
 
     <div id="programs"></div>
     <div id="captureErrors"></div>
-    <div class="actions">
-      <button onclick="saveAll(true)">Guardar avances</button>
-    </div>
   </section>
 
 
@@ -305,6 +305,7 @@
       </div>
       <div id="validation"></div>
     </div>
+    <div id="reviewReadiness" class="card review-readiness no-print"></div>
     <div class="actions no-print review-final-actions review-final-actions-top">
       <button onclick="go('captura')">← Volver a captura</button>
       <button class="primary final-print-btn" onclick="printProfile()">Finalizar e imprimir / guardar PDF</button>
@@ -602,7 +603,7 @@
       <div class="orientation-step"><b>1</b><span><strong>Todas las asignaturas aparecen habilitadas por defecto.</strong> Su tarea principal es deshabilitar aquellas que no sean acordes con su perfil.</span></div>
       <div class="orientation-step"><b>2</b><span>En cada asignatura que sí puede impartir, indique su nivel: <strong>X = competencia media</strong> o <strong>XX = competencia alta</strong>.</span></div>
       <div class="orientation-step"><b>3</b><span>Señale de dónde proviene ese conocimiento: <strong>1 Formación académica · 2 Experiencia docente · 3 Experiencia laboral</strong>, o una combinación: 12, 13, 23 o 123.</span></div>
-      <div class="orientation-step"><b>4</b><span>Marque <strong>✓ Coordinador</strong> únicamente si previamente ha coordinado esa asignatura.</span></div>
+      <div class="orientation-step"><b>4</b><span>De forma <strong>opcional</strong>, marque <strong>✓ Coordinador</strong> únicamente si previamente ha coordinado esa asignatura.</span></div>
       <div class="orientation-step"><b>5</b><span>La <strong>★ Favorita</strong> es opcional y sirve para identificar las asignaturas que considera especialmente adecuadas para impartir según su perfil.</span></div>
     </div>
 

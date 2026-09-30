@@ -568,3 +568,78 @@
   }
 
 }
+
+
+/* =========================================================
+   V81 · navegación compacta y estado de sesión
+   ========================================================= */
+@media screen and (max-width:900px){
+  .save-cloud-line{
+    display:grid !important;
+    grid-template-columns:1fr;
+    gap:5px !important;
+  }
+  .session-status{
+    width:max-content;
+    max-width:100%;
+    white-space:normal;
+  }
+  .main-nav{
+    display:grid !important;
+    grid-template-columns:repeat(3,minmax(0,1fr));
+    overflow:visible !important;
+  }
+  .main-nav button:not(.admin-tab){
+    min-width:0;
+    justify-content:center;
+    text-align:center;
+    white-space:normal;
+    padding:7px 5px;
+  }
+  .main-nav .nav-ico{display:none !important}
+  .main-nav .nav-label{
+    display:block;
+    margin-top:3px;
+    font-size:9px;
+    line-height:1.15;
+  }
+  .main-nav .admin-tab{
+    grid-column:1/-1;
+  }
+  .readiness-grid{
+    grid-template-columns:1fr 1fr;
+  }
+}
+@media screen and (max-width:520px){
+  .main-nav .nav-label{
+    font-size:8px;
+  }
+  .readiness-grid{
+    grid-template-columns:1fr;
+  }
+}
+
+
+/* =========================================================
+   V82 · acciones de guardado y pendientes
+   ========================================================= */
+@media screen and (max-width:900px){
+  .flow-buttons{
+    grid-template-columns:1fr !important;
+  }
+  .flow-save-stack,
+  .program-save-actions{
+    width:100%;
+    min-width:0;
+  }
+  .flow-save-stack button,
+  .program-save-actions button{
+    width:100%;
+  }
+  .program-save{
+    display:block;
+  }
+  .course.validation-pending{
+    box-shadow:inset 4px 0 0 rgba(205,132,42,.62);
+  }
+}

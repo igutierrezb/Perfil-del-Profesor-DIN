@@ -1,0 +1,17 @@
+OK - Versión V82 en app
+OK - Versión V82 en build
+OK - Orden fijo 8 programas
+OK - Sesión única profileSessions
+OK - runTransaction activo
+OK - writerSessionId activo
+OK - sessionWriteSeq activo
+OK - Confirmación sin comisiones
+OK - Validación laboral dinámica
+OK - Manual forzado Datos → Perfil
+OK - Guardar avances separado
+OK - Resaltado de pendientes
+OK - Coordinador opcional
+OK - Favorita opcional
+OK - Reglas migración V82
+
+TOTAL: 15 de 15 comprobaciones OK

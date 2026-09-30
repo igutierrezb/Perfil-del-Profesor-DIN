@@ -17,18 +17,52 @@ service cloud.firestore {
         && request.auth.token.email == 'ivan.gutierrez@uteq.edu.mx';
     }
 
+    function own(uid) {
+      return institutional() && request.auth.uid == uid;
+    }
+
+    function sessionPath(uid) {
+      return /databases/$(database)/documents/profileSessions/$(uid);
+    }
+
+    function sessionExists(uid) {
+      return exists(sessionPath(uid));
+    }
+
+    function validSessionWrite(uid) {
+      return sessionExists(uid)
+        && request.resource.data.writerSessionId is string
+        && request.resource.data.writerSessionId == get(sessionPath(uid)).data.activeSessionId
+        && request.resource.data.sessionWriteSeq is int
+        && (
+          !resource.data.keys().hasAll(['sessionWriteSeq'])
+          || request.resource.data.sessionWriteSeq > resource.data.sessionWriteSeq
+        );
+    }
+
     match /settings/{document=**} {
       allow read: if institutional();
       allow write: if admin();
     }
 
-    match /profiles/{uid} {
-      allow read: if admin() || (institutional() && request.auth.uid == uid);
+    match /profileSessions/{uid} {
+      allow read: if admin() || own(uid);
+      allow create, update: if admin() || own(uid);
+      allow delete: if admin();
+    }
 
-      // El profesor administra únicamente su propio perfil.
-      // Administración puede reabrir/cerrar de forma individual perfiles ajenos.
-      allow create, update: if admin()
-        || (institutional() && request.auth.uid == uid);
+    match /profiles/{uid} {
+      allow read: if admin() || own(uid);
+
+      // Migración segura:
+      // - mientras aún no exista profileSessions/{uid}, la V80 puede terminar de sincronizar;
+      // - desde el primer acceso V82, cada escritura del profesor debe probar
+      //   que procede de la sesión activa y avanzar un contador monotónico.
+      allow create: if admin()
+        || (own(uid) && (!sessionExists(uid) || validSessionWrite(uid)));
+
+      allow update: if admin()
+        || (own(uid) && (!sessionExists(uid) || validSessionWrite(uid)));
 
       allow delete: if admin();
     }
