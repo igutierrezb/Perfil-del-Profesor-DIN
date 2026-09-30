@@ -16,7 +16,7 @@ function readGlobalSettingsCache(){
 const cachedGlobalSettings=readGlobalSettingsCache();
 const store=JSON.parse(localStorage.getItem('PAD_UTEQ')||'{}');
 const cfg=Object.assign(
-  {jefe:'Iván Gutiérrez Bautista',codigo:'EA-F-86',revision:'Rev.01',fechaRevision:'21-sep-2018',periodo:'SEP 2026 - AGO 2027',editingLocked:false,captureDeadline:null,planningEnabled:false},
+  {jefe:'Iván Gutiérrez Bautista',codigo:'EA-F-87',revision:'Rev.01',fechaRevision:'21-sep-2018',periodo:'SEP 2026 - AGO 2027',editingLocked:false,captureDeadline:null,planningEnabled:true},
   cachedGlobalSettings.cfg||{},
   store.cfg||{}
 );
@@ -33,6 +33,8 @@ const workflowState={
   reviewUnlocked:false
 };
 let newSemesterCount=5,programEditorSemesters=[],auth=null,currentUser=null,authReady=false,db=null,cloudSettingsUnsub=null,cloudProfileMetaUnsub=null,remoteProfileLoaded=false,cloudAvailable=false,cloudSaveTimer=null,cloudRetryTimer=null,countdownTimer=null,lastSavedAt=store.lastSavedAt||null,editingCommonRuleId=null,editingProgramId=null,teacherAdminCache={};
+let planningCommissionEditorIndex=null;
+let planningCommissionDraft=emptyCommission();
 let cloudSyncInFlight=false;
 let bootstrapComplete=false;
 
@@ -46,9 +48,9 @@ let bootstrapComplete=false;
 const CLOUD_READ_TIMEOUT_MS=6000;
 const CLOUD_WRITE_UI_TIMEOUT_MS=1400;
 const SESSION_STATUS_READ_TIMEOUT_MS=3500;
-const SESSION_HEARTBEAT_MS=10000;
-const SESSION_STALE_MS=35000;
-const SESSION_RETRY_MS=5000;
+const SESSION_HEARTBEAT_MS=30000;
+const SESSION_STALE_MS=90000;
+const SESSION_RETRY_MS=0;
 let activeSessionId='';
 let sessionHasControl=false;
 let sessionDocUnsub=null;
@@ -60,6 +62,8 @@ let sessionActivationBusy=false;
 let sessionConflictDevice='';
 let sessionTransferRequested=false;
 let sessionTransferModalDismissed=false;
+let sessionSnapshotCache=null;
+let sessionStaleUiTimer=null;
 let sessionWriteSeq=Number(store.sessionWriteSeq)||0;
 
 function withTimeout(promise,ms,fallbackValue=null){
@@ -212,8 +216,7 @@ function captureVisibleStateBeforeHandoff(){
     if(planningEnabled()&&$('commissionsBlock')){
       try{collectPlanning()}catch(_){}
     }
-    persist();
-    saveUserBackup();
+    persist({schedule:false});
   }catch(e){
     console.warn('No fue posible consolidar la interfaz antes del traspaso',e);
   }
@@ -223,7 +226,7 @@ function scheduleHandoffRetry(requestedId,requestedDevice){
   if(!requestedId||!sessionHasControl)return;
   sessionHandoffRetryTimer=setTimeout(()=>{
     handoffSessionTo(requestedId,requestedDevice).catch(e=>console.warn('Reintento de transferencia pendiente',e));
-  },3000);
+  },12000);
 }
 async function handoffSessionTo(requestedId,requestedDevice='otro dispositivo'){
   if(sessionHandoffBusy||!sessionHasControl||!requestedId||requestedId===activeSessionId)return false;
@@ -338,9 +341,42 @@ function sessionIsStale(active,heartbeat){
   return !active || (Date.now()-Number(heartbeat||0))>SESSION_STALE_MS;
 }
 function hideSessionTransferModal(){
+  clearTimeout(sessionStaleUiTimer);
   const modal=$('sessionTransferModal');
   if(modal)modal.classList.add('hidden');
   document.body.classList.remove('session-transfer-open');
+}
+function setSessionActionBusy(busy,label='Procesando…'){
+  const continueBtn=$('sessionContinueHereBtn');
+  const recoverBtn=$('sessionRecoverHereBtn');
+  if(continueBtn){
+    continueBtn.disabled=!!busy;
+    continueBtn.classList.toggle('is-busy',!!busy);
+    if(busy)continueBtn.textContent=label;
+  }
+  if(recoverBtn){
+    recoverBtn.disabled=!!busy;
+    recoverBtn.classList.toggle('is-busy',!!busy);
+  }
+}
+function scheduleSessionStaleUiRefresh(){
+  clearTimeout(sessionStaleUiTimer);
+  const d=sessionSnapshotCache||{};
+  const active=String(d.activeSessionId||'');
+  const heartbeat=Number(d.heartbeatMs)||0;
+  if(!active||active===activeSessionId||sessionIsStale(active,heartbeat))return;
+  const wait=Math.max(1000,SESSION_STALE_MS-(Date.now()-heartbeat)+250);
+  sessionStaleUiTimer=setTimeout(()=>{
+    const latest=sessionSnapshotCache||{};
+    const latestActive=String(latest.activeSessionId||'');
+    if(latestActive&&latestActive!==activeSessionId){
+      showSessionTransferModal({
+        device:String(latest.activeDevice||'otro dispositivo'),
+        waiting:String(latest.takeoverRequestedSessionId||'')===activeSessionId,
+        stale:sessionIsStale(latestActive,Number(latest.heartbeatMs)||0)
+      });
+    }
+  },wait);
 }
 function showSessionTransferModal({device='otro dispositivo',waiting=false,stale=false}={}){
   const modal=$('sessionTransferModal');
@@ -350,150 +386,118 @@ function showSessionTransferModal({device='otro dispositivo',waiting=false,stale
   const continueBtn=$('sessionContinueHereBtn'),recoverBtn=$('sessionRecoverHereBtn');
   if(text)text.textContent=`Su perfil está abierto para edición en ${device}.`;
   if(state){
-    state.className=`session-transfer-state ${waiting?'warn':''}`;
+    state.className=`session-transfer-state ${waiting?'warn':stale?'error':''}`;
     state.textContent=waiting
-      ?`Transferencia solicitada. El dispositivo anterior está guardando los cambios antes de ceder la edición.`
+      ?'Transferencia solicitada. El otro dispositivo está guardando los cambios antes de ceder la edición.'
       :stale
         ?'La sesión anterior dejó de responder. Puede recuperar la edición en este dispositivo.'
-        :'Puede consultar el perfil aquí. La edición no cambiará de dispositivo hasta que usted lo confirme.';
+        :'Puede consultar el perfil aquí. La edición no cambiará de dispositivo hasta que usted pulse “Editar o continuar aquí”.';
   }
   if(continueBtn){
-    continueBtn.disabled=waiting;
+    continueBtn.classList.remove('is-busy');
+    continueBtn.disabled=waiting||stale;
     continueBtn.textContent=waiting?'Esperando transferencia…':'Editar o continuar aquí';
+    continueBtn.classList.toggle('hidden',stale);
   }
-  if(recoverBtn)recoverBtn.classList.toggle('hidden',!stale);
+  if(recoverBtn){
+    recoverBtn.classList.remove('is-busy');
+    recoverBtn.disabled=false;
+    recoverBtn.classList.toggle('hidden',!stale);
+  }
   modal.classList.remove('hidden');
   document.body.classList.add('session-transfer-open');
+  scheduleSessionStaleUiRefresh();
 }
-window.closeSessionTransferModal=function(){sessionTransferModalDismissed=true;hideSessionTransferModal()}
+window.closeSessionTransferModal=function(){
+  sessionTransferModalDismissed=true;
+  hideSessionTransferModal();
+}
 window.continueEditingHere=async function(){
   sessionTransferModalDismissed=false;
   if(!db||!currentUser||isAdmin())return;
   activeSessionId=activeSessionId||getOrCreateSessionId();
-  const ref=doc(db,'profileSessions',currentUser.uid);
-  const snap=await withTimeout(getDoc(ref),SESSION_STATUS_READ_TIMEOUT_MS,null);
-  if(!snap){
-    updateSessionStatus('No fue posible verificar el otro dispositivo. Intente nuevamente.','warn');
-    return;
-  }
-  const d=snap.exists()?snap.data():{};
+
+  const d=sessionSnapshotCache||{};
   const active=String(d.activeSessionId||'');
   const heartbeat=Number(d.heartbeatMs)||0;
+
   if(active===activeSessionId){
-    hideSessionTransferModal();
+    setSessionActionBusy(true,'Preparando edición…');
     await activateSessionControl({preferRemote:true});
+    hideSessionTransferModal();
+    setSessionActionBusy(false);
     return;
   }
   if(!active){
+    setSessionActionBusy(true,'Obteniendo edición…');
     const claimed=await forceClaimSession();
+    setSessionActionBusy(false);
     if(claimed)hideSessionTransferModal();
+    else toast('No fue posible obtener el control de edición.');
     return;
   }
   if(sessionIsStale(active,heartbeat)){
     showSessionTransferModal({device:String(d.activeDevice||'otro dispositivo'),stale:true});
     return;
   }
+
   sessionTransferRequested=true;
   sessionConflictDevice=String(d.activeDevice||'otro dispositivo');
+  setSessionActionBusy(true,'Solicitando transferencia…');
   updateSessionStatus(`Transferencia solicitada desde ${sessionConflictDevice}…`,'warn');
-  showSessionTransferModal({device:sessionConflictDevice,waiting:true,stale:false});
-  const requested=await withTimeout(setDoc(ref,{
+  const requested=await withTimeout(setDoc(doc(db,'profileSessions',currentUser.uid),{
     takeoverRequestedSessionId:activeSessionId,
     takeoverRequestedDevice:deviceLabel(),
     takeoverRequestedAtMs:Date.now(),
     takeoverRequestedAt:serverTimestamp()
   },{merge:true}),3000,false);
+
   if(requested===false){
-    updateSessionStatus('Transferencia pendiente de conexión · se reintentará','warn');
+    sessionTransferRequested=false;
+    setSessionActionBusy(false);
+    showSessionTransferModal({device:sessionConflictDevice,waiting:false,stale:false});
+    updateSessionStatus('No fue posible solicitar la transferencia. Intente nuevamente.','warn');
+    toast('No se pudo enviar la solicitud de transferencia.');
+    return;
   }
-  scheduleSessionControlRetry(2000);
+  showSessionTransferModal({device:sessionConflictDevice,waiting:true,stale:false});
 }
 window.recoverEditingHere=async function(){
   sessionTransferModalDismissed=false;
   if(!db||!currentUser||isAdmin())return;
   activeSessionId=activeSessionId||getOrCreateSessionId();
-  const ref=doc(db,'profileSessions',currentUser.uid);
-  const snap=await withTimeout(getDoc(ref),SESSION_STATUS_READ_TIMEOUT_MS,null);
-  if(!snap){toast('No fue posible verificar la sesión anterior.');return}
-  const d=snap.exists()?snap.data():{};
+  const d=sessionSnapshotCache||{};
   const active=String(d.activeSessionId||'');
   const heartbeat=Number(d.heartbeatMs)||0;
   if(active&&active!==activeSessionId&&!sessionIsStale(active,heartbeat)){
-    showSessionTransferModal({device:String(d.activeDevice||'otro dispositivo'),waiting:sessionTransferRequested,stale:false});
-    toast('El otro dispositivo todavía está activo. Espere a que termine la transferencia.');
+    showSessionTransferModal({device:String(d.activeDevice||'otro dispositivo'),waiting:false,stale:false});
+    toast('El otro dispositivo todavía está activo.');
     return;
   }
+  setSessionActionBusy(true,'Recuperando edición…');
   const claimed=await forceClaimSession();
+  setSessionActionBusy(false);
   if(claimed){
     sessionTransferRequested=false;
     sessionTransferModalDismissed=false;
     hideSessionTransferModal();
     toast('Edición recuperada en este dispositivo.');
-  }else toast('La sesión anterior todavía no puede recuperarse con seguridad.');
+  }else{
+    showSessionTransferModal({device:String(d.activeDevice||'otro dispositivo'),stale:true});
+    toast('La edición aún no puede recuperarse con seguridad.');
+  }
 }
-function scheduleSessionControlRetry(delay=SESSION_RETRY_MS){
-  clearTimeout(sessionControlRetryTimer);
-  if(!currentUser||isAdmin()||sessionHasControl)return;
-  sessionControlRetryTimer=setTimeout(()=>retrySessionControl().catch(e=>console.warn('Reintento de control de sesión pendiente',e)),delay);
+function scheduleSessionControlRetry(){
+  // V87: no hay polling de sesión. La transferencia se resuelve por onSnapshot.
 }
 async function retrySessionControl(){
-  if(!db||!currentUser||isAdmin()||sessionHasControl)return false;
-  activeSessionId=activeSessionId||getOrCreateSessionId();
-  const ref=doc(db,'profileSessions',currentUser.uid);
-  const snap=await withTimeout(getDoc(ref),SESSION_STATUS_READ_TIMEOUT_MS,null);
-  if(!snap){
-    updateSessionStatus('Perfil disponible · verificando el control de edición…','warn');
-    scheduleSessionControlRetry();
-    return false;
-  }
-  const d=snap.exists()?snap.data():{};
-  const active=String(d.activeSessionId||'');
-  const heartbeat=Number(d.heartbeatMs)||0;
-  const device=String(d.activeDevice||'otro dispositivo');
-  const requestId=String(d.takeoverRequestedSessionId||'');
-  if(active===activeSessionId){
-    sessionTransferRequested=false;
-    hideSessionTransferModal();
-    const confirmedHandoff=String(d.lastHandoffToSessionId||'')===activeSessionId;
-    await activateSessionControl({preferRemote:confirmedHandoff});
-    return true;
-  }
-  if(!active){
-    const claimed=await forceClaimSession();
-    if(!claimed)scheduleSessionControlRetry();
-    else hideSessionTransferModal();
-    return claimed;
-  }
-  const stale=sessionIsStale(active,heartbeat);
-  sessionConflictDevice=device;
-  if(stale){
-    updateSessionStatus('La sesión anterior dejó de responder · recuperación disponible','warn');
-    showSessionTransferModal({device,waiting:false,stale:true});
-    scheduleSessionControlRetry();
-    return false;
-  }
-  if(sessionTransferRequested){
-    if(requestId!==activeSessionId){
-      await withTimeout(setDoc(ref,{
-        takeoverRequestedSessionId:activeSessionId,
-        takeoverRequestedDevice:deviceLabel(),
-        takeoverRequestedAtMs:Date.now(),
-        takeoverRequestedAt:serverTimestamp()
-      },{merge:true}),2500,false);
-    }
-    updateSessionStatus(`Esperando a que ${device} guarde y entregue la edición…`,'warn');
-    showSessionTransferModal({device,waiting:true,stale:false});
-  }else{
-    updateSessionStatus(`Solo lectura temporal · edición activa en ${device}`,'readonly');
-    showSessionTransferModal({device,waiting:false,stale:false});
-  }
-  scheduleSessionControlRetry();
   return false;
 }
 function watchSessionDocument(ref){
   if(sessionDocUnsub)sessionDocUnsub();
   sessionDocUnsub=onSnapshot(ref,snap=>{
     const d=snap.exists()?snap.data():{};
+    sessionSnapshotCache=d;
     const active=String(d.activeSessionId||'');
     const requestId=String(d.takeoverRequestedSessionId||'');
     const activeDevice=String(d.activeDevice||'otro dispositivo');
@@ -501,14 +505,13 @@ function watchSessionDocument(ref){
 
     if(active===activeSessionId){
       sessionTransferRequested=false;
-        clearTimeout(sessionControlRetryTimer);
       hideSessionTransferModal();
       const confirmedHandoff=String(d.lastHandoffToSessionId||'')===activeSessionId;
       if(!sessionHasControl&&!sessionActivationBusy){
         activateSessionControl({preferRemote:confirmedHandoff}).catch(e=>{
           console.warn('Activación de sesión pendiente',e);
           sessionHasControl=false;
-          scheduleSessionControlRetry();
+          updateSessionStatus('No fue posible activar la edición. Intente nuevamente.','warn');
         });
       }
       if(requestId&&requestId!==activeSessionId){
@@ -520,26 +523,34 @@ function watchSessionDocument(ref){
     const hadControl=sessionHasControl;
     sessionHasControl=false;
     stopSessionHeartbeat();
+
     if(hadControl){
       applyEditState();
       updateNavState();
       updateSessionStatus('Cambios guardados · la edición continúa en otro dispositivo','readonly');
       toast('La edición continuó en otro dispositivo. Esta sesión quedó en modo consulta.');
     }
+
     if(active){
-          sessionConflictDevice=activeDevice;
-        const waiting=requestId===activeSessionId||sessionTransferRequested;
-      if(requestId===activeSessionId)sessionTransferRequested=true;
-      showSessionTransferModal({device:activeDevice,waiting,stale:sessionIsStale(active,heartbeat)});
-      updateSessionStatus(waiting?`Esperando transferencia desde ${activeDevice}…`:`Solo lectura temporal · edición activa en ${activeDevice}`,waiting?'warn':'readonly');
+      sessionConflictDevice=activeDevice;
+      const waiting=requestId===activeSessionId;
+      if(waiting)sessionTransferRequested=true;
+      const stale=sessionIsStale(active,heartbeat);
+      showSessionTransferModal({device:activeDevice,waiting,stale});
+      updateSessionStatus(
+        waiting?`Esperando transferencia desde ${activeDevice}…`
+          :stale?'La sesión anterior dejó de responder · recuperación disponible'
+          :`Solo lectura temporal · edición activa en ${activeDevice}`,
+        waiting||stale?'warn':'readonly'
+      );
     }else{
-      updateSessionStatus('Perfil cargado · obteniendo control de edición…','warn');
+      sessionSnapshotCache=d;
+      updateSessionStatus('Perfil disponible · puede continuar aquí','warn');
+      showSessionTransferModal({device:'otro dispositivo',waiting:false,stale:true});
     }
-    scheduleSessionControlRetry();
   },e=>{
     console.warn('No fue posible vigilar la sesión activa',e);
-    updateSessionStatus('Perfil disponible · seguimiento de sesión pendiente','warn');
-    scheduleSessionControlRetry();
+    updateSessionStatus('Perfil disponible · seguimiento de sesión no disponible','warn');
   });
 }
 async function requestSingleDeviceControl(){
@@ -559,18 +570,17 @@ async function requestSingleDeviceControl(){
   const initial=await withTimeout(getDoc(ref),SESSION_STATUS_READ_TIMEOUT_MS,null);
   if(!initial){
     sessionHasControl=false;
-    updateSessionStatus('Perfil disponible · verificando el control de edición…','warn');
-    scheduleSessionControlRetry();
+    updateSessionStatus('Perfil disponible · no se pudo verificar la sesión activa','warn');
     return false;
   }
   const d=initial.exists()?initial.data():{};
+  sessionSnapshotCache=d;
   const active=String(d.activeSessionId||'');
   const heartbeat=Number(d.heartbeatMs)||0;
   const device=String(d.activeDevice||'otro dispositivo');
 
   if(!active||active===activeSessionId){
     const claimed=await forceClaimSession();
-    if(!claimed)scheduleSessionControlRetry();
     return claimed;
   }
 
@@ -578,9 +588,11 @@ async function requestSingleDeviceControl(){
   sessionTransferModalDismissed=false;
   sessionConflictDevice=device;
   const stale=sessionIsStale(active,heartbeat);
-  updateSessionStatus(stale?'La sesión anterior dejó de responder · recuperación disponible':`Solo lectura temporal · edición activa en ${device}`,stale?'warn':'readonly');
+  updateSessionStatus(
+    stale?'La sesión anterior dejó de responder · recuperación disponible':`Solo lectura temporal · edición activa en ${device}`,
+    stale?'warn':'readonly'
+  );
   showSessionTransferModal({device,waiting:false,stale});
-  scheduleSessionControlRetry();
   return false;
 }
 async function releaseSessionIfOwned(){
@@ -613,7 +625,7 @@ async function releaseSessionIfOwned(){
 }
 
 const allowedDomain=(window.PAD_ALLOWED_DOMAIN||'uteq.edu.mx').toLowerCase();
-const PAD_BUILD_VERSION='V86-2026-09-30';
+const PAD_BUILD_VERSION='V87-2026-09-30';
 window.PAD_BUILD_VERSION=PAD_BUILD_VERSION;
 const adminEmail=(window.PAD_ADMIN_EMAIL||'ivan.gutierrez@uteq.edu.mx').toLowerCase();
 const googleClientId=String(window.PAD_GOOGLE_CLIENT_ID||'').trim();
@@ -699,7 +711,7 @@ function currentPlanningRecord(create=true){
   if(create)planningByPeriod[period]=raw;
   return raw;
 }
-function planningEnabled(){return !!cfg.planningEnabled}
+function planningEnabled(){return true}
 function planningEditingAllowed(){return editingAllowed()}
 function planningSlotKey(day,start,end){return `${day}|${start}-${end}`}
 function planningSlotLabel(slotKey){
@@ -1309,7 +1321,7 @@ function scheduleCloudProfileSave(){
   if(!db||!currentUser||!remoteProfileLoaded||(!isAdmin()&&individualEditBlocked()))return;
   clearTimeout(cloudSaveTimer);
   // Agrupa pulsaciones rápidas para reducir escrituras y latencia percibida.
-  cloudSaveTimer=setTimeout(()=>syncProfileToCloud({reason:'guardado progresivo'}),1400);
+  cloudSaveTimer=setTimeout(()=>syncProfileToCloud({reason:'guardado progresivo agrupado'}),4500);
 }
 async function forceProfileCheckpointToCloud(reason='checkpoint de seguridad'){
   if(!db||!currentUser)return false;
@@ -2001,57 +2013,33 @@ function updateStepLabels(){
   if($('reviewStepKicker'))$('reviewStepKicker').textContent='Paso 3 de 3';
 }
 function updatePlanningAvailability(){
-  const enabled=planningEnabled();
+  cfg.planningEnabled=true;
   const block=$('commissionsBlock');
   if(block){
-    block.classList.toggle('hidden',!enabled);
-    block.style.display=enabled?'':'none';
+    block.classList.remove('hidden');
+    block.style.display='';
   }
   updateStepLabels();
-
-
-  const st=$('planningAdminStatus');
-  const btn=$('planningToggleBtn');
-  if(st){
-    st.textContent=enabled?'Habilitado · obligatorio':'Deshabilitado';
-    st.className=`planning-admin-status ${enabled?'enabled':'disabled'}`;
-  }
-  if(btn){
-    btn.textContent=enabled?'Deshabilitar apartado de Comisiones':'Habilitar apartado de Comisiones';
-    btn.className=`planning-toggle-btn ${enabled?'disable':'enable'}`;
-  }
 }
 window.togglePlanningPage=async function(){
-  if(!isAdmin())return;
-  const next=!cfg.planningEnabled;
-  const ok=confirm(
-    next
-      ?'¿Habilitar el apartado 4 de Comisiones?\n\nSi se habilita, las preguntas sobre comisiones autorizadas y proyectos avalados serán obligatorias; ambas permiten seleccionar No aplica. La información NO se incluirá en el PDF.'
-      :'¿Deshabilitar el apartado 4 de Comisiones?\n\nLa información ya capturada se conservará, pero dejará de mostrarse y de ser obligatoria.'
-  );
-  if(!ok)return;
-  cfg.planningEnabled=next;
-  persist();
-  await saveGlobalSettings(next?'Apartado de Comisiones habilitado':'Apartado de Comisiones deshabilitado');
+  cfg.planningEnabled=true;
   updatePlanningAvailability();
-  renderPlanning();
-  renderAdmin();
-  toast(next?'Comisiones habilitadas.':'Comisiones deshabilitadas.');
+  toast('El apartado de Comisiones permanece habilitado.');
 }
 
 
-function renderCommissionScheduleGrid(commission,index){
+function renderCommissionScheduleGrid(commission){
   const selected=new Set(commission.reservedSlots||[]);
-  return `<div class="commission-schedule-grid ${commission.scheduleRequired==='yes'?'':'hidden'}">
-    <div class="commission-schedule-caption">Bloques específicos de atención</div>
+  return `<div id="commissionEditorSchedule" class="commission-schedule-grid ${commission.scheduleRequired==='yes'?'':'hidden'}">
+    <div class="commission-schedule-caption">Bloqueos específicos de atención</div>
     <div class="compact-schedule">
       ${PLANNING_DAYS.map(day=>`<div class="compact-day">
         <b>${day.label}</b>
         <div class="compact-slots">
           ${PLANNING_SLOTS.map(([start,end],slotIndex)=>{
-            const key=planningSlotKey(day.key,start,end);
+            const slot=planningSlotKey(day.key,start,end);
             return `<label class="compact-slot ${slotIndex===PLANNING_SLOTS.length-1?'late':''}" title="${day.label} ${start}-${end}">
-              <input type="checkbox" data-commission-index="${index}" data-commission-slot="${key}" ${selected.has(key)?'checked':''}>
+              <input type="checkbox" data-commission-editor-slot="${slot}" ${selected.has(slot)?'checked':''}>
               <span>${start.replace(':00','')} a ${end.replace(':00','')}</span>
             </label>`;
           }).join('')}
@@ -2060,48 +2048,75 @@ function renderCommissionScheduleGrid(commission,index){
     </div>
   </div>`;
 }
-function renderCommissionList(record){
-  const rows=(record.commissions||[]).length?record.commissions:[emptyCommission()];
-  return rows.map((c,i)=>`<div class="commission-entry" data-commission-row="${i}">
+function renderCommissionSummary(c,i){
+  const schedule=commissionScheduleSummary(c);
+  return `<div class="commission-summary-card" data-commission-summary="${i}">
+    <div class="commission-summary-main">
+      <strong>${escapeHtml(c.name||`Comisión ${i+1}`)}</strong>
+      <span><b>${escapeHtml(String(c.authorizedHours||'0'))} h autorizadas</b>${c.scheduleRequired==='yes'&&schedule?` · ${escapeHtml(schedule)}`:' · Sin bloqueo horario específico'}</span>
+    </div>
+    <div class="commission-summary-actions">
+      <button type="button" class="commission-summary-edit" onclick="editPlanningCommission(${i})">Editar</button>
+      <button type="button" class="commission-summary-delete" onclick="removePlanningCommission(${i})">Eliminar</button>
+    </div>
+  </div>`;
+}
+function renderCommissionEditor(){
+  const c=planningCommissionDraft||emptyCommission();
+  const editing=Number.isInteger(planningCommissionEditorIndex);
+  return `<div id="commissionEditor" class="commission-entry commission-editor" data-commission-editor="1">
+    <div class="commission-editor-title">${editing?'Editar comisión':'Nueva comisión'}</div>
     <div class="commission-entry-top">
-      <span class="commission-entry-number">${i+1}</span>
       <label class="commission-name-field">Nombre de la comisión
-        <input data-commission-name="${i}" value="${escapeHtml(c.name||'')}" placeholder="Ej. Enlace de calidad, Enlace de tutoría, Coordinación de visitas..." onfocus="this.dataset.ph=this.placeholder;this.placeholder=''" onblur="if(!this.value)this.placeholder=this.dataset.ph||'Ej. Enlace de calidad, Enlace de tutoría, Coordinación de visitas...'">
+        <input id="commissionEditorName" value="${escapeHtml(c.name||'')}" placeholder="Ej. Enlace de calidad, Enlace de tutoría, Coordinación de visitas...">
       </label>
       <label class="commission-hours-field">Horas autorizadas
-        <input data-commission-hours="${i}" type="number" min="0" step="0.5" value="${escapeHtml(String(c.authorizedHours||''))}" placeholder="Ej. 3">
+        <input id="commissionEditorHours" type="number" min="0" step="0.5" value="${escapeHtml(String(c.authorizedHours||''))}" placeholder="Ej. 3">
       </label>
-      <button type="button" class="commission-remove-btn" onclick="removePlanningCommission(${i})" ${rows.length===1?'disabled':''}>Eliminar</button>
     </div>
     <div class="commission-schedule-question">
-      <span>¿Requiere un bloque específico de horas en la semana?</span>
-      <label class="mini-choice yes"><input type="radio" name="commissionSchedule_${i}" value="yes" ${c.scheduleRequired==='yes'?'checked':''} onchange="commissionScheduleChanged(${i},'yes')"> Sí</label>
-      <label class="mini-choice no"><input type="radio" name="commissionSchedule_${i}" value="no" ${c.scheduleRequired!=='yes'?'checked':''} onchange="commissionScheduleChanged(${i},'no')"> No</label>
-      <div class="commission-inline-actions">
-        <button type="button" class="commission-inline-save-btn" onclick="savePlanningCommission(${i})">✓ Guardar</button>
-        <button type="button" class="commission-inline-add-btn" onclick="addPlanningCommission()">＋ Agregar nueva comisión</button>
-      </div>
+      <span>¿Requiere un <b>bloqueo específico</b> de horas en la semana?</span>
+      <label class="mini-choice yes"><input type="radio" name="commissionEditorSchedule" value="yes" ${c.scheduleRequired==='yes'?'checked':''} onchange="commissionScheduleChanged('yes')"> Sí</label>
+      <label class="mini-choice no"><input type="radio" name="commissionEditorSchedule" value="no" ${c.scheduleRequired!=='yes'?'checked':''} onchange="commissionScheduleChanged('no')"> No</label>
     </div>
-    ${renderCommissionScheduleGrid(c,i)}
-  </div>`).join('');
+    ${renderCommissionScheduleGrid(c)}
+    <div class="commission-editor-actions">
+      <button type="button" class="commission-inline-save-btn" onclick="savePlanningCommission()">✓ Guardar comisión</button>
+      <button type="button" class="commission-inline-add-btn" onclick="addPlanningCommission()">＋ Agregar nueva comisión</button>
+      ${editing?'<button type="button" class="commission-editor-cancel" onclick="cancelPlanningCommissionEdit()">Cancelar edición</button>':''}
+    </div>
+  </div>`;
+}
+function renderPlanningCommissions(){
+  const root=$('planningCommissionList');
+  if(!root)return;
+  const record=currentPlanningRecord(true);
+  record.commissions=(record.commissions||[]).filter(c=>!commissionIsBlank(c));
+  root.innerHTML=`
+    <div class="commission-summary-list">
+      ${record.commissions.length
+        ?record.commissions.map((c,i)=>renderCommissionSummary(c,i)).join('')
+        :'<div class="commission-summary-empty">Todavía no hay comisiones guardadas.</div>'}
+    </div>
+    ${renderCommissionEditor()}`;
 }
 function renderPlanning(){
   const root=$('commissionsBlock');
   if(!root)return;
   const record=currentPlanningRecord(true);
-
+  cfg.planningEnabled=true;
 
   root.querySelectorAll('input[name="planningCommissionMode"]').forEach(x=>x.checked=x.value===record.commissionMode);
   root.querySelectorAll('input[name="planningProjectMode"]').forEach(x=>x.checked=x.value===record.projectMode);
 
-
-  if($('planningCommissionList'))$('planningCommissionList').innerHTML=renderCommissionList(record);
+  planningCommissionEditorIndex=null;
+  planningCommissionDraft=emptyCommission();
+  renderPlanningCommissions();
   if($('planningProjectName'))$('planningProjectName').value=record.projectName||'';
   if($('planningProjectRole'))$('planningProjectRole').value=record.projectRole||'';
   if($('planningProjectHours'))$('planningProjectHours').value=record.projectHours||'';
   if($('planningProjectReference'))$('planningProjectReference').value=record.projectReference||'';
   if($('planningComments'))$('planningComments').value=record.comments||'';
-
 
   updatePlanningConditionalUI();
   updatePlanningAvailability();
@@ -2111,24 +2126,19 @@ function updatePlanningConditionalUI(){
   if($('planningCommissionsFields'))$('planningCommissionsFields').classList.toggle('hidden',record.commissionMode!=='yes');
   if($('planningProjectFields'))$('planningProjectFields').classList.toggle('hidden',record.projectMode!=='yes');
 }
+function collectCommissionEditorFromDom(){
+  const name=$('commissionEditorName')?.value.trim()||'';
+  const authorizedHours=$('commissionEditorHours')?.value.trim()||'';
+  const scheduleRequired=document.querySelector('input[name="commissionEditorSchedule"]:checked')?.value||'no';
+  const reservedSlots=[...document.querySelectorAll('[data-commission-editor-slot]:checked')].map(x=>x.dataset.commissionEditorSlot);
+  planningCommissionDraft={name,authorizedHours,scheduleRequired,reservedSlots};
+  return planningCommissionDraft;
+}
 function collectPlanning(){
   const record=currentPlanningRecord(true);
-  record.commissionMode=document.querySelector('input[name="planningCommissionMode"]:checked')?.value||'';
-  record.projectMode=document.querySelector('input[name="planningProjectMode"]:checked')?.value||'';
-
-
-  record.commissions=[...document.querySelectorAll('[data-commission-row]')].map(row=>{
-    const i=Number(row.dataset.commissionRow);
-    const prev=(record.commissions||[])[i]||emptyCommission();
-    return {
-      name:row.querySelector(`[data-commission-name="${i}"]`)?.value.trim()||'',
-      authorizedHours:row.querySelector(`[data-commission-hours="${i}"]`)?.value.trim()||'',
-      scheduleRequired:row.querySelector(`input[name="commissionSchedule_${i}"]:checked`)?.value||prev.scheduleRequired||'no',
-      reservedSlots:[...row.querySelectorAll('[data-commission-slot]:checked')].map(x=>x.dataset.commissionSlot)
-    };
-  });
-  if(!record.commissions.length)record.commissions=[emptyCommission()];
-
+  record.commissionMode=document.querySelector('input[name="planningCommissionMode"]:checked')?.value||record.commissionMode||'';
+  record.projectMode=document.querySelector('input[name="planningProjectMode"]:checked')?.value||record.projectMode||'';
+  record.commissions=(record.commissions||[]).filter(c=>!commissionIsBlank(c));
 
   record.projectName=$('planningProjectName')?.value.trim()||'';
   record.projectRole=$('planningProjectRole')?.value.trim()||'';
@@ -2141,48 +2151,97 @@ function collectPlanning(){
   return record;
 }
 window.planningModeChanged=function(){
-  collectPlanning();
+  const record=collectPlanning();
   updatePlanningConditionalUI();
-  persist();
+  persist({schedule:false});
+  scheduleCloudProfileSave();
   updateNavState();
 }
-window.commissionScheduleChanged=function(index,value){
-  const record=collectPlanning();
-  if(!record.commissions[index])return;
-  record.commissions[index].scheduleRequired=value;
-  if(value!=='yes')record.commissions[index].reservedSlots=[];
-  planningByPeriod[cfg.periodo]=record;
-  persist();
-  renderPlanning();
+window.commissionScheduleChanged=function(value){
+  collectCommissionEditorFromDom();
+  planningCommissionDraft.scheduleRequired=value;
+  if(value!=='yes'){
+    planningCommissionDraft.reservedSlots=[];
+    document.querySelectorAll('[data-commission-editor-slot]').forEach(x=>x.checked=false);
+  }
+  $('commissionEditorSchedule')?.classList.toggle('hidden',value!=='yes');
 }
-window.savePlanningCommission=function(index){
-  if(!planningEnabled()){toast('El apartado de Comisiones está deshabilitado.');return false}
+window.savePlanningCommission=function(){
   if(!planningEditingAllowed()){toast('La edición está cerrada.');return false}
-  const record=collectPlanning();
+  const draft=collectCommissionEditorFromDom();
+  if(!String(draft.name||'').trim()){
+    $('commissionEditorName')?.focus();
+    toast('Capture el nombre de la comisión.');
+    return false;
+  }
+  if(String(draft.authorizedHours||'').trim()===''){
+    $('commissionEditorHours')?.focus();
+    toast('Capture las horas autorizadas.');
+    return false;
+  }
+  if(draft.scheduleRequired==='yes'&&!draft.reservedSlots.length){
+    toast('Seleccione al menos un día y horario para el bloqueo específico.');
+    return false;
+  }
+  const record=currentPlanningRecord(true);
+  record.commissionMode='yes';
+  record.commissions=(record.commissions||[]).filter(c=>!commissionIsBlank(c));
+  if(Number.isInteger(planningCommissionEditorIndex) && record.commissions[planningCommissionEditorIndex]){
+    record.commissions[planningCommissionEditorIndex]=JSON.parse(JSON.stringify(draft));
+  }else{
+    record.commissions.push(JSON.parse(JSON.stringify(draft)));
+  }
   planningByPeriod[cfg.periodo]=record;
-  persist();
-  toast(`Comisión ${Number(index)+1} guardada.`);
+  planningCommissionEditorIndex=null;
+  planningCommissionDraft=emptyCommission();
+  persist({schedule:false});
+  scheduleCloudProfileSave();
+  renderPlanningCommissions();
+  toast('Comisión guardada.');
   return true;
 }
 window.addPlanningCommission=function(){
   if(!planningEditingAllowed())return;
-  const record=collectPlanning();
-  record.commissions.push(emptyCommission());
-  planningByPeriod[cfg.periodo]=record;
-  persist();
-  renderPlanning();
-  requestAnimationFrame(()=>{
-    document.querySelector(`[data-commission-name="${record.commissions.length-1}"]`)?.focus();
-  });
+  const draft=collectCommissionEditorFromDom();
+  if(!commissionIsBlank(draft)){
+    const discard=confirm('Hay datos sin guardar en el editor. ¿Desea limpiar los campos para capturar una nueva comisión?');
+    if(!discard)return;
+  }
+  planningCommissionEditorIndex=null;
+  planningCommissionDraft=emptyCommission();
+  renderPlanningCommissions();
+  requestAnimationFrame(()=>$('commissionEditorName')?.focus());
+}
+window.editPlanningCommission=function(index){
+  if(!planningEditingAllowed())return;
+  const record=currentPlanningRecord(true);
+  const c=record.commissions?.[index];
+  if(!c)return;
+  planningCommissionEditorIndex=Number(index);
+  planningCommissionDraft=JSON.parse(JSON.stringify(c));
+  renderPlanningCommissions();
+  requestAnimationFrame(()=>$('commissionEditorName')?.focus());
+}
+window.cancelPlanningCommissionEdit=function(){
+  planningCommissionEditorIndex=null;
+  planningCommissionDraft=emptyCommission();
+  renderPlanningCommissions();
 }
 window.removePlanningCommission=function(index){
   if(!planningEditingAllowed())return;
-  const record=collectPlanning();
-  if(record.commissions.length<=1)return;
+  const record=currentPlanningRecord(true);
+  const c=record.commissions?.[index];
+  if(!c)return;
+  if(!confirm(`¿Eliminar la comisión “${c.name||'seleccionada'}”?`))return;
   record.commissions.splice(index,1);
+  if(!record.commissions.length)record.commissionMode='';
   planningByPeriod[cfg.periodo]=record;
-  persist();
-  renderPlanning();
+  planningCommissionEditorIndex=null;
+  planningCommissionDraft=emptyCommission();
+  persist({schedule:false});
+  scheduleCloudProfileSave();
+  renderPlanningCommissions();
+  toast('Comisión eliminada.');
 }
 function clearPlanningValidation(){
   document.querySelectorAll('#commissionsBlock .planning-question-error').forEach(x=>x.classList.remove('planning-question-error'));
@@ -4122,19 +4181,13 @@ window.saveAdmin=function(){
   cfg.periodo=$('periodoAdmin').value.trim()||cfg.periodo;
 
 
-  if(previousPeriod!==cfg.periodo){
-    cfg.planningEnabled=confirm(
-      `El periodo cambió de "${previousPeriod}" a "${cfg.periodo}".\n\n`+
-      `¿Desea habilitar para este periodo el apartado 4 de Comisiones?\n\n`+
-      `Si lo habilita, las preguntas sobre comisiones autorizadas y proyectos avalados serán obligatorias; ambas permiten No aplica. La información no se imprimirá ni formará parte del PDF.`
-    );
-  }
+  cfg.planningEnabled=true;
 
 
   // El cambio de periodo nunca borra profile, answers, programMeta ni planeaciones de periodos anteriores.
   updatePeriodBadges();cacheGlobalSettings();persist();updatePlanningAvailability();renderPlanning();
   saveGlobalSettings(previousPeriod===cfg.periodo?'Configuración institucional actualizada':`Periodo actualizado de ${previousPeriod} a ${cfg.periodo} sin borrar perfiles`);
-  toast(previousPeriod===cfg.periodo?'Configuración guardada.':`Periodo actualizado. Comisiones ${cfg.planningEnabled?'habilitadas':'deshabilitadas'} para el nuevo periodo.`);
+  toast(previousPeriod===cfg.periodo?'Configuración guardada.':'Periodo actualizado. El apartado de Comisiones permanece habilitado.');
 }
 
 
@@ -4296,7 +4349,7 @@ async function renderTeacherAdminList(){
           :(doneNow
             ?`Última edición: ${lastEdit} · Finalizó y envió: ${lastCompletion}`
             :`Última edición: ${lastEdit}`);
-      return `<div class="teacher-admin-row ${individuallyDisabled?'individual-disabled':override?'individual-open':doneNow?'finished':'open'}">
+      return `<div class="teacher-admin-row ${individuallyDisabled?'individual-disabled':override?'individual-open':doneNow?'finished':'open'}" data-teacher-uid="${escapeHtml(r.uid)}">
         <div class="teacher-admin-main">
           <b>${escapeHtml(r.name)}</b>
           <span>${escapeHtml(r.email||'Sin correo registrado')}${r.categoria?` · ${escapeHtml(r.categoria)}`:''}</span>
@@ -4380,6 +4433,44 @@ window.printTeacherProfile=async function(uid){
 }
 
 
+function updateTeacherAdminRowVisual(uid){
+  const r=teacherAdminCache[uid];
+  if(!r)return;
+  const row=document.querySelector(`[data-teacher-uid="${CSS.escape(uid)}"]`);
+  if(!row)return;
+  const doneNow=r.submittedPeriod===cfg.periodo;
+  const override=!!r.individualEditEnabled;
+  const individuallyDisabled=!!r.individualEditDisabled;
+  row.classList.remove('individual-disabled','individual-open','finished','open');
+  row.classList.add(individuallyDisabled?'individual-disabled':override?'individual-open':doneNow?'finished':'open');
+
+  const status=row.querySelector('.teacher-admin-status');
+  if(status){
+    status.className=`teacher-admin-status ${individuallyDisabled?'individual-disabled':override?'individual-open':doneNow?'finished':'open'}`;
+    const strong=status.querySelector('strong');
+    const span=status.querySelector('span');
+    if(strong)strong.textContent=individuallyDisabled?'Edición individual deshabilitada':override?'Edición individual habilitada':doneNow?'Concluido':'En captura / sin concluir';
+    if(span){
+      const lastEdit=formatTeacherUpdatedAt(r.updatedAt);
+      span.textContent=individuallyDisabled
+        ?`Última edición: ${lastEdit} · Edición deshabilitada por Administración`
+        :override
+          ?`Última edición: ${lastEdit} · Edición individual habilitada`
+          :doneNow?`Última edición: ${lastEdit} · Perfil concluido`:`Última edición: ${lastEdit}`;
+    }
+  }
+
+  const btn=row.querySelector('.teacher-reopen-btn');
+  if(btn){
+    const enableNext=individuallyDisabled || (doneNow && !override);
+    btn.textContent=enableNext?'Habilitar edición':'Deshabilitar edición';
+    btn.classList.toggle('active',!enableNext);
+    btn.disabled=false;
+    btn.classList.remove('is-busy');
+    btn.onclick=()=>window.setTeacherEditAccess(uid,enableNext);
+  }
+}
+
 window.setTeacherEditAccess=async function(uid,enable){
   if(!isAdmin()||!db)return;
   const r=teacherAdminCache[uid]||{};
@@ -4392,24 +4483,38 @@ No se modificará ni eliminará ningún dato del perfil. Únicamente se permitir
 
 No se modificará ni eliminará ningún dato. El profesor podrá consultar e imprimir su perfil, pero no podrá cambiar registros hasta que Administración lo habilite nuevamente.`;
   if(!confirm(question))return;
+
+  const row=document.querySelector(`[data-teacher-uid="${CSS.escape(uid)}"]`);
+  const btn=row?.querySelector('.teacher-reopen-btn');
+  if(btn){
+    btn.disabled=true;
+    btn.classList.add('is-busy');
+    btn.textContent=enable?'Habilitando…':'Deshabilitando…';
+  }
+
   try{
-    const ref=doc(db,'profiles',uid);
-    await runTransaction(db,async tx=>{
-      const snap=await tx.get(ref);
-      if(!snap.exists())throw new Error('El perfil seleccionado no existe.');
-      tx.set(ref,{
-        individualEditEnabled:!!enable,
-        individualEditDisabled:!enable,
-        reopenedAt:enable?serverTimestamp():null,
-        reopenedBy:enable?(currentUser.email||''):null,
-        individualEditUpdatedAt:serverTimestamp()
-      },{merge:true});
-    });
-    await writeAudit(`${enable?'Edición individual habilitada':'Edición individual deshabilitada'} para ${r.email||uid}`);
+    // V87: una sola escritura. No se descarga nuevamente toda la colección.
+    await setDoc(doc(db,'profiles',uid),{
+      individualEditEnabled:!!enable,
+      individualEditDisabled:!enable,
+      reopenedAt:enable?serverTimestamp():null,
+      reopenedBy:enable?(currentUser.email||''):null,
+      individualEditUpdatedAt:serverTimestamp()
+    },{merge:true});
+
+    r.individualEditEnabled=!!enable;
+    r.individualEditDisabled=!enable;
+    r.updatedAt=new Date();
+    teacherAdminCache[uid]=r;
+    updateTeacherAdminRowVisual(uid);
     toast(enable?'Edición habilitada. Los datos existentes se conservaron.':'Edición bloqueada. Los datos existentes se conservaron sin cambios.');
-    await renderTeacherAdminList();
   }catch(e){
     console.error('Error de edición individual',e);
+    if(btn){
+      btn.disabled=false;
+      btn.classList.remove('is-busy');
+      btn.textContent=enable?'Habilitar edición':'Deshabilitar edición';
+    }
     alert(`No fue posible ${enable?'habilitar':'deshabilitar'} la edición individual.
 
 Código: ${e?.code||'sin código'}
@@ -5629,19 +5734,30 @@ function setupAutoSave(){
 function setupPlanningAutoSave(){
   let timer=null;
   const isPlanningField=target=>target.matches('#commissionsBlock input,#commissionsBlock textarea');
-  const savePlanningDraft=()=>{
-    collectPlanning();
-    persist();
+  const saveLocalDraft=()=>{
+    try{
+      if($('commissionEditor'))collectCommissionEditorFromDom();
+      collectPlanning();
+      persist({schedule:false});
+    }catch(e){
+      console.warn('No fue posible conservar el borrador local de Comisiones',e);
+    }
   };
   document.addEventListener('input',e=>{
-    if(!planningEnabled()||!planningEditingAllowed()||!isPlanningField(e.target))return;
+    if(!planningEditingAllowed()||!isPlanningField(e.target))return;
+    if(e.target.closest('#commissionEditor')){
+      try{collectCommissionEditorFromDom()}catch(_){}
+    }
     clearTimeout(timer);
-    timer=setTimeout(savePlanningDraft,550);
+    timer=setTimeout(saveLocalDraft,1200);
   });
   document.addEventListener('change',e=>{
-    if(!planningEnabled()||!planningEditingAllowed()||!isPlanningField(e.target))return;
+    if(!planningEditingAllowed()||!isPlanningField(e.target))return;
+    if(e.target.closest('#commissionEditor')){
+      try{collectCommissionEditorFromDom()}catch(_){}
+    }
     clearTimeout(timer);
-    savePlanningDraft();
+    timer=setTimeout(saveLocalDraft,700);
   });
 }
 function setupResilienceGuards(){

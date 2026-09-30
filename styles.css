@@ -11011,3 +11011,152 @@ body.session-transfer-open{overflow:hidden}
 }
 .mobile-pdf-capture .draft-document .draft-watermark strong{font-size:56px!important;font-weight:900!important;letter-spacing:.08em!important}
 .mobile-pdf-capture .draft-document .draft-watermark span{font-size:36px!important;font-weight:800!important;letter-spacing:.18em!important}
+
+
+/* =========================================================
+   V87 · arquitectura ligera, comisiones y respuesta inmediata
+   ========================================================= */
+button,
+[role="button"],
+input[type="button"],
+input[type="submit"]{
+  cursor:pointer;
+  touch-action:manipulation;
+}
+button:disabled,
+[aria-disabled="true"]{cursor:not-allowed}
+button.is-busy{
+  cursor:progress!important;
+  opacity:.82;
+  pointer-events:none;
+}
+button.is-busy::after{
+  content:"";
+  display:inline-block;
+  width:10px;
+  height:10px;
+  margin-left:8px;
+  border:2px solid currentColor;
+  border-right-color:transparent;
+  border-radius:50%;
+  vertical-align:-1px;
+  animation:v87Spin .75s linear infinite;
+}
+@keyframes v87Spin{to{transform:rotate(360deg)}}
+
+.profile-add-row-btn{
+  background:#eaf7ef!important;
+  border-color:#9bcbae!important;
+  color:#27694a!important;
+}
+.profile-add-row-btn:hover{
+  background:#ddf2e5!important;
+  border-color:#79b993!important;
+}
+
+.commission-inline-add-btn{
+  background:#e8f4ff!important;
+  border-color:#9bc9ee!important;
+  color:#155d8b!important;
+}
+.commission-inline-add-btn:hover{
+  background:#dcefff!important;
+  border-color:#78b9e9!important;
+}
+.commission-editor{
+  border:1px solid #c8dce8!important;
+  background:#fbfdff!important;
+  border-radius:14px!important;
+  padding:14px!important;
+  margin-top:12px!important;
+}
+.commission-editor-title{
+  font-weight:900;
+  color:#174e6c;
+  margin-bottom:10px;
+  font-size:12px;
+}
+.commission-editor-actions{
+  display:flex;
+  gap:8px;
+  flex-wrap:wrap;
+  margin-top:12px;
+}
+.commission-editor-actions button{
+  min-height:36px;
+  border-radius:10px;
+  padding:7px 12px;
+  font-weight:800;
+}
+.commission-editor-cancel{
+  background:#f4f6f8;
+  border:1px solid #cbd5dc;
+  color:#50616c;
+}
+.commission-summary-list{
+  display:grid;
+  gap:8px;
+  margin-bottom:10px;
+}
+.commission-summary-card{
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:12px;
+  padding:11px 12px;
+  border:1px solid #b9d7c7;
+  border-radius:12px;
+  background:#f2faf5;
+}
+.commission-summary-main{
+  display:flex;
+  flex-direction:column;
+  gap:3px;
+  min-width:0;
+}
+.commission-summary-main strong{
+  color:#215f45;
+  font-size:11px;
+}
+.commission-summary-main span{
+  color:#4d665c;
+  font-size:9.5px;
+  line-height:1.4;
+}
+.commission-summary-actions{
+  display:flex;
+  gap:6px;
+  flex:0 0 auto;
+}
+.commission-summary-actions button{
+  min-height:31px;
+  border-radius:9px;
+  padding:5px 9px;
+  font-size:9px;
+  font-weight:800;
+}
+.commission-summary-edit{
+  background:#e9f4ff;
+  border:1px solid #a9d0eb;
+  color:#175d88;
+}
+.commission-summary-delete{
+  background:#fff3f1;
+  border:1px solid #e3b5ae;
+  color:#98483e;
+}
+.commission-summary-empty{
+  padding:10px 12px;
+  border:1px dashed #c7d4dc;
+  border-radius:10px;
+  background:#fafcfd;
+  color:#6d7d87;
+  font-size:9.5px;
+}
+.session-transfer-actions button{
+  cursor:pointer!important;
+  touch-action:manipulation!important;
+}
+.session-transfer-actions .primary{
+  box-shadow:0 5px 14px rgba(18,79,116,.18);
+}
