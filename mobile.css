@@ -680,3 +680,21 @@
   }
   .program-name-flow .program-exit-focus{font-size:16px!important}
 }
+
+
+/* V86 · revisión final y transferencia entre dispositivos */
+@media screen and (max-width:780px){
+  .review-finalize-cue{
+    position:sticky!important;
+    bottom:8px!important;
+    width:calc(100% - 12px)!important;
+    margin:10px 6px 14px!important;
+    padding:12px 13px!important;
+    display:block!important;
+  }
+  .review-finalize-cue strong{display:block!important;margin-bottom:4px!important;white-space:normal!important}
+  .session-transfer-modal{padding:12px!important}
+  .session-transfer-card{border-radius:16px!important;padding:18px 14px!important}
+  .session-transfer-actions{display:grid!important;grid-template-columns:1fr!important}
+  .session-transfer-actions button{width:100%!important}
+}

@@ -10889,3 +10889,125 @@ body.session-transfer-open{overflow:hidden}
 .expanded-profile .profileTable th{font-size:7.6px!important;padding:2px 3px!important}
 .expanded-profile .profileTable td{height:15px!important}
 .expanded-profile .sign{margin-top:25px!important}
+
+
+/* =========================================================
+   V86 · FLUJO FINAL, BLOQUEO ADMINISTRATIVO Y RENDIMIENTO
+   ========================================================= */
+.save-progress-btn{
+  background:#dff3ff!important;
+  color:#0c5d86!important;
+  border:1px solid #9ed9f6!important;
+  box-shadow:0 4px 12px rgba(59,155,205,.10)!important;
+}
+.save-progress-btn:hover{
+  background:#ccecff!important;
+  border-color:#7fcdf2!important;
+  transform:translateY(-1px);
+}
+.teacher-admin-row.individual-disabled{
+  background:linear-gradient(90deg,#fff7f5,#fff)!important;
+  box-shadow:inset 4px 0 0 #d87862!important;
+}
+.teacher-admin-status.individual-disabled{
+  background:#fff0ed!important;
+  border-color:#efb4a8!important;
+  color:#8e3429!important;
+}
+.review-finalize-cue{
+  position:sticky;
+  bottom:14px;
+  z-index:45;
+  margin:14px auto 18px;
+  width:min(760px,calc(100% - 24px));
+  padding:14px 18px;
+  border-radius:16px;
+  display:flex;
+  align-items:center;
+  gap:12px;
+  box-shadow:0 16px 38px rgba(20,65,96,.18);
+  backdrop-filter:blur(10px);
+  animation:reviewCueFloat 2.2s ease-in-out infinite;
+}
+.review-finalize-cue strong{font-size:15px;white-space:nowrap}
+.review-finalize-cue span{font-size:13px;line-height:1.45}
+.review-finalize-cue.finalize{
+  background:rgba(226,247,255,.96);
+  border:1px solid #86cfe9;
+  color:#0d5577;
+}
+.review-finalize-cue.draft{
+  background:rgba(255,246,223,.97);
+  border:1px solid #e7c46d;
+  color:#775918;
+  animation:none;
+}
+.review-finalize-cue.finalized{
+  background:rgba(232,248,239,.97);
+  border:1px solid #91d2af;
+  color:#286c4a;
+  animation:none;
+}
+@keyframes reviewCueFloat{
+  0%,100%{transform:translateY(0)}
+  50%{transform:translateY(-4px)}
+}
+.draft-watermark{display:none}
+# printArea .sheet{position:relative}
+.course.fast-off .comp-buttons,
+.course.fast-off .area-buttons,
+.course.fast-off .coord-row-check,
+.course.fast-off .ideal-btn{
+  visibility:hidden!important;
+  pointer-events:none!important;
+}
+.session-transfer-card .ghost{
+  background:#f5f7f9;
+  color:#34556b;
+  border:1px solid #cad7df;
+}
+@media print{
+  .draft-document{position:relative!important}
+  .draft-document .draft-watermark{
+    display:flex!important;
+    position:absolute!important;
+    inset:0!important;
+    z-index:9999!important;
+    align-items:center!important;
+    justify-content:center!important;
+    flex-direction:column!important;
+    gap:6px!important;
+    pointer-events:none!important;
+    transform:rotate(-24deg)!important;
+    color:rgba(175,48,48,.17)!important;
+    font-family:Arial,sans-serif!important;
+    text-align:center!important;
+  }
+  .draft-document .draft-watermark strong{
+    font-size:34pt!important;
+    letter-spacing:.08em!important;
+    font-weight:900!important;
+  }
+  .draft-document .draft-watermark span{
+    font-size:22pt!important;
+    letter-spacing:.18em!important;
+    font-weight:800!important;
+  }
+}
+.mobile-pdf-capture .draft-document .draft-watermark{
+  display:flex!important;
+  position:absolute!important;
+  inset:0!important;
+  z-index:9999!important;
+  align-items:center!important;
+  justify-content:center!important;
+  flex-direction:column!important;
+  gap:6px!important;
+  pointer-events:none!important;
+  transform:rotate(-24deg)!important;
+  color:rgba(175,48,48,.17)!important;
+  font-family:Arial,sans-serif!important;
+  text-align:center!important;
+}
+.mobile-pdf-capture .draft-document .draft-watermark strong{font-size:56px!important;font-weight:900!important;letter-spacing:.08em!important}
+.mobile-pdf-capture .draft-document .draft-watermark span{font-size:36px!important;font-weight:800!important;letter-spacing:.18em!important}

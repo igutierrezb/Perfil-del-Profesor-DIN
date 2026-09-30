@@ -29,7 +29,14 @@ service cloud.firestore {
       return exists(sessionPath(uid));
     }
 
-    function validSessionWrite(uid) {
+    function validSessionCreate(uid) {
+      return sessionExists(uid)
+        && request.resource.data.writerSessionId is string
+        && request.resource.data.writerSessionId == get(sessionPath(uid)).data.activeSessionId
+        && request.resource.data.sessionWriteSeq is int;
+    }
+
+    function validSessionUpdate(uid) {
       return sessionExists(uid)
         && request.resource.data.writerSessionId is string
         && request.resource.data.writerSessionId == get(sessionPath(uid)).data.activeSessionId
@@ -38,6 +45,43 @@ service cloud.firestore {
           !resource.data.keys().hasAll(['sessionWriteSeq'])
           || request.resource.data.sessionWriteSeq > resource.data.sessionWriteSeq
         );
+    }
+
+    function adminOnlyFields() {
+      return [
+        'individualEditDisabled',
+        'profileResetToken',
+        'profileDeletionToken',
+        'deletedByAdmin',
+        'deletedAt',
+        'deletedBy',
+        'programProfileResetAt',
+        'programProfileResetBy',
+        'reopenedAt',
+        'reopenedBy',
+        'individualEditUpdatedAt'
+      ];
+    }
+
+    function ownerDoesNotChangeAdminFields() {
+      return !request.resource.data.diff(resource.data).affectedKeys().hasAny(adminOnlyFields());
+    }
+
+    function ownerMayCloseOwnReopen() {
+      return !request.resource.data.diff(resource.data).affectedKeys().hasAny(['individualEditEnabled'])
+        || (
+          request.resource.data.individualEditEnabled == false
+          && request.resource.data.submittedPeriod is string
+          && (
+            !resource.data.keys().hasAll(['individualEditEnabled'])
+            || resource.data.individualEditEnabled == true
+          )
+        );
+    }
+
+    function profileNotIndividuallyBlocked() {
+      return !resource.data.keys().hasAll(['individualEditDisabled'])
+        || resource.data.individualEditDisabled != true;
     }
 
     match /settings/{document=**} {
@@ -54,15 +98,29 @@ service cloud.firestore {
     match /profiles/{uid} {
       allow read: if admin() || own(uid);
 
-      // Migración segura:
-      // - mientras aún no exista profileSessions/{uid}, la V80 puede terminar de sincronizar;
-      // - desde el primer acceso V82, cada escritura del profesor debe probar
-      //   que procede de la sesión activa y avanzar un contador monotónico.
+      // Creación normal del perfil por el propio profesor.
+      // Los controles administrativos no pueden nacer desde el cliente del profesor.
       allow create: if admin()
-        || (own(uid) && (!sessionExists(uid) || validSessionWrite(uid)));
+        || (
+          own(uid)
+          && (!sessionExists(uid) || validSessionCreate(uid))
+          && !request.resource.data.keys().hasAny(adminOnlyFields())
+          && !request.resource.data.keys().hasAny(['individualEditEnabled'])
+        );
 
+      // El profesor sólo puede escribir si:
+      // 1) su sesión es la sesión activa;
+      // 2) Administración no bloqueó individualmente su perfil;
+      // 3) no intenta cambiar campos reservados a Administración.
+      // individualEditEnabled sólo puede pasar de true a false al volver a finalizar.
       allow update: if admin()
-        || (own(uid) && (!sessionExists(uid) || validSessionWrite(uid)));
+        || (
+          own(uid)
+          && profileNotIndividuallyBlocked()
+          && (!sessionExists(uid) || validSessionUpdate(uid))
+          && ownerDoesNotChangeAdminFields()
+          && ownerMayCloseOwnReopen()
+        );
 
       allow delete: if admin();
     }

@@ -10,7 +10,7 @@ test -n "${GOOGLE_CLIENT_ID:-}"
 rm -rf dist
 mkdir -p dist
 
-# V85: sólo artefactos activos de producción.
+# V86: sólo artefactos activos de producción.
 for f in \
   index.html \
   styles.css \
@@ -54,7 +54,7 @@ EOF
 
 cat > dist/build-info.json <<EOF
 {
-  "version": "V85-2026-09-30",
+  "version": "V86-2026-09-30",
   "runtime": "consolidated",
   "legacyBackupModulePublished": false
 }

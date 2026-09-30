@@ -1,6 +1,6 @@
 import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.13.2/firebase-app.js';
 import { getAuth, GoogleAuthProvider, signInWithCredential, signOut, onAuthStateChanged, setPersistence, browserLocalPersistence } from 'https://www.gstatic.com/firebasejs/10.13.2/firebase-auth.js';
-import { getFirestore, doc, getDoc, setDoc, deleteDoc, collection, getDocs, onSnapshot, serverTimestamp, addDoc, runTransaction } from 'https://www.gstatic.com/firebasejs/10.13.2/firebase-firestore.js';
+import { getFirestore, doc, getDoc, setDoc, collection, getDocs, onSnapshot, serverTimestamp, addDoc, runTransaction } from 'https://www.gstatic.com/firebasejs/10.13.2/firebase-firestore.js';
 
 
 const $=id=>document.getElementById(id);
@@ -56,8 +56,10 @@ let sessionHeartbeatTimer=null;
 let sessionHandoffBusy=false;
 let sessionHandoffRetryTimer=null;
 let sessionControlRetryTimer=null;
-let sessionTakeoverPending=false;
 let sessionActivationBusy=false;
+let sessionConflictDevice='';
+let sessionTransferRequested=false;
+let sessionTransferModalDismissed=false;
 let sessionWriteSeq=Number(store.sessionWriteSeq)||0;
 
 function withTimeout(promise,ms,fallbackValue=null){
@@ -76,6 +78,45 @@ function withTimeout(promise,ms,fallbackValue=null){
     return result.kind==='timeout'?fallbackValue:result.value;
   });
 }
+const externalScriptPromises=new Map();
+function loadExternalScriptOnce(src,test){
+  if(test?.())return Promise.resolve(true);
+  if(externalScriptPromises.has(src))return externalScriptPromises.get(src);
+  const promise=new Promise(resolve=>{
+    const existing=[...document.scripts].find(x=>x.src===src);
+    const done=()=>resolve(!!test?.());
+    if(existing){
+      existing.addEventListener('load',done,{once:true});
+      existing.addEventListener('error',()=>resolve(false),{once:true});
+      setTimeout(done,8000);
+      return;
+    }
+    const script=document.createElement('script');
+    script.src=src;
+    script.async=true;
+    script.defer=true;
+    script.addEventListener('load',done,{once:true});
+    script.addEventListener('error',()=>resolve(false),{once:true});
+    document.head.appendChild(script);
+  });
+  externalScriptPromises.set(src,promise);
+  return promise;
+}
+async function ensureGoogleIdentity(){
+  if(window.google?.accounts?.oauth2?.initTokenClient)return true;
+  return loadExternalScriptOnce('https://accounts.google.com/gsi/client',()=>!!window.google?.accounts?.oauth2?.initTokenClient);
+}
+async function ensureExcelLibrary(){
+  if(window.XLSX?.utils)return true;
+  return loadExternalScriptOnce('https://cdn.jsdelivr.net/npm/xlsx-js-style@1.2.0/dist/xlsx.bundle.js',()=>!!window.XLSX?.utils);
+}
+async function ensurePdfLibraries(){
+  const canvasOk=window.html2canvas?true:await loadExternalScriptOnce('https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js',()=>!!window.html2canvas);
+  if(!canvasOk)return false;
+  if(window.jspdf?.jsPDF)return true;
+  return loadExternalScriptOnce('https://cdn.jsdelivr.net/npm/jspdf@2.5.1/dist/jspdf.umd.min.js',()=>!!window.jspdf?.jsPDF);
+}
+
 function sessionStorageKey(){
   return currentUser?.uid?`PAD_UTEQ_SESSION_${currentUser.uid}`:'PAD_UTEQ_SESSION';
 }
@@ -293,6 +334,103 @@ async function activateSessionControl({preferRemote=false}={}){
   }
   return true;
 }
+function sessionIsStale(active,heartbeat){
+  return !active || (Date.now()-Number(heartbeat||0))>SESSION_STALE_MS;
+}
+function hideSessionTransferModal(){
+  const modal=$('sessionTransferModal');
+  if(modal)modal.classList.add('hidden');
+  document.body.classList.remove('session-transfer-open');
+}
+function showSessionTransferModal({device='otro dispositivo',waiting=false,stale=false}={}){
+  const modal=$('sessionTransferModal');
+  if(!modal||(sessionTransferModalDismissed&&!waiting&&!stale))return;
+  sessionConflictDevice=device;
+  const text=$('sessionTransferText'),state=$('sessionTransferState');
+  const continueBtn=$('sessionContinueHereBtn'),recoverBtn=$('sessionRecoverHereBtn');
+  if(text)text.textContent=`Su perfil está abierto para edición en ${device}.`;
+  if(state){
+    state.className=`session-transfer-state ${waiting?'warn':''}`;
+    state.textContent=waiting
+      ?`Transferencia solicitada. El dispositivo anterior está guardando los cambios antes de ceder la edición.`
+      :stale
+        ?'La sesión anterior dejó de responder. Puede recuperar la edición en este dispositivo.'
+        :'Puede consultar el perfil aquí. La edición no cambiará de dispositivo hasta que usted lo confirme.';
+  }
+  if(continueBtn){
+    continueBtn.disabled=waiting;
+    continueBtn.textContent=waiting?'Esperando transferencia…':'Editar o continuar aquí';
+  }
+  if(recoverBtn)recoverBtn.classList.toggle('hidden',!stale);
+  modal.classList.remove('hidden');
+  document.body.classList.add('session-transfer-open');
+}
+window.closeSessionTransferModal=function(){sessionTransferModalDismissed=true;hideSessionTransferModal()}
+window.continueEditingHere=async function(){
+  sessionTransferModalDismissed=false;
+  if(!db||!currentUser||isAdmin())return;
+  activeSessionId=activeSessionId||getOrCreateSessionId();
+  const ref=doc(db,'profileSessions',currentUser.uid);
+  const snap=await withTimeout(getDoc(ref),SESSION_STATUS_READ_TIMEOUT_MS,null);
+  if(!snap){
+    updateSessionStatus('No fue posible verificar el otro dispositivo. Intente nuevamente.','warn');
+    return;
+  }
+  const d=snap.exists()?snap.data():{};
+  const active=String(d.activeSessionId||'');
+  const heartbeat=Number(d.heartbeatMs)||0;
+  if(active===activeSessionId){
+    hideSessionTransferModal();
+    await activateSessionControl({preferRemote:true});
+    return;
+  }
+  if(!active){
+    const claimed=await forceClaimSession();
+    if(claimed)hideSessionTransferModal();
+    return;
+  }
+  if(sessionIsStale(active,heartbeat)){
+    showSessionTransferModal({device:String(d.activeDevice||'otro dispositivo'),stale:true});
+    return;
+  }
+  sessionTransferRequested=true;
+  sessionConflictDevice=String(d.activeDevice||'otro dispositivo');
+  updateSessionStatus(`Transferencia solicitada desde ${sessionConflictDevice}…`,'warn');
+  showSessionTransferModal({device:sessionConflictDevice,waiting:true,stale:false});
+  const requested=await withTimeout(setDoc(ref,{
+    takeoverRequestedSessionId:activeSessionId,
+    takeoverRequestedDevice:deviceLabel(),
+    takeoverRequestedAtMs:Date.now(),
+    takeoverRequestedAt:serverTimestamp()
+  },{merge:true}),3000,false);
+  if(requested===false){
+    updateSessionStatus('Transferencia pendiente de conexión · se reintentará','warn');
+  }
+  scheduleSessionControlRetry(2000);
+}
+window.recoverEditingHere=async function(){
+  sessionTransferModalDismissed=false;
+  if(!db||!currentUser||isAdmin())return;
+  activeSessionId=activeSessionId||getOrCreateSessionId();
+  const ref=doc(db,'profileSessions',currentUser.uid);
+  const snap=await withTimeout(getDoc(ref),SESSION_STATUS_READ_TIMEOUT_MS,null);
+  if(!snap){toast('No fue posible verificar la sesión anterior.');return}
+  const d=snap.exists()?snap.data():{};
+  const active=String(d.activeSessionId||'');
+  const heartbeat=Number(d.heartbeatMs)||0;
+  if(active&&active!==activeSessionId&&!sessionIsStale(active,heartbeat)){
+    showSessionTransferModal({device:String(d.activeDevice||'otro dispositivo'),waiting:sessionTransferRequested,stale:false});
+    toast('El otro dispositivo todavía está activo. Espere a que termine la transferencia.');
+    return;
+  }
+  const claimed=await forceClaimSession();
+  if(claimed){
+    sessionTransferRequested=false;
+    sessionTransferModalDismissed=false;
+    hideSessionTransferModal();
+    toast('Edición recuperada en este dispositivo.');
+  }else toast('La sesión anterior todavía no puede recuperarse con seguridad.');
+}
 function scheduleSessionControlRetry(delay=SESSION_RETRY_MS){
   clearTimeout(sessionControlRetryTimer);
   if(!currentUser||isAdmin()||sessionHasControl)return;
@@ -311,26 +449,44 @@ async function retrySessionControl(){
   const d=snap.exists()?snap.data():{};
   const active=String(d.activeSessionId||'');
   const heartbeat=Number(d.heartbeatMs)||0;
-  const stale=!active || active===activeSessionId || (Date.now()-heartbeat)>SESSION_STALE_MS;
+  const device=String(d.activeDevice||'otro dispositivo');
+  const requestId=String(d.takeoverRequestedSessionId||'');
   if(active===activeSessionId){
+    sessionTransferRequested=false;
+    hideSessionTransferModal();
     const confirmedHandoff=String(d.lastHandoffToSessionId||'')===activeSessionId;
     await activateSessionControl({preferRemote:confirmedHandoff});
     return true;
   }
-  if(stale){
+  if(!active){
     const claimed=await forceClaimSession();
     if(!claimed)scheduleSessionControlRetry();
+    else hideSessionTransferModal();
     return claimed;
   }
-
-  sessionTakeoverPending=true;
-  updateSessionStatus(`Perfil cargado · transfiriendo edición desde ${String(d.activeDevice||'otro dispositivo')}…`,'warn');
-  await withTimeout(setDoc(ref,{
-    takeoverRequestedSessionId:activeSessionId,
-    takeoverRequestedDevice:deviceLabel(),
-    takeoverRequestedAtMs:Date.now(),
-    takeoverRequestedAt:serverTimestamp()
-  },{merge:true}),2500,false);
+  const stale=sessionIsStale(active,heartbeat);
+  sessionConflictDevice=device;
+  if(stale){
+    updateSessionStatus('La sesión anterior dejó de responder · recuperación disponible','warn');
+    showSessionTransferModal({device,waiting:false,stale:true});
+    scheduleSessionControlRetry();
+    return false;
+  }
+  if(sessionTransferRequested){
+    if(requestId!==activeSessionId){
+      await withTimeout(setDoc(ref,{
+        takeoverRequestedSessionId:activeSessionId,
+        takeoverRequestedDevice:deviceLabel(),
+        takeoverRequestedAtMs:Date.now(),
+        takeoverRequestedAt:serverTimestamp()
+      },{merge:true}),2500,false);
+    }
+    updateSessionStatus(`Esperando a que ${device} guarde y entregue la edición…`,'warn');
+    showSessionTransferModal({device,waiting:true,stale:false});
+  }else{
+    updateSessionStatus(`Solo lectura temporal · edición activa en ${device}`,'readonly');
+    showSessionTransferModal({device,waiting:false,stale:false});
+  }
   scheduleSessionControlRetry();
   return false;
 }
@@ -341,11 +497,13 @@ function watchSessionDocument(ref){
     const active=String(d.activeSessionId||'');
     const requestId=String(d.takeoverRequestedSessionId||'');
     const activeDevice=String(d.activeDevice||'otro dispositivo');
+    const heartbeat=Number(d.heartbeatMs)||0;
 
     if(active===activeSessionId){
+      sessionTransferRequested=false;
+        clearTimeout(sessionControlRetryTimer);
+      hideSessionTransferModal();
       const confirmedHandoff=String(d.lastHandoffToSessionId||'')===activeSessionId;
-      sessionTakeoverPending=false;
-      clearTimeout(sessionControlRetryTimer);
       if(!sessionHasControl&&!sessionActivationBusy){
         activateSessionControl({preferRemote:confirmedHandoff}).catch(e=>{
           console.warn('Activación de sesión pendiente',e);
@@ -367,11 +525,13 @@ function watchSessionDocument(ref){
       updateNavState();
       updateSessionStatus('Cambios guardados · la edición continúa en otro dispositivo','readonly');
       toast('La edición continuó en otro dispositivo. Esta sesión quedó en modo consulta.');
-    }else if(requestId===activeSessionId){
-      sessionTakeoverPending=true;
-      updateSessionStatus(`Perfil cargado · transfiriendo edición desde ${activeDevice}…`,'warn');
-    }else if(active){
-      updateSessionStatus(`Solo lectura temporal · edición activa en ${activeDevice}`,'readonly');
+    }
+    if(active){
+          sessionConflictDevice=activeDevice;
+        const waiting=requestId===activeSessionId||sessionTransferRequested;
+      if(requestId===activeSessionId)sessionTransferRequested=true;
+      showSessionTransferModal({device:activeDevice,waiting,stale:sessionIsStale(active,heartbeat)});
+      updateSessionStatus(waiting?`Esperando transferencia desde ${activeDevice}…`:`Solo lectura temporal · edición activa en ${activeDevice}`,waiting?'warn':'readonly');
     }else{
       updateSessionStatus('Perfil cargado · obteniendo control de edición…','warn');
     }
@@ -403,29 +563,23 @@ async function requestSingleDeviceControl(){
     scheduleSessionControlRetry();
     return false;
   }
-
   const d=initial.exists()?initial.data():{};
   const active=String(d.activeSessionId||'');
   const heartbeat=Number(d.heartbeatMs)||0;
-  const stale=!active || active===activeSessionId || (Date.now()-heartbeat)>SESSION_STALE_MS;
+  const device=String(d.activeDevice||'otro dispositivo');
 
-  if(stale){
+  if(!active||active===activeSessionId){
     const claimed=await forceClaimSession();
     if(!claimed)scheduleSessionControlRetry();
     return claimed;
   }
 
-  sessionTakeoverPending=true;
-  updateSessionStatus(`Perfil cargado · transfiriendo edición desde ${String(d.activeDevice||'otro dispositivo')}…`,'warn');
-  const requested=await withTimeout(setDoc(ref,{
-    takeoverRequestedSessionId:activeSessionId,
-    takeoverRequestedDevice:deviceLabel(),
-    takeoverRequestedAtMs:Date.now(),
-    takeoverRequestedAt:serverTimestamp()
-  },{merge:true}),2500,false);
-  if(requested===false){
-    updateSessionStatus('Perfil cargado · transferencia pendiente de conexión','warn');
-  }
+  sessionHasControl=false;
+  sessionTransferModalDismissed=false;
+  sessionConflictDevice=device;
+  const stale=sessionIsStale(active,heartbeat);
+  updateSessionStatus(stale?'La sesión anterior dejó de responder · recuperación disponible':`Solo lectura temporal · edición activa en ${device}`,stale?'warn':'readonly');
+  showSessionTransferModal({device,waiting:false,stale});
   scheduleSessionControlRetry();
   return false;
 }
@@ -459,7 +613,7 @@ async function releaseSessionIfOwned(){
 }
 
 const allowedDomain=(window.PAD_ALLOWED_DOMAIN||'uteq.edu.mx').toLowerCase();
-const PAD_BUILD_VERSION='V85-2026-09-30';
+const PAD_BUILD_VERSION='V86-2026-09-30';
 window.PAD_BUILD_VERSION=PAD_BUILD_VERSION;
 const adminEmail=(window.PAD_ADMIN_EMAIL||'ivan.gutierrez@uteq.edu.mx').toLowerCase();
 const googleClientId=String(window.PAD_GOOGLE_CLIENT_ID||'').trim();
@@ -781,6 +935,12 @@ function applyEditState(){
   if(commissionsRoot){
     commissionsRoot.querySelectorAll('input,select,textarea,button').forEach(el=>el.disabled=planningLocked);
   }
+  if(!isAdmin()&&individualEditBlocked()){
+    clearTimeout(cloudSaveTimer);
+    clearTimeout(cloudRetryTimer);
+  }
+  updateReviewFinalizeUI();
+
   const planningBanner=$('commissionsLockedBanner');
   if(planningBanner){
     planningBanner.classList.toggle('hidden',!planningLocked);
@@ -1076,8 +1236,8 @@ function resetLocalTeacherData({keepProfile=false}={}){
   applyEditState();
   updateNavState();
 }
-function profileCloudPayload(){
-  return {
+function profileCloudPayload({releaseEditOverride=false}={}){
+  const payload={
     uid:currentUser?.uid||'',
     email:currentUser?.email||'',
     displayName:currentUser?.displayName||'',
@@ -1087,11 +1247,6 @@ function profileCloudPayload(){
     period:cfg.periodo,
     submittedPeriod:store.submittedPeriod||null,
     finalizedAtMs:store.finalizedAtMs||null,
-    individualEditEnabled:!!store.individualEditEnabled,
-    individualEditDisabled:!!store.individualEditDisabled,
-    profileResetToken:store.profileResetToken||null,
-    profileDeletionToken:store.profileDeletionToken||null,
-    deletedByAdmin:false,
     planningByPeriod:JSON.parse(JSON.stringify(planningByPeriod)),
     clientUpdatedAt:Number(store.localUpdatedAt)||Date.now(),
     dataRevision:Number(store.dataRevision)||0,
@@ -1099,10 +1254,14 @@ function profileCloudPayload(){
     sessionWriteSeq:nextSessionWriteSeq(),
     updatedAt:serverTimestamp()
   };
+  // Los controles administrativos nunca viajan en el autoguardado del profesor.
+  // La única excepción es cerrar una reapertura individual al finalizar de nuevo.
+  if(releaseEditOverride)payload.individualEditEnabled=false;
+  return payload;
 }
 function scheduleCloudRetry(delay=5000){
   clearTimeout(cloudRetryTimer);
-  if(!currentUser||!store.syncPending)return;
+  if(!currentUser||!store.syncPending||(!isAdmin()&&individualEditBlocked()))return;
   cloudRetryTimer=setTimeout(()=>{
     if(navigator.onLine===false||!sessionCanWrite()){
       scheduleCloudRetry(Math.min(delay*2,30000));
@@ -1113,13 +1272,17 @@ function scheduleCloudRetry(delay=5000){
     }).catch(()=>scheduleCloudRetry(Math.min(delay*2,30000)));
   },delay);
 }
-async function syncProfileToCloud({reason='guardado automático'}={}){
+async function syncProfileToCloud({reason='guardado automático',releaseEditOverride=false}={}){
   if(!db||!currentUser||!remoteProfileLoaded||cloudSyncInFlight)return false;
+  if(!isAdmin()&&individualEditBlocked()){
+    updateCloudStatus('Edición bloqueada por Administración · datos conservados','readonly');
+    return false;
+  }
   if(!sessionCanWrite()){updateCloudStatus('Guardado local seguro · esperando control de edición','warn');scheduleCloudRetry();return false;}
   cloudSyncInFlight=true;
   const version=Number(store.localUpdatedAt)||Date.now();
   try{
-    await setDoc(doc(db,'profiles',currentUser.uid),profileCloudPayload(),{merge:true});
+    await setDoc(doc(db,'profiles',currentUser.uid),profileCloudPayload({releaseEditOverride}),{merge:true});
     if((Number(store.localUpdatedAt)||0)<=version){
       store.cloudUpdatedAt=version;
       store.syncPending=false;
@@ -1143,12 +1306,17 @@ async function syncProfileToCloud({reason='guardado automático'}={}){
   }
 }
 function scheduleCloudProfileSave(){
-  if(!db||!currentUser||!remoteProfileLoaded)return;
+  if(!db||!currentUser||!remoteProfileLoaded||(!isAdmin()&&individualEditBlocked()))return;
   clearTimeout(cloudSaveTimer);
-  cloudSaveTimer=setTimeout(()=>syncProfileToCloud({reason:'guardado progresivo'}),700);
+  // Agrupa pulsaciones rápidas para reducir escrituras y latencia percibida.
+  cloudSaveTimer=setTimeout(()=>syncProfileToCloud({reason:'guardado progresivo'}),1400);
 }
 async function forceProfileCheckpointToCloud(reason='checkpoint de seguridad'){
   if(!db||!currentUser)return false;
+  if(!isAdmin()&&individualEditBlocked()){
+    updateCloudStatus('Edición bloqueada por Administración · datos conservados','readonly');
+    return false;
+  }
   if(!sessionCanWrite()){updateCloudStatus('Guardado local seguro · esperando control de edición','warn');return false;}
   try{
     await setDoc(doc(db,'profiles',currentUser.uid),profileCloudPayload(),{merge:true});
@@ -1484,6 +1652,13 @@ async function initCloud(){
         renderCurrentProgram();
         activateViewDirect('perfil');
       }
+      if(store.individualEditDisabled&&!isAdmin()){
+        clearTimeout(cloudSaveTimer);
+        clearTimeout(cloudRetryTimer);
+        updateCloudStatus('Edición bloqueada por Administración · datos conservados','readonly');
+      }else if(priorDisabled&&!store.individualEditDisabled&&store.syncPending&&sessionCanWrite()){
+        scheduleCloudProfileSave();
+      }
       applyEditState();updateNavState();
       toast(store.individualEditDisabled
         ?'Administración deshabilitó temporalmente la edición de su perfil.'
@@ -1509,7 +1684,8 @@ async function loadTeachersForExport(){
       const d=ds.data();
       if(d.deletedByAdmin===true)return;
       const p=d.profile||{};
-      const name=[p.apPat,p.apMat,p.nombres].filter(Boolean).join(' ')||d.displayName||d.email||'(Sin nombre)';
+      const cached=previousTeacherAdminCache[ds.id]||{};
+      const name=[p.apPat,p.apMat,p.nombres].filter(Boolean).join(' ')||cached.name||d.displayName||d.email||'(Sin nombre)';
       rows.push({name,category:p.categoria||'',answers:d.answers||{},programMeta:d.programMeta||{},planningByPeriod:d.planningByPeriod||{},email:d.email||'',uid:ds.id,submittedPeriod:d.submittedPeriod||null,finalizedAtMs:Number(d.finalizedAtMs)||null});
     });
     return rows.length?rows:[{name:fullName()||'(Profesor sin nombre)',category:store.profile?.categoria||'',answers,programMeta,planningByPeriod,email:currentUser?.email||''}];
@@ -1549,17 +1725,10 @@ function showInstitutionalAccessMessage(extra=''){
 function googleIdentityReady(){
   return !!(window.google?.accounts?.oauth2?.initTokenClient);
 }
-function waitForGoogleIdentity(timeoutMs=10000){
-  if(googleIdentityReady())return Promise.resolve(true);
-  return new Promise(resolve=>{
-    const start=Date.now();
-    const timer=setInterval(()=>{
-      if(googleIdentityReady()){
-        clearInterval(timer);resolve(true);return;
-      }
-      if(Date.now()-start>=timeoutMs){clearInterval(timer);resolve(false)}
-    },100);
-  });
+async function waitForGoogleIdentity(timeoutMs=10000){
+  if(googleIdentityReady())return true;
+  const loaded=await withTimeout(ensureGoogleIdentity(),timeoutMs,false);
+  return !!loaded&&googleIdentityReady();
 }
 function googleAuthErrorMessage(detail=''){
   const suffix=detail?`\n\n${detail}`:'';
@@ -1777,7 +1946,8 @@ function initAuth(){
     authReady=false;
     sessionHasControl=false;
     sessionActivationBusy=false;
-    sessionTakeoverPending=false;
+    sessionTransferRequested=false;
+    sessionTransferModalDismissed=false;
     stopSessionHeartbeat();
     clearTimeout(sessionControlRetryTimer);
     clearTimeout(sessionHandoffRetryTimer);
@@ -2207,7 +2377,7 @@ window.go=function(id,force=false){
   }
 
   activateViewDirect(id);
-  if(id==='revision')buildPrint();
+  if(id==='revision'){buildPrint();updateReviewFinalizeUI();}
   if(id==='admin')renderAdmin();
   if(id==='captura')requestAnimationFrame(showCaptureOrientationIfNeeded);
   updateNavState();
@@ -2708,52 +2878,115 @@ function originTooltip(code){
   return labels[String(code)]||String(code);
 }
 function normalizeOrigins(code){return String(code).split('').map(Number)}
+function courseRowElement(pid,s,c){
+  return document.querySelector(`[data-course-key="${pid}|${s}|${c}"]`);
+}
+function refreshCourseRowDom(pid,s,c,name){
+  const row=courseRowElement(pid,s,c);
+  if(!row)return false;
+  const a=getAns(pid,s,c,name);
+  const off=a.status==='off';
+  const pending=a.status==='pending';
+  const enabled=!['off','na'].includes(a.status);
+  const needsArea=enabled&&['X','XX'].includes(a.status)&&!(a.origins||[]).length;
+  row.classList.toggle('off',off);
+  row.classList.toggle('pending',pending);
+  row.classList.toggle('reviewed',enabled&&!pending&&!needsArea);
+  row.classList.toggle('needs-attention',enabled&&(pending||needsArea));
+  row.classList.toggle('fast-off',off);
+  const toggle=row.querySelector('.toggle input');
+  if(toggle)toggle.checked=enabled;
+  const toggleText=row.querySelector('.toggle span:last-child');
+  if(toggleText)toggleText.textContent=enabled?'Sí':'No';
+  const comp=[...row.querySelectorAll('.comp-buttons .mini')];
+  if(enabled&&!comp.length)return false;
+  comp.forEach(btn=>btn.classList.toggle('on',btn.textContent.trim()===a.status));
+  row.querySelectorAll('.area-buttons .mini.area').forEach(btn=>{
+    btn.disabled=!['X','XX'].includes(a.status);
+    btn.classList.toggle('on',btn.textContent.trim()===originCode(a));
+  });
+  const coord=row.querySelector('.coord-row-check');
+  const coordInput=coord?.querySelector('input');
+  if(coordInput){
+    coordInput.disabled=!rowCoordinatorEnabled(pid,s,c,name);
+    coordInput.checked=rowCoordinatorChecked(pid,s,c);
+  }
+  if(coord)coord.classList.toggle('on',rowCoordinatorChecked(pid,s,c));
+  const fav=row.querySelector('.ideal-btn');
+  if(fav){
+    fav.classList.toggle('on',!!a.ideal);
+    fav.textContent=a.ideal?'★':'☆';
+    fav.setAttribute('aria-label',a.ideal?'Quitar de favoritas':'Marcar como favorita');
+  }
+  return true;
+}
+function refreshVisibleLinkedCourseRows(pid,s,c,name){
+  const seen=new Set([`${pid}|${s}|${c}`]);
+  const locs=[{pid,s,c,name},...linkedCourseLocations(pid,s,c,name)];
+  locs.forEach(loc=>{
+    const id=`${loc.pid}|${loc.s}|${loc.c}`;
+    if(seen.has(id)&&id!==`${pid}|${s}|${c}`)return;
+    seen.add(id);
+    refreshCourseRowDom(loc.pid,loc.s,loc.c,loc.name);
+  });
+  updateProgress();
+  if(captureErrorModeActive)refreshCaptureErrorState();
+}
 window.setEnabled=function(pid,s,c,name,on){
   if(!requireEditing())return;
   if(isEnglish(name))return;
   let r=getAns(pid,s,c,name);
-
-
   if(!on){
-    // Deshabilitar es una decisión individual; nunca se replica.
-    r.status='off';
-    r.origins=[];
-    r.ideal=false;
+    r.status='off';r.origins=[];r.ideal=false;
     answers[key(pid,s,c)]=r;
     setCoordinatorValue(pid,s,c,false);
     persist();
-    renderCurrentProgram();
+    if(!refreshCourseRowDom(pid,s,c,name))renderCurrentProgram();
+    else updateProgress();
     return;
   }
-
-
   if(r.status==='off'){
     const peer=bestLinkedAnswer(pid,s,c,name);
     if(peer){
       const source=getAns(peer.pid,peer.s,peer.c,peer.name);
-      r={
-        status:source.status==='off'?'pending':source.status,
-        origins:[...(source.origins||[])],
-        ideal:!!source.ideal
-      };
+      r={status:source.status==='off'?'pending':source.status,origins:[...(source.origins||[])],ideal:!!source.ideal};
       setCoordinatorValue(pid,s,c,coordinatorValue(peer.pid,peer.s,peer.c));
     }else{
       r={status:'pending',origins:[],ideal:false};
       setCoordinatorValue(pid,s,c,false);
     }
   }
-
-
   answers[key(pid,s,c)]=r;
   replicateCommon(pid,s,c,r);
   replicateLinkedAnswer(pid,s,c,name,r);
   replicateLinkedCoordinator(pid,s,c,name,coordinatorValue(pid,s,c));
   persist();
-  renderCurrentProgram();
+  // Una fila renderizada como apagada contiene placeholders; al reactivarla se reconstruye una sola vez.
+  if(!refreshCourseRowDom(pid,s,c,name))renderCurrentProgram();
+  else refreshVisibleLinkedCourseRows(pid,s,c,name);
 }
-window.setCompetence=function(pid,s,c,name,level){if(!requireEditing())return;const r=getAns(pid,s,c,name);if(['off','na'].includes(r.status))return;r.status=level;r.origins=[];answers[key(pid,s,c)]=r;replicateCommon(pid,s,c,r);replicateLinkedAnswer(pid,s,c,name,r);persist();renderCurrentProgram()}
-window.setOriginCode=function(pid,s,c,name,code){if(!requireEditing())return;const r=getAns(pid,s,c,name);if(!['X','XX'].includes(r.status))return;r.origins=normalizeOrigins(code);answers[key(pid,s,c)]=r;replicateCommon(pid,s,c,r);replicateLinkedAnswer(pid,s,c,name,r);persist();renderCurrentProgram()}
-window.toggleIdeal=function(pid,s,c,name){if(!requireEditing())return;const r=getAns(pid,s,c,name);if(!['X','XX'].includes(r.status)||(r.origins||[]).length===0){toast('Primero seleccione competencia y área de conocimiento.');return}r.ideal=!r.ideal;answers[key(pid,s,c)]=r;replicateCommon(pid,s,c,r);replicateLinkedAnswer(pid,s,c,name,r);persist();renderCurrentProgram()}
+window.setCompetence=function(pid,s,c,name,level){
+  if(!requireEditing())return;
+  const r=getAns(pid,s,c,name);if(['off','na'].includes(r.status))return;
+  r.status=level;r.origins=[];answers[key(pid,s,c)]=r;
+  replicateCommon(pid,s,c,r);replicateLinkedAnswer(pid,s,c,name,r);persist();
+  refreshVisibleLinkedCourseRows(pid,s,c,name);
+}
+window.setOriginCode=function(pid,s,c,name,code){
+  if(!requireEditing())return;
+  const r=getAns(pid,s,c,name);if(!['X','XX'].includes(r.status))return;
+  r.origins=normalizeOrigins(code);answers[key(pid,s,c)]=r;
+  replicateCommon(pid,s,c,r);replicateLinkedAnswer(pid,s,c,name,r);persist();
+  refreshVisibleLinkedCourseRows(pid,s,c,name);
+}
+window.toggleIdeal=function(pid,s,c,name){
+  if(!requireEditing())return;
+  const r=getAns(pid,s,c,name);
+  if(!['X','XX'].includes(r.status)||(r.origins||[]).length===0){toast('Primero seleccione competencia y área de conocimiento.');return}
+  r.ideal=!r.ideal;answers[key(pid,s,c)]=r;
+  replicateCommon(pid,s,c,r);replicateLinkedAnswer(pid,s,c,name,r);persist();
+  refreshVisibleLinkedCourseRows(pid,s,c,name);
+}
 function replicateCommon(pid,s,c,r){
   const source=allPrograms().find(x=>x.id===pid);
   const sourceName=source?.semesters?.[s]?.[c];
@@ -3068,7 +3301,7 @@ window.toggleCoordinator=function(pid,id,checked){
   setCoordinatorValue(pid,s,c,checked);
   replicateLinkedCoordinator(pid,s,c,name,checked);
   persist();
-  renderCurrentProgram();
+  refreshVisibleLinkedCourseRows(pid,s,c,name);
 }
 function renderCoordinator(p){ return ''; }
 
@@ -3276,7 +3509,7 @@ function renderCurrentProgram(){
       const loc=`${currentProgramIndex}|${s}|${c}`;
 
 
-      h+=`<div class="course ${pending?'pending':''} ${a.status==='off'?'off':''} ${reviewed&&a.status!=='off'?'reviewed':''} ${na?'na na-clean':''} ${needsAttention?'needs-attention':''} ${captureValidationEmphasis&&needsAttention?'validation-pending':''}" data-course-loc="${loc}">
+      h+=`<div class="course ${pending?'pending':''} ${a.status==='off'?'off':''} ${reviewed&&a.status!=='off'?'reviewed':''} ${na?'na na-clean':''} ${needsAttention?'needs-attention':''} ${captureValidationEmphasis&&needsAttention?'validation-pending':''}" data-course-loc="${loc}" data-course-key="${p.id}|${s}|${c}">
         <div class="name">${subjectCase(name)}${subjectHours(p.id,s,c)?` <small class="course-hours">(${subjectHours(p.id,s,c)} h)</small>`:''}${na?' · NO APLICA':''}${!na?courseTransversalBadge(p.id,s,c,name):''}</div>`;
 
 
@@ -3452,7 +3685,34 @@ function reviewAvailable(completeOverride=null){
     return workflowState.reviewUnlocked && complete;
   }
 
-  return complete || cfg.editingLocked || deadlinePassed() || submissionLockedForCurrentPeriod();
+  return complete || cfg.editingLocked || deadlinePassed() || individualEditBlocked() || submissionLockedForCurrentPeriod();
+}
+
+function profileFinalizedReadOnly(){
+  return submissionLockedForCurrentPeriod()&&!individualEditOverride();
+}
+function reviewActionMode(){
+  if(profileFinalizedReadOnly())return 'finalized';
+  if(!editingAllowed())return 'draft';
+  return 'finalize';
+}
+function updateReviewFinalizeUI(){
+  const mode=reviewActionMode();
+  document.querySelectorAll('.final-print-btn').forEach(btn=>{
+    btn.textContent=mode==='finalized'
+      ?'Imprimir / guardar PDF'
+      :mode==='draft'
+        ?'Imprimir borrador / guardar PDF'
+        :'Finalizar e imprimir / guardar PDF';
+  });
+  const cue=$('reviewFinalizeCue');
+  if(!cue)return;
+  cue.className=`review-finalize-cue no-print ${mode}`;
+  cue.innerHTML=mode==='finalized'
+    ?'<strong>✓ Perfil concluido</strong><span>Puede revisar el documento y volver a imprimirlo o guardarlo en PDF cuando lo necesite.</span>'
+    :mode==='draft'
+      ?'<strong>⚠ Perfil no concluido</strong><span>La edición está bloqueada. Cualquier impresión llevará la marca de agua <b>DOCUMENTO NO FINALIZADO</b>.</span>'
+      :'<strong>➜ Último paso</strong><span>Revise cuidadosamente el contenido. Cuando todo sea correcto, pulse <b>Finalizar e imprimir / guardar PDF</b> para concluir formalmente el perfil.</span>';
 }
 
 function showCaptureErrors(errs){
@@ -3596,10 +3856,23 @@ function buildPrint(collectCurrent=true){
     const sheetClass=`sheet program-trio${isLast&&remaining<3?' compact-last':''}`;
     html+=`<div class="${sheetClass}" data-program-count="${remaining}">${printHeader()}${metaCentered()}${printProgram(ps[i],i)}${ps[i+1]?printProgram(ps[i+1],i+1):''}${ps[i+2]?printProgram(ps[i+2],i+2):''}${signatures()}</div>`
   }
-  $('printArea').innerHTML=html
+  $('printArea').innerHTML=html;
+  const draft=!profileFinalizedReadOnly();
+  document.querySelectorAll('#printArea .sheet').forEach(sheet=>{
+    sheet.classList.toggle('draft-document',draft);
+    sheet.querySelector('.draft-watermark')?.remove();
+    if(draft){
+      const mark=document.createElement('div');
+      mark.className='draft-watermark';
+      mark.innerHTML='<strong>DOCUMENTO NO FINALIZADO</strong><span>BORRADOR</span>';
+      sheet.prepend(mark);
+    }
+  });
+  updateReviewFinalizeUI();
 }
 async function finalizeCurrentProfile(){
   collectProfile();
+  const releaseEditOverride=individualEditOverride();
 
   const finalCheck=validateAll();
   if(!finalCheck.ok){
@@ -3619,7 +3892,7 @@ async function finalizeCurrentProfile(){
   store.individualEditDisabled=false;
   persist();
 
-  const finalSyncOk=await syncProfileToCloud({reason:'confirmación de finalización'});
+  const finalSyncOk=await syncProfileToCloud({reason:'confirmación de finalización',releaseEditOverride});
   store.finalizationCloudConfirmed=!!finalSyncOk;
   store.syncPending=!finalSyncOk;
   try{localStorage.setItem('PAD_UTEQ',JSON.stringify(store));saveUserBackup()}catch(_){}
@@ -3651,7 +3924,8 @@ function mobilePrintClient(){
     || (window.matchMedia&&window.matchMedia('(max-width: 780px)').matches);
 }
 async function createMobileLandscapePdf(){
-  if(!window.html2canvas||!window.jspdf?.jsPDF)return false;
+  const libsReady=await ensurePdfLibraries();
+  if(!libsReady||!window.html2canvas||!window.jspdf?.jsPDF)return false;
   const sheets=[...document.querySelectorAll('#printArea .sheet')];
   if(!sheets.length)return false;
 
@@ -3774,6 +4048,12 @@ window.printProfile=async function(){
     await openProfilePrintDialog();
     return;
   }
+  if(!editingAllowed()){
+    buildPrint();
+    toast('Documento en modo consulta. La impresión llevará marca de agua porque el perfil no está finalizado.');
+    await openProfilePrintDialog();
+    return;
+  }
 
 
   if(!v.ok){
@@ -3797,6 +4077,7 @@ window.printProfile=async function(){
 
   const result=await finalizeCurrentProfile();
   buildPrint();
+  updateReviewFinalizeUI();
 
 
   toast(
@@ -3962,6 +4243,7 @@ async function renderTeacherAdminList(){
   try{
     const snap=await getDocs(collection(db,'profiles'));
     const rows=[];
+    const previousTeacherAdminCache=teacherAdminCache;
     teacherAdminCache={};
     snap.forEach(ds=>{
       const d=ds.data()||{};
@@ -4014,7 +4296,7 @@ async function renderTeacherAdminList(){
           :(doneNow
             ?`Última edición: ${lastEdit} · Finalizó y envió: ${lastCompletion}`
             :`Última edición: ${lastEdit}`);
-      return `<div class="teacher-admin-row ${override?'individual-open':doneNow?'finished':'open'}">
+      return `<div class="teacher-admin-row ${individuallyDisabled?'individual-disabled':override?'individual-open':doneNow?'finished':'open'}">
         <div class="teacher-admin-main">
           <b>${escapeHtml(r.name)}</b>
           <span>${escapeHtml(r.email||'Sin correo registrado')}${r.categoria?` · ${escapeHtml(r.categoria)}`:''}</span>
@@ -4027,7 +4309,7 @@ async function renderTeacherAdminList(){
           <div class="teacher-progress-track"><i style="width:${r.captureProgress.pct}%"></i></div>
           <small>${r.captureProgress.completedPrograms}/${r.captureProgress.totalPrograms} programas completos</small>
         </div>
-        <div class="teacher-admin-status ${override?'individual-open':doneNow?'finished':'open'}">
+        <div class="teacher-admin-status ${individuallyDisabled?'individual-disabled':override?'individual-open':doneNow?'finished':'open'}">
           <strong>${escapeHtml(statusTitle)}</strong>
           <span>${escapeHtml(statusText)}</span>
         </div>
@@ -4070,6 +4352,7 @@ window.printTeacherProfile=async function(uid){
     const previousAnswers=answers;
     const previousProgramMeta=programMeta;
     const previousFinalizedAtMs=store.finalizedAtMs;
+    const previousSubmittedPeriod=store.submittedPeriod;
 
 
     try{
@@ -4077,6 +4360,7 @@ window.printTeacherProfile=async function(uid){
       answers=JSON.parse(JSON.stringify(d.answers||{}));
       programMeta=JSON.parse(JSON.stringify(d.programMeta||{}));
       store.finalizedAtMs=Number(d.finalizedAtMs)||null;
+      store.submittedPeriod=d.submittedPeriod||null;
 
 
       buildPrint(false);
@@ -4087,6 +4371,7 @@ window.printTeacherProfile=async function(uid){
       answers=previousAnswers;
       programMeta=previousProgramMeta;
       store.finalizedAtMs=previousFinalizedAtMs;
+      store.submittedPeriod=previousSubmittedPeriod;
     }
   }catch(e){
     console.error('No fue posible imprimir el perfil del profesor',e);
@@ -4100,23 +4385,36 @@ window.setTeacherEditAccess=async function(uid,enable){
   const r=teacherAdminCache[uid]||{};
   const who=r.name||r.email||'este profesor';
   const question=enable
-    ?`¿Habilitar la edición para ${who}?\n\nSe conservará íntegramente la última información guardada. El profesor continuará exactamente desde su captura anterior. Sólo los botones de eliminación pueden borrar información.`
-    :`¿Deshabilitar la edición para ${who}?\n\nEl profesor podrá consultar su información, pero no podrá modificarla hasta que Administración vuelva a habilitarla.`;
+    ?`¿Habilitar la edición para ${who}?
+
+No se modificará ni eliminará ningún dato del perfil. Únicamente se permitirá que el profesor vuelva a editar su información.`
+    :`¿Deshabilitar la edición para ${who}?
+
+No se modificará ni eliminará ningún dato. El profesor podrá consultar e imprimir su perfil, pero no podrá cambiar registros hasta que Administración lo habilite nuevamente.`;
   if(!confirm(question))return;
   try{
-    await setDoc(doc(db,'profiles',uid),{
-      individualEditEnabled:!!enable,
-      individualEditDisabled:!enable,
-      reopenedAt:enable?serverTimestamp():null,
-      reopenedBy:enable?(currentUser.email||''):null,
-      individualEditUpdatedAt:serverTimestamp()
-    },{merge:true});
+    const ref=doc(db,'profiles',uid);
+    await runTransaction(db,async tx=>{
+      const snap=await tx.get(ref);
+      if(!snap.exists())throw new Error('El perfil seleccionado no existe.');
+      tx.set(ref,{
+        individualEditEnabled:!!enable,
+        individualEditDisabled:!enable,
+        reopenedAt:enable?serverTimestamp():null,
+        reopenedBy:enable?(currentUser.email||''):null,
+        individualEditUpdatedAt:serverTimestamp()
+      },{merge:true});
+    });
     await writeAudit(`${enable?'Edición individual habilitada':'Edición individual deshabilitada'} para ${r.email||uid}`);
-    toast(enable?'Edición habilitada para ese profesor.':'Edición deshabilitada para ese profesor.');
+    toast(enable?'Edición habilitada. Los datos existentes se conservaron.':'Edición bloqueada. Los datos existentes se conservaron sin cambios.');
     await renderTeacherAdminList();
   }catch(e){
     console.error('Error de edición individual',e);
-    alert(`No fue posible ${enable?'habilitar':'deshabilitar'} la edición individual.\n\nCódigo: ${e?.code||'sin código'}\n\nVerifique que las reglas de Firestore vigentes permitan la administración de perfiles.`);
+    alert(`No fue posible ${enable?'habilitar':'deshabilitar'} la edición individual.
+
+Código: ${e?.code||'sin código'}
+
+El perfil no fue modificado.`);
   }
 }
 window.toggleTeacherEditOverride=function(uid,enable){return window.setTeacherEditAccess(uid,enable)}
@@ -4886,9 +5184,10 @@ function selectedExcelQuarters(){
 
 
 async function exportWorkbook(){
+  const ready=await ensureExcelLibrary();
   const XLSX=window.XLSX;
-  if(!XLSX || !XLSX.utils){
-    throw new Error('No fue posible cargar el módulo de Excel con estilos.');
+  if(!ready||!XLSX||!XLSX.utils){
+    throw new Error('No fue posible cargar el módulo de Excel. Revise la conexión e intente nuevamente.');
   }
 
 
@@ -5355,6 +5654,10 @@ function setupResilienceGuards(){
 
   window.addEventListener('offline',()=>{
     if(currentUser)updateCloudStatus('Sin conexión · guardado local activo','warn');
+  });
+
+  window.addEventListener('beforeprint',()=>{
+    if($('revision')?.classList.contains('active'))buildPrint(false);
   });
 
   window.addEventListener('pagehide',()=>{
