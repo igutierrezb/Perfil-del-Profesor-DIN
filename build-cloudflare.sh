@@ -10,7 +10,7 @@ test -n "${GOOGLE_CLIENT_ID:-}"
 rm -rf dist
 mkdir -p dist
 
-# V90: V89 consolidada + guardado manual por cambios y menor tráfico de Firestore.
+# V91: sesión resiliente + control administrativo coherente + guardado manual.
 for f in \
   index.html \
   styles.css \
@@ -54,7 +54,7 @@ EOF
 
 cat > dist/build-info.json <<EOF
 {
-  "version": "V90-2026-09-30",
+  "version": "V91-2026-09-30",
   "runtime": "consolidated",
   "legacyBackupModulePublished": false
 }

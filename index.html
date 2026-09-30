@@ -4,9 +4,9 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Perfil Académico Docente · División Industrial UTEQ</title>
-<meta name="pad-build" content="V90-2026-09-30">
-<link rel="stylesheet" href="styles.css?v=20260930-90">
-<link rel="stylesheet" href="mobile.css?v=20260930-90">
+<meta name="pad-build" content="V91-2026-09-30">
+<link rel="stylesheet" href="styles.css?v=20260930-91">
+<link rel="stylesheet" href="mobile.css?v=20260930-91">
 <meta name="theme-color" content="#0b2b46">
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-capable" content="yes">
@@ -37,8 +37,8 @@
       <div class="login-security-note">
         Use una cuenta <strong>@uteq.edu.mx</strong>. Esta plataforma no solicita ni almacena su contraseña;
         el acceso se valida directamente mediante Google.<br>
-        Si su perfil ya está en edición en otro dispositivo, al ingresar aquí la edición se transferirá
-        automáticamente cuando el dispositivo anterior termine de guardar sus cambios.
+        Si existe una sesión reciente en otro dispositivo, podrá continuar la edición aquí con una sola confirmación.
+        Los datos que ya hayan sido guardados en la nube se conservarán.
       </div>
       <small>La información vertida en esta plataforma se administra bajo los mismos criterios señalados en el
         <a href="https://www.uteq.edu.mx/ConoceLaUTEQ/Default.aspx?gXr=217" target="_blank" rel="noopener">Aviso de Privacidad de la UTEQ</a>.
@@ -627,15 +627,14 @@
 <div id="sessionTransferModal" class="session-transfer-modal hidden" role="dialog" aria-modal="true" aria-labelledby="sessionTransferTitle">
   <div class="session-transfer-card">
     <div class="session-transfer-icon">⇄</div>
-    <h2 id="sessionTransferTitle">Edición abierta en otro dispositivo</h2>
-    <p id="sessionTransferText">Su perfil está abierto para edición en otro dispositivo.</p>
-    <div id="sessionTransferState" class="session-transfer-state">Puede consultar este perfil sin modificarlo.</div>
+    <h2 id="sessionTransferTitle">Edición detectada en otro dispositivo</h2>
+    <p id="sessionTransferText">Existe una sesión reciente de edición en otro dispositivo.</p>
+    <div id="sessionTransferState" class="session-transfer-state warn"><strong>Puede continuar aquí.</strong> La sesión anterior quedará en solo lectura.</div>
     <div class="session-transfer-actions">
-      <button id="sessionContinueHereBtn" type="button" class="primary" onclick="continueEditingHere()">Editar o continuar aquí</button>
-      <button id="sessionRecoverHereBtn" type="button" class="session-recover-btn hidden" onclick="recoverEditingHere()">Recuperar edición aquí</button>
+      <button id="sessionContinueHereBtn" type="button" class="primary" onclick="continueEditingHere()">Continuar edición aquí</button>
       <button type="button" class="ghost" onclick="closeSessionTransferModal()">Continuar en solo lectura</button>
     </div>
-    <small>Al confirmar, el dispositivo anterior guardará los cambios pendientes antes de ceder la edición. Si deja de responder, la recuperación solo se habilitará cuando su sesión haya vencido.</small>
+    <small>Los datos ya guardados en la nube se conservan. Los cambios que no se hayan guardado en el otro dispositivo permanecen únicamente en ese equipo.</small>
   </div>
 </div>
 
@@ -674,6 +673,6 @@
 <script src="catalog.js?v=20260929-80"></script>
 <script src="https://accounts.google.com/gsi/client" async defer></script>
 
-<script type="module" src="app.js?v=20260930-90"></script>
+<script type="module" src="app.js?v=20260930-91"></script>
 </body>
 </html>

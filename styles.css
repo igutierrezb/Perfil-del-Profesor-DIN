@@ -11278,3 +11278,18 @@ button.is-busy::after{
 .profile-edit-locked .commission-editor-actions button{
   cursor:not-allowed!important;
 }
+
+/* =========================================================
+   V91 · sesión resiliente y candado administrativo coherente
+   ========================================================= */
+.session-transfer-state strong{display:block;margin-bottom:4px;color:#173f56}
+.session-inline-takeover{
+  margin-top:10px;
+  min-height:38px;
+  padding:8px 13px;
+  border-radius:9px;
+}
+.session-status.ok{font-weight:800}
+.session-status.readonly{font-weight:700}
+.teacher-admin-status.individual-open strong{color:#14613f}
+.teacher-admin-status.individual-disabled strong{color:#8e3429}

@@ -47,33 +47,35 @@ let sessionConflictKnown=false;
 let teacherAdminCacheLoaded=false;
 
 /* =========================================================
-   V90 · ARRANQUE RESILIENTE, SESIÓN ÚNICA Y GUARDADO MANUAL
+   V91 · SESIÓN RESILIENTE, CONTROL ADMINISTRATIVO Y BAJO CONSUMO
    - El perfil se muestra desde la copia local sin esperar a Firestore.
-   - La negociación entre dispositivos ocurre en segundo plano.
-   - El dispositivo anterior guarda antes de ceder el control.
-   - No hay toma forzada mientras el heartbeat anterior siga vigente.
-   - La captura del profesor no se autoguarda en Firestore.
+   - No existen heartbeats periódicos: la sesión se renueva al reclamarla
+     y después de guardados manuales confirmados.
+   - Una sesión vencida o del mismo dispositivo se recupera automáticamente.
+   - Si otro dispositivo está realmente activo, el usuario puede continuar aquí
+     con una sola acción; el dispositivo anterior queda en solo lectura.
+   - El candado administrativo y el control de dispositivo son estados separados.
    ========================================================= */
 const CLOUD_READ_TIMEOUT_MS=6000;
 const CLOUD_WRITE_UI_TIMEOUT_MS=1400;
 const SESSION_STATUS_READ_TIMEOUT_MS=3500;
-const SESSION_HEARTBEAT_MS=45000;
-const SESSION_STALE_MS=120000;
-const SESSION_RETRY_MS=0;
+const SESSION_LEASE_MS=8*60*1000;
+const SESSION_LEASE_TOUCH_MIN_MS=3*60*1000;
 let activeSessionId='';
 let sessionHasControl=false;
 let sessionDocUnsub=null;
 let sessionHeartbeatTimer=null;
-let sessionHandoffBusy=false;
-let sessionHandoffRetryTimer=null;
-let sessionControlRetryTimer=null;
 let sessionActivationBusy=false;
 let sessionConflictDevice='';
-let sessionTransferRequested=false;
 let sessionTransferModalDismissed=false;
 let sessionSnapshotCache=null;
-let sessionStaleUiTimer=null;
 let sessionWriteSeq=Number(store.sessionWriteSeq)||0;
+let sessionLastLeaseTouchMs=0;
+let sessionClaimInFlight=false;
+// Compatibilidad con limpieza de estado heredada; V91 ya no programa estos temporizadores.
+let sessionControlRetryTimer=null;
+let sessionHandoffRetryTimer=null;
+let sessionTransferRequested=false;
 
 function withTimeout(promise,ms,fallbackValue=null){
   let timer=null;
@@ -145,11 +147,27 @@ function getOrCreateSessionId(){
     return `${Date.now()}-${Math.random().toString(36).slice(2)}`;
   }
 }
+function getOrCreateDeviceId(){
+  const key='PAD_UTEQ_DEVICE_ID';
+  try{
+    const existing=localStorage.getItem(key);
+    if(existing)return existing;
+    const id=(crypto?.randomUUID?.()||`device-${Date.now()}-${Math.random().toString(36).slice(2)}`);
+    localStorage.setItem(key,id);
+    return id;
+  }catch(_){
+    return `device-${navigator.platform||'unknown'}`;
+  }
+}
 function deviceLabel(){
   const ua=navigator.userAgent||'';
-  const mobile=/Android|iPhone|iPad|Mobile/i.test(ua);
-  const platform=navigator.userAgentData?.platform||navigator.platform||'';
-  return mobile?`Móvil${platform?` · ${platform}`:''}`:`Escritorio${platform?` · ${platform}`:''}`;
+  if(/Android/i.test(ua))return 'Teléfono o tableta Android';
+  if(/iPhone/i.test(ua))return 'iPhone';
+  if(/iPad/i.test(ua))return 'iPad';
+  if(/Windows/i.test(ua)||/Win32|Win64/i.test(navigator.platform||''))return 'Computadora Windows';
+  if(/Macintosh|Mac OS/i.test(ua))return 'Computadora Mac';
+  if(/Linux/i.test(ua))return 'Computadora Linux';
+  return /Mobile/i.test(ua)?'Dispositivo móvil':'Computadora';
 }
 function updateSessionStatus(text,kind='neutral'){
   const el=$('sessionStatus');
@@ -167,7 +185,6 @@ function nextSessionWriteSeq(){
 }
 async function refreshSessionWriteSeqFromCloud(){
   if(!db||!currentUser)return;
-  // V90: loadRemoteProfile/onSnapshot ya obtienen sessionWriteSeq. Evita una lectura redundante.
   if(remoteProfileLoaded)return;
   try{
     const snap=await withTimeout(getDoc(doc(db,'profiles',currentUser.uid)),2500,null);
@@ -180,389 +197,244 @@ async function refreshSessionWriteSeqFromCloud(){
     console.warn('No fue posible refrescar el contador de sesión',e);
   }
 }
+function sessionIsStale(active,heartbeat,sessionData={}){
+  const leaseMs=Number(sessionData?.leaseVersion)>=2?SESSION_LEASE_MS:120000;
+  return !active || !Number(heartbeat) || (Date.now()-Number(heartbeat))>leaseMs;
+}
+function sessionBelongsToThisDevice(d={}){
+  const remoteDeviceId=String(d.activeDeviceId||'');
+  return !!remoteDeviceId && remoteDeviceId===getOrCreateDeviceId();
+}
 function stopSessionHeartbeat(){
   clearInterval(sessionHeartbeatTimer);
   sessionHeartbeatTimer=null;
 }
-async function heartbeatSession(){
-  if(!db||!currentUser||!sessionHasControl||!activeSessionId||isAdmin())return;
-  if(document.visibilityState==='hidden')return;
+async function renewSessionLease({force=false}={}){
+  if(!db||!currentUser||!sessionHasControl||!activeSessionId||isAdmin())return false;
+  if(!force && Date.now()-sessionLastLeaseTouchMs<SESSION_LEASE_TOUCH_MIN_MS)return true;
   try{
     const ref=doc(db,'profileSessions',currentUser.uid);
+    let renewed=false;
     await runTransaction(db,async tx=>{
       const snap=await tx.get(ref);
       if(!snap.exists())return;
       const d=snap.data()||{};
-      // V84: un heartbeat atrasado jamás puede recuperar el control que ya cedió.
       if(String(d.activeSessionId||'')!==activeSessionId)return;
       tx.set(ref,{
         activeDevice:deviceLabel(),
+        activeDeviceId:getOrCreateDeviceId(),
         activeEmail:currentUser.email||'',
         heartbeatMs:Date.now(),
         heartbeatAt:serverTimestamp()
       },{merge:true});
+      renewed=true;
     });
+    if(renewed)sessionLastLeaseTouchMs=Date.now();
+    return renewed;
   }catch(e){
-    console.warn('No fue posible actualizar heartbeat de sesión',e);
+    console.warn('No fue posible renovar la sesión de edición',e);
+    return false;
   }
 }
+async function heartbeatSession(){
+  return renewSessionLease({force:true});
+}
 function startSessionHeartbeat(){
+  // V91: sin escrituras periódicas. La sesión se renueva al reclamarla y al guardar manualmente.
   stopSessionHeartbeat();
-  heartbeatSession();
-  sessionHeartbeatTimer=setInterval(heartbeatSession,SESSION_HEARTBEAT_MS);
 }
 function captureVisibleStateBeforeHandoff(){
   try{
-    if($('apPat')){
-      store.profile=profileFromInputs();
-    }
+    if($('apPat'))store.profile=profileFromInputs();
     if(planningEnabled()&&$('commissionsBlock')){
       try{collectPlanning()}catch(_){}
     }
     persist({schedule:false});
   }catch(e){
-    console.warn('No fue posible consolidar la interfaz antes del traspaso',e);
+    console.warn('No fue posible conservar el borrador local antes del cambio de dispositivo',e);
   }
-}
-function scheduleHandoffRetry(requestedId,requestedDevice){
-  clearTimeout(sessionHandoffRetryTimer);
-  if(!requestedId||!sessionHasControl)return;
-  sessionHandoffRetryTimer=setTimeout(()=>{
-    handoffSessionTo(requestedId,requestedDevice).catch(e=>console.warn('Reintento de transferencia pendiente',e));
-  },12000);
-}
-async function handoffSessionTo(requestedId,requestedDevice='otro dispositivo'){
-  if(sessionHandoffBusy||!sessionHasControl||!requestedId||requestedId===activeSessionId)return false;
-  sessionHandoffBusy=true;
-  updateSessionStatus(`Guardando cambios antes de continuar en ${requestedDevice}…`,'warn');
-  try{
-    captureVisibleStateBeforeHandoff();
-    const checkpointOk=await withTimeout(
-      forceProfileCheckpointToCloud('traspaso de sesión a otro dispositivo'),
-      4500,
-      false
-    );
-    if(!checkpointOk){
-      updateSessionStatus('Edición conservada aquí · esperando confirmar el guardado','warn');
-      scheduleHandoffRetry(requestedId,requestedDevice);
-      return false;
-    }
-
-    const moved=await withTimeout(setDoc(doc(db,'profileSessions',currentUser.uid),{
-      activeSessionId:requestedId,
-      activeDevice:requestedDevice,
-      activeEmail:currentUser.email||'',
-      heartbeatMs:Date.now(),
-      heartbeatAt:serverTimestamp(),
-      takeoverRequestedSessionId:null,
-      takeoverRequestedDevice:null,
-      takeoverRequestedAtMs:null,
-      lastHandoffToSessionId:requestedId,
-      lastHandoffAtMs:Date.now(),
-      lastHandoffAt:serverTimestamp()
-    },{merge:true}),3000,false);
-
-    if(moved===false){
-      updateSessionStatus('Edición conservada aquí · transferencia pendiente','warn');
-      scheduleHandoffRetry(requestedId,requestedDevice);
-      return false;
-    }
-
-    sessionHasControl=false;
-    stopSessionHeartbeat();
-    applyEditState();
-    updateNavState();
-    updateSessionStatus('Cambios guardados · la edición continúa en otro dispositivo','readonly');
-    toast('Tus cambios se guardaron. La edición continúa en el otro dispositivo.');
-    return true;
-  }catch(e){
-    console.error('No fue posible completar el traspaso de sesión',e);
-    updateSessionStatus('Edición conservada aquí · transferencia pendiente','warn');
-    scheduleHandoffRetry(requestedId,requestedDevice);
-    return false;
-  }finally{
-    sessionHandoffBusy=false;
-  }
-}
-async function forceClaimSession(){
-  if(!db||!currentUser||isAdmin())return true;
-  const ref=doc(db,'profileSessions',currentUser.uid);
-  let claimed=false;
-  const txResult=await withTimeout(runTransaction(db,async tx=>{
-    const snap=await tx.get(ref);
-    const d=snap.exists()?snap.data():{};
-    const other=String(d.activeSessionId||'');
-    const heartbeat=Number(d.heartbeatMs)||0;
-    const stale=!other || other===activeSessionId || (Date.now()-heartbeat)>SESSION_STALE_MS;
-    if(!stale)return;
-    tx.set(ref,{
-      activeSessionId,
-      activeDevice:deviceLabel(),
-      activeEmail:currentUser.email||'',
-      heartbeatMs:Date.now(),
-      heartbeatAt:serverTimestamp(),
-      takeoverRequestedSessionId:null,
-      takeoverRequestedDevice:null,
-      takeoverRequestedAtMs:null,
-      lastHandoffToSessionId:null
-    },{merge:true});
-    claimed=true;
-  }),4000,false);
-  if(txResult===false||!claimed)return false;
-  await refreshSessionWriteSeqFromCloud();
-  await activateSessionControl({preferRemote:false});
-  return true;
 }
 async function activateSessionControl({preferRemote=false}={}){
   if(sessionActivationBusy)return false;
   sessionActivationBusy=true;
   sessionHasControl=true;
-  stopSessionHeartbeat();
-  updateSessionStatus(preferRemote?'Recibiendo los últimos cambios del otro dispositivo…':'Preparando edición en este dispositivo…','warn');
+  updateSessionStatus(preferRemote?'Recuperando la última versión guardada…':'Preparando edición…','warn');
   applyEditState();
   updateNavState();
   try{
-    if(preferRemote){
-      await loadRemoteProfile({preferRemote:true});
-    }
+    if(preferRemote)await loadRemoteProfile({preferRemote:true});
     await refreshSessionWriteSeqFromCloud();
   }catch(e){
     console.warn('No fue posible refrescar completamente la sesión antes de editar',e);
   }finally{
     sessionActivationBusy=false;
   }
-  startSessionHeartbeat();
+  sessionLastLeaseTouchMs=Date.now();
   updateSessionStatus('Editando en este dispositivo','ok');
   applyEditState();
   updateNavState();
-  if(store.syncPending){
-    updateCloudStatus('Cambios locales pendientes · pulse Guardar y continuar','warn');
-  }
+  if(store.syncPending)updateCloudStatus('Cambios locales pendientes · pulse Guardar y continuar','warn');
   return true;
 }
-function sessionIsStale(active,heartbeat){
-  return !active || (Date.now()-Number(heartbeat||0))>SESSION_STALE_MS;
+async function forceClaimSession({force=false,preferRemote=false}={}){
+  if(!db||!currentUser||isAdmin())return true;
+  if(sessionClaimInFlight)return false;
+  sessionClaimInFlight=true;
+  try{
+    activeSessionId=activeSessionId||getOrCreateSessionId();
+    const ref=doc(db,'profileSessions',currentUser.uid);
+    let claimed=false;
+    const result=await withTimeout(runTransaction(db,async tx=>{
+      const snap=await tx.get(ref);
+      const d=snap.exists()?snap.data():{};
+      const other=String(d.activeSessionId||'');
+      const heartbeat=Number(d.heartbeatMs)||0;
+      const sameDevice=sessionBelongsToThisDevice(d);
+      const stale=sessionIsStale(other,heartbeat,d);
+      if(other&&other!==activeSessionId&&!sameDevice&&!stale&&!force)return;
+      tx.set(ref,{
+        activeSessionId,
+        activeDevice:deviceLabel(),
+        activeDeviceId:getOrCreateDeviceId(),
+        activeEmail:currentUser.email||'',
+        heartbeatMs:Date.now(),
+        heartbeatAt:serverTimestamp(),
+        takeoverRequestedSessionId:null,
+        takeoverRequestedDevice:null,
+        takeoverRequestedAtMs:null,
+        lastHandoffToSessionId:null,
+        leaseVersion:2
+      },{merge:true});
+      claimed=true;
+    }),5000,false);
+    if(result===false||!claimed)return false;
+    sessionConflictKnown=false;
+    sessionLastLeaseTouchMs=Date.now();
+    await activateSessionControl({preferRemote});
+    hideSessionTransferModal();
+    return true;
+  }finally{
+    sessionClaimInFlight=false;
+  }
 }
 function hideSessionTransferModal(){
-  clearTimeout(sessionStaleUiTimer);
   const modal=$('sessionTransferModal');
   if(modal)modal.classList.add('hidden');
   document.body.classList.remove('session-transfer-open');
 }
 function setSessionActionBusy(busy,label='Procesando…'){
   const continueBtn=$('sessionContinueHereBtn');
-  const recoverBtn=$('sessionRecoverHereBtn');
   if(continueBtn){
     continueBtn.disabled=!!busy;
     continueBtn.classList.toggle('is-busy',!!busy);
-    if(busy)continueBtn.textContent=label;
-  }
-  if(recoverBtn){
-    recoverBtn.disabled=!!busy;
-    recoverBtn.classList.toggle('is-busy',!!busy);
+    continueBtn.textContent=busy?label:'Continuar edición aquí';
   }
 }
-function scheduleSessionStaleUiRefresh(){
-  clearTimeout(sessionStaleUiTimer);
-  const d=sessionSnapshotCache||{};
-  const active=String(d.activeSessionId||'');
-  const heartbeat=Number(d.heartbeatMs)||0;
-  if(!active||active===activeSessionId||sessionIsStale(active,heartbeat))return;
-  const wait=Math.max(1000,SESSION_STALE_MS-(Date.now()-heartbeat)+250);
-  sessionStaleUiTimer=setTimeout(()=>{
-    const latest=sessionSnapshotCache||{};
-    const latestActive=String(latest.activeSessionId||'');
-    if(latestActive&&latestActive!==activeSessionId){
-      showSessionTransferModal({
-        device:String(latest.activeDevice||'otro dispositivo'),
-        waiting:String(latest.takeoverRequestedSessionId||'')===activeSessionId,
-        stale:sessionIsStale(latestActive,Number(latest.heartbeatMs)||0)
-      });
-    }
-  },wait);
-}
-function showSessionTransferModal({device='otro dispositivo',waiting=false,stale=false}={}){
+function showSessionTransferModal({device='otro dispositivo'}={}){
   const modal=$('sessionTransferModal');
-  if(!modal||(sessionTransferModalDismissed&&!waiting&&!stale))return;
+  if(!modal||sessionTransferModalDismissed)return;
   sessionConflictDevice=device;
   const text=$('sessionTransferText'),state=$('sessionTransferState');
-  const continueBtn=$('sessionContinueHereBtn'),recoverBtn=$('sessionRecoverHereBtn');
-  if(text)text.textContent=`Su perfil está abierto para edición en ${device}.`;
+  if(text)text.textContent=`Existe una sesión reciente de edición en ${device}.`;
   if(state){
-    state.className=`session-transfer-state ${waiting?'warn':stale?'error':''}`;
-    state.textContent=waiting
-      ?'Transferencia solicitada. El otro dispositivo está guardando los cambios antes de ceder la edición.'
-      :stale
-        ?'La sesión anterior dejó de responder. Puede recuperar la edición en este dispositivo.'
-        :'Puede consultar el perfil aquí. La edición no cambiará de dispositivo hasta que usted pulse “Editar o continuar aquí”.';
+    state.className='session-transfer-state warn';
+    state.innerHTML='<strong>Puede continuar en este dispositivo.</strong> La sesión anterior quedará en solo lectura. Solo se conservarán en ambos equipos los datos que ya hayan sido guardados en la nube.';
   }
+  const continueBtn=$('sessionContinueHereBtn');
   if(continueBtn){
+    continueBtn.disabled=false;
     continueBtn.classList.remove('is-busy');
-    continueBtn.disabled=waiting||stale;
-    continueBtn.textContent=waiting?'Esperando transferencia…':'Editar o continuar aquí';
-    continueBtn.classList.toggle('hidden',stale);
-  }
-  if(recoverBtn){
-    recoverBtn.classList.remove('is-busy');
-    recoverBtn.disabled=false;
-    recoverBtn.classList.toggle('hidden',!stale);
+    continueBtn.textContent='Continuar edición aquí';
   }
   modal.classList.remove('hidden');
   document.body.classList.add('session-transfer-open');
-  scheduleSessionStaleUiRefresh();
 }
 window.closeSessionTransferModal=function(){
   sessionTransferModalDismissed=true;
   hideSessionTransferModal();
+  updateSessionStatus(`Solo lectura · edición activa en ${sessionConflictDevice||'otro dispositivo'}`,'readonly');
+  applyEditState();
+  updateNavState();
 }
 window.continueEditingHere=async function(){
   sessionTransferModalDismissed=false;
   if(!db||!currentUser||isAdmin())return;
   activeSessionId=activeSessionId||getOrCreateSessionId();
-
-  const d=sessionSnapshotCache||{};
-  const active=String(d.activeSessionId||'');
-  const heartbeat=Number(d.heartbeatMs)||0;
-
-  if(active===activeSessionId){
-    setSessionActionBusy(true,'Preparando edición…');
-    await activateSessionControl({preferRemote:true});
-    hideSessionTransferModal();
+  setSessionActionBusy(true,'Activando edición…');
+  updateSessionStatus('Activando la edición en este dispositivo…','warn');
+  try{
+    const claimed=await forceClaimSession({force:true,preferRemote:true});
+    if(claimed){
+      hideSessionTransferModal();
+      toast('La edición ya está activa en este dispositivo.');
+    }else{
+      showSessionTransferModal({device:sessionConflictDevice||'otro dispositivo'});
+      updateSessionStatus('No fue posible activar la edición. Intente nuevamente.','warn');
+      toast('No fue posible activar la edición en este dispositivo.');
+    }
+  }catch(e){
+    console.error('No fue posible continuar la edición aquí',e);
+    showSessionTransferModal({device:sessionConflictDevice||'otro dispositivo'});
+    updateSessionStatus('No fue posible activar la edición. Intente nuevamente.','warn');
+  }finally{
     setSessionActionBusy(false);
-    return;
-  }
-  if(!active){
-    setSessionActionBusy(true,'Obteniendo edición…');
-    const claimed=await forceClaimSession();
-    setSessionActionBusy(false);
-    if(claimed)hideSessionTransferModal();
-    else toast('No fue posible obtener el control de edición.');
-    return;
-  }
-  if(sessionIsStale(active,heartbeat)){
-    showSessionTransferModal({device:String(d.activeDevice||'otro dispositivo'),stale:true});
-    return;
-  }
-
-  sessionTransferRequested=true;
-  sessionConflictDevice=String(d.activeDevice||'otro dispositivo');
-  setSessionActionBusy(true,'Solicitando transferencia…');
-  updateSessionStatus(`Transferencia solicitada desde ${sessionConflictDevice}…`,'warn');
-  const requested=await withTimeout(setDoc(doc(db,'profileSessions',currentUser.uid),{
-    takeoverRequestedSessionId:activeSessionId,
-    takeoverRequestedDevice:deviceLabel(),
-    takeoverRequestedAtMs:Date.now(),
-    takeoverRequestedAt:serverTimestamp()
-  },{merge:true}),3000,false);
-
-  if(requested===false){
-    sessionTransferRequested=false;
-    setSessionActionBusy(false);
-    showSessionTransferModal({device:sessionConflictDevice,waiting:false,stale:false});
-    updateSessionStatus('No fue posible solicitar la transferencia. Intente nuevamente.','warn');
-    toast('No se pudo enviar la solicitud de transferencia.');
-    return;
-  }
-  showSessionTransferModal({device:sessionConflictDevice,waiting:true,stale:false});
-}
-window.recoverEditingHere=async function(){
-  sessionTransferModalDismissed=false;
-  if(!db||!currentUser||isAdmin())return;
-  activeSessionId=activeSessionId||getOrCreateSessionId();
-  const d=sessionSnapshotCache||{};
-  const active=String(d.activeSessionId||'');
-  const heartbeat=Number(d.heartbeatMs)||0;
-  if(active&&active!==activeSessionId&&!sessionIsStale(active,heartbeat)){
-    showSessionTransferModal({device:String(d.activeDevice||'otro dispositivo'),waiting:false,stale:false});
-    toast('El otro dispositivo todavía está activo.');
-    return;
-  }
-  setSessionActionBusy(true,'Recuperando edición…');
-  const claimed=await forceClaimSession();
-  setSessionActionBusy(false);
-  if(claimed){
-    sessionTransferRequested=false;
-    sessionTransferModalDismissed=false;
-    hideSessionTransferModal();
-    toast('Edición recuperada en este dispositivo.');
-  }else{
-    showSessionTransferModal({device:String(d.activeDevice||'otro dispositivo'),stale:true});
-    toast('La edición aún no puede recuperarse con seguridad.');
   }
 }
-function scheduleSessionControlRetry(){
-  // V87: no hay polling de sesión. La transferencia se resuelve por onSnapshot.
-}
-async function retrySessionControl(){
-  return false;
-}
+window.recoverEditingHere=window.continueEditingHere;
 function watchSessionDocument(ref){
   if(sessionDocUnsub)sessionDocUnsub();
   sessionDocUnsub=onSnapshot(ref,snap=>{
     const d=snap.exists()?snap.data():{};
     sessionSnapshotCache=d;
     const active=String(d.activeSessionId||'');
-    const requestId=String(d.takeoverRequestedSessionId||'');
     const activeDevice=String(d.activeDevice||'otro dispositivo');
     const heartbeat=Number(d.heartbeatMs)||0;
 
-    if(active===activeSessionId){
+    if(active===activeSessionId&&active){
       sessionConflictKnown=false;
-      sessionTransferRequested=false;
+      sessionTransferModalDismissed=false;
       hideSessionTransferModal();
-      const confirmedHandoff=String(d.lastHandoffToSessionId||'')===activeSessionId;
-      if(!sessionHasControl&&!sessionActivationBusy){
-        activateSessionControl({preferRemote:confirmedHandoff}).catch(e=>{
+      sessionLastLeaseTouchMs=Math.max(sessionLastLeaseTouchMs,heartbeat||Date.now());
+      if(!sessionHasControl&&!sessionActivationBusy&&!sessionClaimInFlight){
+        activateSessionControl({preferRemote:false}).catch(e=>{
           console.warn('Activación de sesión pendiente',e);
           sessionHasControl=false;
           updateSessionStatus('No fue posible activar la edición. Intente nuevamente.','warn');
         });
       }
-      if(requestId&&requestId!==activeSessionId){
-        handoffSessionTo(requestId,String(d.takeoverRequestedDevice||'otro dispositivo'));
+      return;
+    }
+
+    if(!active || sessionBelongsToThisDevice(d) || sessionIsStale(active,heartbeat,d)){
+      sessionConflictKnown=false;
+      hideSessionTransferModal();
+      if(!sessionClaimInFlight){
+        forceClaimSession({force:false,preferRemote:false}).catch(e=>console.warn('Recuperación automática de sesión pendiente',e));
       }
       return;
     }
 
-    const hadControl=sessionHasControl;
+    if(sessionHasControl)captureVisibleStateBeforeHandoff();
     sessionHasControl=false;
+    sessionConflictKnown=true;
+    sessionConflictDevice=activeDevice;
     stopSessionHeartbeat();
-
-    if(hadControl){
-      applyEditState();
-      updateNavState();
-      updateSessionStatus('Cambios guardados · la edición continúa en otro dispositivo','readonly');
-      toast('La edición continuó en otro dispositivo. Esta sesión quedó en modo consulta.');
-    }
-
-    if(active){
-      sessionConflictKnown=true;
-      sessionConflictDevice=activeDevice;
-      const waiting=requestId===activeSessionId;
-      if(waiting)sessionTransferRequested=true;
-      const stale=sessionIsStale(active,heartbeat);
-      showSessionTransferModal({device:activeDevice,waiting,stale});
-      updateSessionStatus(
-        waiting?`Esperando transferencia desde ${activeDevice}…`
-          :stale?'La sesión anterior dejó de responder · recuperación disponible'
-          :`Solo lectura temporal · edición activa en ${activeDevice}`,
-        waiting||stale?'warn':'readonly'
-      );
-    }else{
-      sessionConflictKnown=false;
-      sessionSnapshotCache=d;
-      updateSessionStatus('Perfil disponible · puede continuar aquí','warn');
-      showSessionTransferModal({device:'otro dispositivo',waiting:false,stale:true});
-    }
+    applyEditState();
+    updateNavState();
+    showSessionTransferModal({device:activeDevice});
+    updateSessionStatus(`Solo lectura temporal · edición activa en ${activeDevice}`,'readonly');
   },e=>{
     console.warn('No fue posible vigilar la sesión activa',e);
-    updateSessionStatus('Perfil disponible · seguimiento de sesión no disponible','warn');
+    sessionConflictKnown=false;
+    updateSessionStatus('Modo local · control remoto de sesión no disponible','warn');
+    applyEditState();
   });
 }
 async function requestSingleDeviceControl(){
   if(!db||!currentUser)return false;
   if(isAdmin()){
     sessionHasControl=true;
+    sessionConflictKnown=false;
     updateSessionStatus('Sesión administrativa','ok');
     applyEditState();
     updateNavState();
@@ -578,6 +450,7 @@ async function requestSingleDeviceControl(){
     sessionHasControl=false;
     sessionConflictKnown=false;
     updateSessionStatus('Modo local seguro · sesión remota no disponible','warn');
+    applyEditState();
     return false;
   }
   const d=initial.exists()?initial.data():{};
@@ -586,8 +459,12 @@ async function requestSingleDeviceControl(){
   const heartbeat=Number(d.heartbeatMs)||0;
   const device=String(d.activeDevice||'otro dispositivo');
 
-  if(!active||active===activeSessionId){
-    const claimed=await forceClaimSession();
+  if(!active || active===activeSessionId || sessionBelongsToThisDevice(d) || sessionIsStale(active,heartbeat,d)){
+    sessionConflictKnown=false;
+    const claimed=await forceClaimSession({force:false,preferRemote:false});
+    if(!claimed){
+      updateSessionStatus('Perfil disponible · reintente activar edición si la necesita','warn');
+    }
     return claimed;
   }
 
@@ -595,17 +472,17 @@ async function requestSingleDeviceControl(){
   sessionConflictKnown=true;
   sessionTransferModalDismissed=false;
   sessionConflictDevice=device;
-  const stale=sessionIsStale(active,heartbeat);
-  updateSessionStatus(
-    stale?'La sesión anterior dejó de responder · recuperación disponible':`Solo lectura temporal · edición activa en ${device}`,
-    stale?'warn':'readonly'
-  );
-  showSessionTransferModal({device,waiting:false,stale});
+  updateSessionStatus(`Solo lectura temporal · edición activa en ${device}`,'readonly');
+  showSessionTransferModal({device});
+  applyEditState();
+  updateNavState();
   return false;
 }
+function scheduleSessionControlRetry(){
+  // V91: no hay polling. Firestore notifica cambios mediante onSnapshot.
+}
+async function retrySessionControl(){return false}
 async function releaseSessionIfOwned(){
-  clearTimeout(sessionControlRetryTimer);
-  clearTimeout(sessionHandoffRetryTimer);
   if(!db||!currentUser||!activeSessionId||isAdmin())return;
   try{
     const ref=doc(db,'profileSessions',currentUser.uid);
@@ -619,6 +496,7 @@ async function releaseSessionIfOwned(){
       tx.set(ref,{
         activeSessionId:null,
         activeDevice:null,
+        activeDeviceId:null,
         heartbeatMs:0,
         heartbeatAt:serverTimestamp(),
         takeoverRequestedSessionId:null,
@@ -626,14 +504,15 @@ async function releaseSessionIfOwned(){
         takeoverRequestedAtMs:null,
         lastHandoffToSessionId:null
       },{merge:true});
-    }),2500,false);
+    }),3000,false);
   }catch(e){console.warn('No fue posible liberar la sesión activa',e)}
   sessionHasControl=false;
+  sessionConflictKnown=false;
   stopSessionHeartbeat();
 }
 
 const allowedDomain=(window.PAD_ALLOWED_DOMAIN||'uteq.edu.mx').toLowerCase();
-const PAD_BUILD_VERSION='V90-2026-09-30';
+const PAD_BUILD_VERSION='V91-2026-09-30';
 window.PAD_BUILD_VERSION=PAD_BUILD_VERSION;
 const adminEmail=(window.PAD_ADMIN_EMAIL||'ivan.gutierrez@uteq.edu.mx').toLowerCase();
 const googleClientId=String(window.PAD_GOOGLE_CLIENT_ID||'').trim();
@@ -833,15 +712,32 @@ function individualEditOverride(){
 function individualEditBlocked(){
   return !!store.individualEditDisabled;
 }
+function administrativeEditingAllowed(){
+  if(isAdmin())return true;
+  if(individualEditBlocked())return false;
+  // Una habilitación individual del JUCA es una autorización explícita y prevalece
+  // sobre cierre global, fecha límite y finalización del periodo.
+  if(individualEditOverride())return true;
+  if(deadlinePassed())return false;
+  if(cfg.editingLocked)return false;
+  if(submissionLockedForCurrentPeriod())return false;
+  return true;
+}
+function editingLockReason(){
+  if(isAdmin())return '';
+  if(individualEditBlocked())return 'individual-admin';
+  if(!individualEditOverride()){
+    if(deadlinePassed())return 'deadline';
+    if(cfg.editingLocked)return 'global-admin';
+    if(submissionLockedForCurrentPeriod())return 'finalized';
+  }
+  if(sessionConflictKnown&&!sessionHasControl)return 'session';
+  if(currentUser&&(!bootstrapComplete||sessionActivationBusy))return 'initializing';
+  return '';
+}
 function editingAllowed(){
   if(currentUser&&(!bootstrapComplete||sessionActivationBusy))return false;
-  if(isAdmin())return true;
-  if(deadlinePassed())return false;
-  if(individualEditBlocked())return false;
-  const administrativelyAllowed=individualEditOverride() || (!cfg.editingLocked && !submissionLockedForCurrentPeriod());
-  if(!administrativelyAllowed)return false;
-  // V88: una falla temporal del servicio de sesión no bloquea la captura local.
-  // Solo se bloquea cuando existe evidencia de otro dispositivo con el control.
+  if(!administrativeEditingAllowed())return false;
   if(sessionConflictKnown&&!sessionHasControl)return false;
   return true;
 }
@@ -919,9 +815,13 @@ function startCountdown(){
 }
 function requireEditing(){
   if(editingAllowed())return true;
-  if(submissionLockedForCurrentPeriod()) toast('Este perfil ya fue finalizado. Si requiere corregirlo, solicite al JUCA habilitar su edición.');
-  else if(deadlinePassed()) toast('La fecha límite de captura ya concluyó.');
-  else toast('La edición de perfiles está temporalmente desactivada.');
+  const reason=editingLockReason();
+  if(reason==='session') toast('La edición está activa en otro dispositivo. Pulse “Continuar edición aquí” para trasladarla a este equipo.');
+  else if(reason==='individual-admin') toast('Administración deshabilitó temporalmente la edición de este perfil.');
+  else if(reason==='finalized') toast('Este perfil ya fue finalizado. Si requiere corregirlo, solicite al JUCA habilitar su edición.');
+  else if(reason==='deadline') toast('La fecha límite de captura ya concluyó. El JUCA puede habilitar individualmente su perfil si corresponde.');
+  else if(reason==='global-admin') toast('La edición general está cerrada por Administración.');
+  else toast('La edición se está preparando. Intente nuevamente en un momento.');
   return false;
 }
 function applyPlanningEditState(){
@@ -948,25 +848,35 @@ function applyEditState(){
   });
   const banner=$('editingLockedBanner');
   if(banner){
+    const reason=editingLockReason();
     banner.classList.toggle('hidden',!locked);
+    banner.classList.toggle('finalized-profile-banner',reason==='finalized');
     if(locked){
-      if(submissionLockedForCurrentPeriod()){
-        banner.classList.add('finalized-profile-banner');
+      if(reason==='session'){
+        banner.innerHTML=`<strong>↔ Edición activa en otro dispositivo</strong>
+          <ul>
+            <li>Su permiso administrativo de edición puede estar habilitado, pero otro dispositivo conserva actualmente la sesión de edición.</li>
+            <li>Puede trasladar la edición a este equipo sin borrar ningún dato ya guardado.</li>
+          </ul>
+          <button type="button" class="primary session-inline-takeover" onclick="continueEditingHere()">Continuar edición aquí</button>`;
+      }else if(reason==='individual-admin'){
+        banner.textContent='🔒 Administración deshabilitó temporalmente la edición de este perfil. Puede consultar e imprimir la información guardada.';
+      }else if(reason==='finalized'){
         banner.innerHTML=`<strong>🔒 Perfil finalizado</strong>
           <ul>
-            <li>La edición está <b>bloqueada para el periodo actual</b>.</li>
+            <li>La edición está bloqueada para el periodo actual.</li>
             <li>Puede consultar e imprimir nuevamente su información cuando lo requiera.</li>
-            <li>Si necesita realizar alguna corrección, solicite al <b>JUCA</b> la habilitación temporal de edición.</li>
+            <li>Si necesita corregir algo, solicite al JUCA la habilitación individual de edición.</li>
           </ul>`;
+      }else if(reason==='deadline'){
+        banner.textContent='⏱ Captura fuera de tiempo. Puede consultar e imprimir. El JUCA puede habilitar individualmente este perfil cuando proceda.';
+      }else if(reason==='global-admin'){
+        banner.textContent='🔒 Edición general desactivada por Administración. Puede consultar e imprimir normalmente.';
       }else{
-        banner.classList.remove('finalized-profile-banner');
-        banner.textContent=deadlinePassed()
-          ?'⏱ Captura fuera de tiempo. Puede consultar e imprimir, pero la edición está cerrada.'
-          :'🔒 Edición desactivada por Administración. Puede consultar todo su perfil e imprimirlo normalmente.';
+        banner.textContent='Preparando permisos de edición…';
       }
     }
   }
-
 
   const planningLocked=!planningEditingAllowed();
   applyPlanningEditState();
@@ -1516,6 +1426,7 @@ async function syncProfileToCloud({reason='guardado manual',releaseEditOverride=
     const safePayload=profileCloudPayload({releaseEditOverride});
     await setDoc(doc(db,'profiles',currentUser.uid),safePayload,{merge:true});
     updateRemoteProfileShadow(safePayload);
+    renewSessionLease({force:false}).catch(e=>console.warn('Renovación de sesión posterior al guardado',e));
     lastCloudTeacherFingerprint=fingerprintBefore;
     cloudTeacherFingerprintKnown=true;
     store.cloudUpdatedAt=version;
@@ -1570,6 +1481,7 @@ async function forceProfileCheckpointToCloud(reason='guardado manual',options={}
     const safePayload=profileCloudPayload();
     await setDoc(doc(db,'profiles',currentUser.uid),safePayload,{merge:true});
     updateRemoteProfileShadow(safePayload);
+    renewSessionLease({force:false}).catch(e=>console.warn('Renovación de sesión posterior al guardado',e));
     lastCloudTeacherFingerprint=fingerprintBefore;
     cloudTeacherFingerprintKnown=true;
     store.cloudUpdatedAt=Number(store.localUpdatedAt)||Date.now();
