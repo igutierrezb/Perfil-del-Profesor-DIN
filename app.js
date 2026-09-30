@@ -37,6 +37,7 @@ let planningCommissionEditorIndex=null;
 let planningCommissionDraft=emptyCommission();
 let cloudSyncInFlight=false;
 let bootstrapComplete=false;
+let authPersistenceReady=Promise.resolve();
 
 /* =========================================================
    V84 · ARRANQUE RESILIENTE Y SESIÓN ÚNICA TRANSFERIBLE
@@ -625,7 +626,7 @@ async function releaseSessionIfOwned(){
 }
 
 const allowedDomain=(window.PAD_ALLOWED_DOMAIN||'uteq.edu.mx').toLowerCase();
-const PAD_BUILD_VERSION='V87-2026-09-30';
+const PAD_BUILD_VERSION='V87.1-2026-09-30';
 window.PAD_BUILD_VERSION=PAD_BUILD_VERSION;
 const adminEmail=(window.PAD_ADMIN_EMAIL||'ivan.gutierrez@uteq.edu.mx').toLowerCase();
 const googleClientId=String(window.PAD_GOOGLE_CLIENT_ID||'').trim();
@@ -1854,10 +1855,19 @@ window.signIn=async function(){
     alert('Firebase no está configurado correctamente. Revise apiKey, projectId y appId.');
     return;
   }
-  // V53: Google autentica directamente y entrega un access token.
-  // Firebase recibe esa credencial mediante signInWithCredential().
-  // Por diseño NO se abre perfil-profesor-din.firebaseapp.com/__/auth/handler.
-  await signInWithGoogleIdentity();
+  const gateBtn=$('btnLoginGate'),topBtn=$('btnLogin');
+  [gateBtn,topBtn].filter(Boolean).forEach(btn=>{btn.disabled=true;btn.dataset.originalText=btn.textContent;btn.textContent='Abriendo Google…'});
+  try{
+    await authPersistenceReady;
+    const googleReady=await ensureGoogleIdentity();
+    if(!googleReady){
+      alert(googleAuthErrorMessage('No fue posible cargar el servicio de acceso de Google. Revise la conexión y vuelva a intentarlo.'));
+      return false;
+    }
+    return await signInWithGoogleIdentity();
+  }finally{
+    [gateBtn,topBtn].filter(Boolean).forEach(btn=>{btn.disabled=false;btn.textContent=btn.dataset.originalText||'Ingresar con cuenta institucional';delete btn.dataset.originalText});
+  }
 }
 window.signOutApp=async function(){
   const uid=currentUser?.uid||null;
@@ -1946,7 +1956,7 @@ function initAuth(){
 
   // Se configura al iniciar la aplicación. Así el clic de acceso queda
   // libre para abrir Google inmediatamente, algo importante en Safari/iOS.
-  setPersistence(auth,browserLocalPersistence).catch(e=>{
+  authPersistenceReady=setPersistence(auth,browserLocalPersistence).catch(e=>{
     console.warn('No fue posible establecer persistencia local de Auth',e);
   });
 
@@ -1980,8 +1990,13 @@ function initAuth(){
       return;
     }
 
-    // V84: abrir de inmediato con la copia local del MISMO UID.
-    restoreUserBackupBeforeCloud();
+    // V87.1: una copia local dañada o un error de render nunca puede bloquear el acceso.
+    try{
+      restoreUserBackupBeforeCloud();
+    }catch(e){
+      console.error('No fue posible restaurar la copia local; se continuará con la sesión autenticada.',e);
+      updateCloudStatus('Sesión iniciada · recuperación local pendiente','warn');
+    }
     authReady=true;
     updateAuthUI();
     updateSessionStatus('Perfil disponible · verificando sincronización…','warn');

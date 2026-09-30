@@ -10,7 +10,7 @@ test -n "${GOOGLE_CLIENT_ID:-}"
 rm -rf dist
 mkdir -p dist
 
-# V87: sólo artefactos activos de producción.
+# V87.1: corrección robusta de autenticación institucional.
 for f in \
   index.html \
   styles.css \
@@ -54,7 +54,7 @@ EOF
 
 cat > dist/build-info.json <<EOF
 {
-  "version": "V87-2026-09-30",
+  "version": "V87.1-2026-09-30",
   "runtime": "consolidated",
   "legacyBackupModulePublished": false
 }
