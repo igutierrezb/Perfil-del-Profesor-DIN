@@ -459,7 +459,7 @@ async function releaseSessionIfOwned(){
 }
 
 const allowedDomain=(window.PAD_ALLOWED_DOMAIN||'uteq.edu.mx').toLowerCase();
-const PAD_BUILD_VERSION='V84-2026-09-30';
+const PAD_BUILD_VERSION='V85-2026-09-30';
 window.PAD_BUILD_VERSION=PAD_BUILD_VERSION;
 const adminEmail=(window.PAD_ADMIN_EMAIL||'ivan.gutierrez@uteq.edu.mx').toLowerCase();
 const googleClientId=String(window.PAD_GOOGLE_CLIENT_ID||'').trim();
@@ -679,17 +679,6 @@ function activateViewDirect(id){
   document.querySelectorAll('.main-nav button').forEach(b=>b.classList.toggle('active',b.dataset.view===id));
   window.scrollTo(0,0);
 }
-function removeLegacyBackupUI(){
-  $('backupRestoreCard')?.remove();
-  $('restoreModal')?.remove();
-  document.body.classList.remove('restore-open');
-}
-function installLegacyBackupGuard(){
-  removeLegacyBackupUI();
-  const observer=new MutationObserver(()=>removeLegacyBackupUI());
-  observer.observe(document.body,{childList:true,subtree:true});
-}
-
 function formatDateTime(ts){
   if(!ts)return 'Sin fecha límite';
   return new Intl.DateTimeFormat('es-MX',{dateStyle:'medium',timeStyle:'short'}).format(new Date(Number(ts)));
@@ -731,10 +720,19 @@ function updateCountdownUI(){
     :(globalSettingsKnown
       ?'<b>Sin fecha límite</b><span>La edición dependerá únicamente del interruptor general.</span>'
       :'<b>Cargando configuración</b><span>La fecha límite se confirmará al iniciar sesión.</span>');
-  applyEditState();
+  const editSignature=[
+    editingAllowed(),planningEditingAllowed(),deadlinePassed(),submissionLockedForCurrentPeriod(),
+    !!cfg.editingLocked,!!store.individualEditEnabled,!!store.individualEditDisabled,!!sessionHasControl
+  ].join('|');
+  if(updateCountdownUI.lastEditSignature!==editSignature){
+    updateCountdownUI.lastEditSignature=editSignature;
+    applyEditState();
+  }
 }
 function startCountdown(){
-  clearInterval(countdownTimer);updateCountdownUI();countdownTimer=setInterval(updateCountdownUI,1000);
+  clearInterval(countdownTimer);
+  updateCountdownUI();
+  countdownTimer=setInterval(updateCountdownUI,1000);
 }
 function requireEditing(){
   if(editingAllowed())return true;
@@ -752,7 +750,8 @@ function applyEditState(){
       // En solo lectura se permite navegar por todos los programas y llegar a Revisión.
       if(el.closest('.flow-buttons')) return;
       if(id==='captura' && (el.textContent.includes('Continuar a revisión')||el.textContent.includes('continuar a revisión'))) return;
-      el.disabled=locked;
+      const limitReached=el.classList.contains('profile-add-row-btn')&&el.dataset.limitReached==='1';
+      el.disabled=locked||limitReached;
     });
   });
   const banner=$('editingLockedBanner');
@@ -925,7 +924,9 @@ function clearUserBackup(uid){
 function backupHasTeacherData(backup){
   if(!backup||typeof backup!=='object')return false;
   const p=backup.profile||{};
-  const hasProfile=!!(p.apPat||p.apMat||p.nombres||p.categoria||p.gradoAcademico||Object.values(p.extra||{}).some(Boolean));
+  const counts=p.rowCounts||{};
+  const hasExpandedRows=(Number(counts.formation)||0)>7 || (Number(counts.docencia)||0)>4 || (Number(counts.laboral)||0)>5;
+  const hasProfile=!!(p.apPat||p.apMat||p.nombres||p.categoria||p.gradoAcademico||Object.values(p.extra||{}).some(Boolean)||hasExpandedRows);
   const hasAnswers=Object.keys(backup.answers||{}).length>0;
   const hasMeta=Object.keys(backup.programMeta||{}).length>0;
   const hasPlanning=Object.keys(backup.planningByPeriod||{}).length>0;
@@ -1189,6 +1190,7 @@ function renderLoadedProfile(){
     programAcronyms,commonRules,transversalRules,currentProgramIndex:0,lastSavedAt
   }));
   saveUserBackup();
+  buildProfileRows();
   loadProfileValuesOnly();
   renderCurrentProgram();
   renderPlanning();
@@ -1462,6 +1464,7 @@ async function initCloud(){
         disabledPrograms,programAcronyms,commonRules,transversalRules,currentProgramIndex:0,lastSavedAt
       }));
       saveUserBackup();
+      buildProfileRows();
       loadProfileValuesOnly();
       renderCurrentProgram();
       updateProgress();
@@ -2223,19 +2226,24 @@ document.querySelectorAll('.main-nav button').forEach(b=>b.onclick=()=>{
 function profileLooksComplete(){
   return validateProfile().ok;
 }
-function updateReviewReadiness(){
+function updateReviewReadiness(metrics=null){
   const el=$('reviewReadiness');if(!el)return;
-  const p=profileLooksComplete();
-  const capture=validateCapture();
-  const all=validateAll();
-  const stats=overallStats();
-  const completePrograms=programs().filter(pr=>programStats(pr).missing===0).length;
+  let m=metrics;
+  if(!m){
+    const profile=validateProfile();
+    const stats=overallStats();
+    const capture=validateCapture(stats);
+    const all=validateAll(profile,capture);
+    const ps=programs();
+    m={profile,capture,all,stats,completePrograms:ps.filter(pr=>programStats(pr).missing===0).length,totalPrograms:ps.length};
+  }
+  const resolvedSubjects=Math.max(0,m.stats.total-m.stats.remainingUnique-m.stats.invalid);
   el.innerHTML=`<div class="readiness-title">Verificación previa</div>
     <div class="readiness-grid">
-      <span class="${p?'ok':'pending'}">${p?'✓':'○'} Datos generales</span>
-      <span class="${completePrograms===programs().length?'ok':'pending'}">${completePrograms===programs().length?'✓':'○'} Programas ${completePrograms}/${programs().length}</span>
-      <span class="${capture.ok?'ok':'pending'}">${capture.ok?'✓':'○'} Materias ${stats.done}/${stats.total}</span>
-      <span class="${all.ok?'ok':'pending'}">${all.ok?'✓':'○'} ${all.ok?'Sin pendientes':'Pendientes por resolver'}</span>
+      <span class="${m.profile.ok?'ok':'pending'}">${m.profile.ok?'✓':'○'} Datos generales</span>
+      <span class="${m.completePrograms===m.totalPrograms?'ok':'pending'}">${m.completePrograms===m.totalPrograms?'✓':'○'} Programas ${m.completePrograms}/${m.totalPrograms}</span>
+      <span class="${m.capture.ok?'ok':'pending'}">${m.capture.ok?'✓':'○'} Materias ${resolvedSubjects}/${m.stats.total}</span>
+      <span class="${m.all.ok?'ok':'pending'}">${m.all.ok?'✓':'○'} ${m.all.ok?'Sin pendientes':'Pendientes por resolver'}</span>
     </div>`;
 }
 function updateNavState(){
@@ -2243,17 +2251,25 @@ function updateNavState(){
   const cBtn=document.querySelector('.main-nav button[data-view="captura"]');
   const rBtn=document.querySelector('.main-nav button[data-view="revision"]');
 
-  if(pBtn)pBtn.classList.toggle('complete',profileLooksComplete());
-  if(cBtn)cBtn.classList.toggle('complete',validateCapture().ok);
+  // Un solo recorrido global por actualización de etapa.
+  const profile=validateProfile();
+  const stats=overallStats();
+  const capture=validateCapture(stats);
+  const all=validateAll(profile,capture);
+  const ps=programs();
+  const completePrograms=ps.filter(pr=>programStats(pr).missing===0).length;
+
+  if(pBtn)pBtn.classList.toggle('complete',profile.ok);
+  if(cBtn)cBtn.classList.toggle('complete',capture.ok);
   if(rBtn){
-    rBtn.classList.toggle('complete',validateAll().ok);
-    rBtn.classList.toggle('readable',reviewAvailable()&&!validateAll().ok);
+    rBtn.classList.toggle('complete',all.ok);
+    rBtn.classList.toggle('readable',reviewAvailable(all.ok)&&!all.ok);
   }
 
   const sequential=sequentialProfessorMode();
   const bootstrapLocked=!!currentUser&&!bootstrapComplete;
   const indicatorOnly=sequential||bootstrapLocked;
-  updateReviewReadiness();
+  updateReviewReadiness({profile,capture,all,stats,completePrograms,totalPrograms:ps.length});
   [pBtn,cBtn,rBtn].forEach(btn=>{
     if(!btn)return;
     btn.disabled=indicatorOnly;
@@ -2266,17 +2282,115 @@ function updateNavState(){
   });
 }
 
+const PROFILE_ROW_CONFIG={
+  formation:{base:7,max:11,prefix:'f',suffixes:['a','b']},
+  docencia:{base:4,max:10,prefix:'d',suffixes:['a','c']},
+  laboral:{base:5,max:10,prefix:'l',suffixes:['a','b','c']}
+};
+function clampProfileRowCount(value,base,max){
+  return Math.max(base,Math.min(max,Number(value)||base));
+}
+function lastUsedProfileRow(extra,prefix,suffixes,max){
+  let last=0;
+  for(let i=1;i<=max;i++){
+    if(suffixes.some(s=>String(extra?.[`${prefix}${i}${s}`]||'').trim()))last=i;
+  }
+  return last;
+}
+function normalizedProfileRowCounts(profile=store.profile||{}){
+  const extra=profile.extra||{};
+  const saved=profile.rowCounts||{};
+  const out={};
+  Object.entries(PROFILE_ROW_CONFIG).forEach(([kind,cfgRow])=>{
+    const used=lastUsedProfileRow(extra,cfgRow.prefix,cfgRow.suffixes,cfgRow.max);
+    out[kind]=clampProfileRowCount(Math.max(Number(saved[kind])||0,used,cfgRow.base),cfgRow.base,cfgRow.max);
+  });
+  return out;
+}
+function visibleProfileRowCounts(){
+  const fallback=normalizedProfileRowCounts();
+  return {
+    formation:document.querySelectorAll('#formacion [data-profile-row-kind="formation"]').length||fallback.formation,
+    docencia:document.querySelectorAll('#docencia [data-profile-row-kind="docencia"]').length||fallback.docencia,
+    laboral:document.querySelectorAll('#laboral [data-profile-row-kind="laboral"]').length||fallback.laboral
+  };
+}
+function profileRowDeleteButton(kind,index){
+  const cfgRow=PROFILE_ROW_CONFIG[kind];
+  if(!cfgRow||index<=cfgRow.base)return '';
+  return `<button type="button" class="profile-row-delete" onclick="removeProfileRow('${kind}',${index})" aria-label="Eliminar este renglón">Eliminar</button>`;
+}
 function buildProfileRows(){
-  const f=['Licenciatura o TSU','Posgrado 1','Posgrado 2','Posgrado 3','Posgrado 4','Posgrado 5','Posgrado 6'];
-  $('formacion').innerHTML=f.map((lab,i)=>`<div class="form-row two"><div class="row-label">${lab}${i===0?' *':''}</div><input placeholder="${i===0?'Ej. Licenciatura en Ingeniería Industrial':'Ej. Maestría en Educación'}" data-g="f${i+1}a"><input placeholder="Ej. Universidad Tecnológica de Querétaro" data-g="f${i+1}b"></div>`).join('');
-  $('docencia').innerHTML=Array.from({length:4},(_,i)=>`<div class="form-row two"><div class="row-label">Institución ${i+1}${i===0?' *':''}</div><input placeholder="Ej. UTEQ" data-g="d${i+1}a"><input placeholder="Ej. 2023 - 2025" data-g="d${i+1}c"></div>`).join('');
-  $('laboral').innerHTML=Array.from({length:5},(_,i)=>`<div class="form-row"><div class="row-label">Organización ${i+1}${i===0?' *':''}</div><input placeholder="Ej. Empresa / institución" data-g="l${i+1}a"><input placeholder="Ej. Jefe de área" data-g="l${i+1}b"><input placeholder="Ej. 2020 - 2023" data-g="l${i+1}c"></div>`).join('');
+  const counts=normalizedProfileRowCounts();
+  store.profile=store.profile||{};
+  store.profile.rowCounts=counts;
+
+  $('formacion').innerHTML=Array.from({length:counts.formation},(_,n)=>{
+    const i=n+1;
+    const label=i===1?'Licenciatura o TSU':`Posgrado ${i-1}`;
+    const added=i>PROFILE_ROW_CONFIG.formation.base;
+    return `<div class="form-row two profile-data-row ${added?'profile-added-row':''}" data-profile-row-kind="formation" data-profile-row-index="${i}">
+      <div class="row-label">${label}${i===1?' *':''}</div>
+      <input placeholder="${i===1?'Ej. Licenciatura en Ingeniería Industrial':'Ej. Maestría en Educación'}" data-g="f${i}a">
+      <input placeholder="Ej. Universidad Tecnológica de Querétaro" data-g="f${i}b">
+      ${profileRowDeleteButton('formation',i)}
+    </div>`;
+  }).join('');
+
+  $('docencia').innerHTML=Array.from({length:counts.docencia},(_,n)=>{
+    const i=n+1;
+    const added=i>PROFILE_ROW_CONFIG.docencia.base;
+    return `<div class="form-row two profile-data-row ${added?'profile-added-row':''}" data-profile-row-kind="docencia" data-profile-row-index="${i}">
+      <div class="row-label">Institución ${i}${i===1?' *':''}</div>
+      <input placeholder="Ej. UTEQ" data-g="d${i}a">
+      <input placeholder="Ej. 2023 - 2025" data-g="d${i}c">
+      ${profileRowDeleteButton('docencia',i)}
+    </div>`;
+  }).join('');
+
+  $('laboral').innerHTML=Array.from({length:counts.laboral},(_,n)=>{
+    const i=n+1;
+    const added=i>PROFILE_ROW_CONFIG.laboral.base;
+    return `<div class="form-row profile-data-row ${added?'profile-added-row':''}" data-profile-row-kind="laboral" data-profile-row-index="${i}">
+      <div class="row-label">Organización ${i}${i===1?' *':''}</div>
+      <input placeholder="Ej. Empresa / institución" data-g="l${i}a">
+      <input placeholder="Ej. Jefe de área" data-g="l${i}b">
+      <input placeholder="Ej. 2020 - 2023" data-g="l${i}c">
+      ${profileRowDeleteButton('laboral',i)}
+    </div>`;
+  }).join('');
+  updateProfileRowControls();
+}
+function updateProfileRowControls(){
+  const counts=normalizedProfileRowCounts();
+  const formBtn=$('addFormationRowBtn');
+  const teachBtn=$('addTeachingRowBtn');
+  const workBtn=$('addWorkRowBtn');
+  if(formBtn){
+    const atMax=counts.formation>=PROFILE_ROW_CONFIG.formation.max;
+    formBtn.dataset.limitReached=atMax?'1':'0';
+    formBtn.disabled=atMax||!editingAllowed();
+    formBtn.textContent=atMax?'Máximo de 10 posgrados alcanzado':`＋ Agregar Posgrado ${counts.formation}`;
+  }
+  if(teachBtn){
+    const atMax=counts.docencia>=PROFILE_ROW_CONFIG.docencia.max;
+    teachBtn.dataset.limitReached=atMax?'1':'0';
+    teachBtn.disabled=atMax||!editingAllowed();
+    teachBtn.textContent=atMax?'Máximo de 10 instituciones alcanzado':`＋ Agregar experiencia docente ${counts.docencia+1}`;
+  }
+  if(workBtn){
+    const atMax=counts.laboral>=PROFILE_ROW_CONFIG.laboral.max;
+    workBtn.dataset.limitReached=atMax?'1':'0';
+    workBtn.disabled=atMax||!editingAllowed();
+    workBtn.textContent=atMax?'Máximo de 10 organizaciones alcanzado':`＋ Agregar experiencia laboral ${counts.laboral+1}`;
+  }
 }
 function loadProfileValuesOnly(){
   if($('gradoAcademico'))$('gradoAcademico').value=store.profile?.gradoAcademico||'';
   const p=store.profile||{};
   ['apPat','apMat','nombres','categoria'].forEach(x=>{if($(x))$(x).value=p[x]||''});
   document.querySelectorAll('[data-g]').forEach(x=>x.value=(p.extra||{})[x.dataset.g]||'');
+  updateProfileRowControls();
 }
 function loadProfile(){
   if(!$('categoria').options.length)CATEGORIES.forEach(c=>$('categoria').add(new Option(c,c)));
@@ -2292,6 +2406,7 @@ function profileFromInputs(){
     nombres:$('nombres')?.value.trim()||'',
     categoria:$('categoria')?.value||'',
     gradoAcademico:$('gradoAcademico')?.value||'',
+    rowCounts:visibleProfileRowCounts(),
     extra
   };
 }
@@ -2300,6 +2415,57 @@ function collectProfile(){
   persist();
   return store.profile;
 }
+window.addProfileRow=function(kind){
+  if(!requireEditing())return false;
+  const cfgRow=PROFILE_ROW_CONFIG[kind];
+  if(!cfgRow)return false;
+  const profile=profileFromInputs();
+  const counts=normalizedProfileRowCounts(profile);
+  if(counts[kind]>=cfgRow.max){
+    toast('Ya alcanzó el máximo permitido para este apartado.');
+    return false;
+  }
+  counts[kind]++;
+  profile.rowCounts=counts;
+  store.profile=profile;
+  buildProfileRows();
+  loadProfileValuesOnly();
+  persist();
+  requestAnimationFrame(()=>{
+    const row=document.querySelector(`[data-profile-row-kind="${kind}"][data-profile-row-index="${counts[kind]}"]`);
+    row?.scrollIntoView({behavior:'smooth',block:'center'});
+    row?.querySelector('input')?.focus({preventScroll:true});
+  });
+  return true;
+};
+window.removeProfileRow=function(kind,index){
+  if(!requireEditing())return false;
+  const cfgRow=PROFILE_ROW_CONFIG[kind];
+  if(!cfgRow||index<=cfgRow.base)return false;
+  const profile=profileFromInputs();
+  const counts=normalizedProfileRowCounts(profile);
+  if(index>counts[kind])return false;
+  const keys=cfgRow.suffixes.map(s=>`${cfgRow.prefix}${index}${s}`);
+  const hasData=keys.some(k=>String(profile.extra?.[k]||'').trim());
+  if(hasData&&!confirm('Este renglón contiene información. ¿Desea eliminarlo?'))return false;
+
+  for(let i=index;i<counts[kind];i++){
+    cfgRow.suffixes.forEach(s=>{
+      const to=`${cfgRow.prefix}${i}${s}`;
+      const from=`${cfgRow.prefix}${i+1}${s}`;
+      profile.extra[to]=profile.extra[from]||'';
+    });
+  }
+  cfgRow.suffixes.forEach(s=>delete profile.extra[`${cfgRow.prefix}${counts[kind]}${s}`]);
+  counts[kind]--;
+  profile.rowCounts=counts;
+  store.profile=profile;
+  buildProfileRows();
+  loadProfileValuesOnly();
+  persist();
+  toast('Renglón eliminado.');
+  return true;
+};
 function captureProfileLocallyWithoutCloud(){
   if(!currentUser||!editingAllowed())return;
 
@@ -2338,6 +2504,7 @@ function captureProfileLocallyWithoutCloud(){
 }
 
 function requiredProfileChecks(p,e){
+  const counts=normalizedProfileRowCounts(p);
   const checks=[
     {el:$('apPat'),missing:!p.apPat,msg:'Capture el apellido paterno.'},
     {el:$('apMat'),missing:!p.apMat,msg:'Capture el apellido materno.'},
@@ -2352,32 +2519,34 @@ function requiredProfileChecks(p,e){
     {el:document.querySelector('[data-g="l1c"]'),missing:!e.l1c,msg:'Capture el periodo de la primera línea de Experiencia laboral.'}
   ];
 
-  for(let i=2;i<=7;i++){
+  for(let i=2;i<=counts.formation;i++){
     const study=String(e[`f${i}a`]||'').trim();
     const institution=String(e[`f${i}b`]||'').trim();
-    if(!(study||institution))continue;
+    const explicitlyAdded=i>PROFILE_ROW_CONFIG.formation.base;
+    if(!explicitlyAdded&&!(study||institution))continue;
     checks.push(
       {el:document.querySelector(`[data-g="f${i}a"]`),missing:!study,msg:`Posgrado ${i-1}: capture el nombre del estudio o posgrado.`},
       {el:document.querySelector(`[data-g="f${i}b"]`),missing:!institution,msg:`Posgrado ${i-1}: capture la institución.`}
     );
   }
 
-  for(let i=2;i<=4;i++){
+  for(let i=2;i<=counts.docencia;i++){
     const institution=String(e[`d${i}a`]||'').trim();
     const period=String(e[`d${i}c`]||'').trim();
-    if(!(institution||period))continue;
+    const explicitlyAdded=i>PROFILE_ROW_CONFIG.docencia.base;
+    if(!explicitlyAdded&&!(institution||period))continue;
     checks.push(
       {el:document.querySelector(`[data-g="d${i}a"]`),missing:!institution,msg:`Experiencia docente ${i}: capture la institución.`},
       {el:document.querySelector(`[data-g="d${i}c"]`),missing:!period,msg:`Experiencia docente ${i}: capture el periodo.`}
     );
   }
 
-  for(let i=2;i<=5;i++){
+  for(let i=2;i<=counts.laboral;i++){
     const a=String(e[`l${i}a`]||'').trim();
     const b=String(e[`l${i}b`]||'').trim();
     const c=String(e[`l${i}c`]||'').trim();
-    const started=!!(a||b||c);
-    if(!started)continue;
+    const explicitlyAdded=i>PROFILE_ROW_CONFIG.laboral.base;
+    if(!explicitlyAdded&&!(a||b||c))continue;
     checks.push(
       {el:document.querySelector(`[data-g="l${i}a"]`),missing:!a,msg:`Experiencia laboral ${i}: capture la organización.`},
       {el:document.querySelector(`[data-g="l${i}b"]`),missing:!b,msg:`Experiencia laboral ${i}: capture el puesto o cargo.`},
@@ -2473,7 +2642,7 @@ window.continueToCapture=async function(){
     record.completedAtMs=Date.now();
     record.updatedAtMs=Date.now();
     planningByPeriod[cfg.periodo]=record;
-    persist();
+    persist({schedule:false});
     if($('planningErrors'))$('planningErrors').innerHTML='';
     withTimeout(writeAudit('Comisiones y consideraciones académicas revisadas al continuar'),1200,false)
       .catch(e=>console.warn('Auditoría pendiente',e));
@@ -2482,15 +2651,14 @@ window.continueToCapture=async function(){
   clearRequiredHighlights();
   document.querySelectorAll('#perfil .mobile-required-focus').forEach(el=>el.classList.remove('mobile-required-focus'));
 
-  // Primero persistencia local segura; después navegación inmediata.
-  collectProfile();
-  persist();
+  // Una sola persistencia local antes de navegar. La nube se confirma después en segundo plano.
+  store.profile=profileFromInputs();
   workflowState.profileConfirmed=true;
   workflowState.expectedProgramIndex=0;
   workflowState.reviewUnlocked=false;
   currentProgramIndex=0;
   store.currentProgramIndex=0;
-  persist({touch:false,schedule:false});
+  persist({schedule:false});
   renderCurrentProgram();
   activateViewDirect('captura');
 
@@ -2738,7 +2906,30 @@ function courseTransversalBadge(pid,s,c,name){
 }
 
 
-function programStats(p){let total=0,done=0,missing=0;p.semesters.forEach((sem,s)=>sem.forEach((name,c)=>{if(isEnglish(name))return;total++;const a=getAns(p.id,s,c,name);const incomplete=a.status==='pending'||(['X','XX'].includes(a.status)&&!(a.origins||[]).length);if(incomplete)missing++;else done++}));return{total,done,missing}}
+function programStats(p){
+  let total=0,resolved=0,selected=0,disabled=0,missing=0;
+  p.semesters.forEach((sem,s)=>sem.forEach((name,c)=>{
+    total++;
+    if(isEnglish(name)){
+      disabled++;
+      resolved++;
+      return;
+    }
+    const a=getAns(p.id,s,c,name);
+    if(['off','na'].includes(a.status)){
+      disabled++;
+      resolved++;
+      return;
+    }
+    if(['X','XX'].includes(a.status)&&(a.origins||[]).length){
+      selected++;
+      resolved++;
+      return;
+    }
+    missing++;
+  }));
+  return {total,done:resolved,resolved,selected,disabled,missing,pct:total?Math.round(resolved/total*100):0};
+}
 function overallStats(){
   let total=0,done=0,invalid=0,pending=[];
   const pendingLogical=new Map();
@@ -2755,7 +2946,7 @@ function overallStats(){
     }
     if(['X','XX'].includes(a.status)&&!(a.origins||[]).length)invalid++;
   })));
-  return{total,done,invalid,pending,pendingUnique:[...pendingLogical.values()],remainingUnique:pendingLogical.size}
+  return{total,done,invalid,pending,pendingUnique:[...pendingLogical.values()],remainingUnique:pendingLogical.size};
 }
 function captureIssues(){
   const issues=[];
@@ -2801,37 +2992,28 @@ function captureIssuePanel(issues){
     </div>
   </div>`;
 }
+function clearCaptureAttention(){
+  document.querySelectorAll('.attention-target').forEach(x=>x.classList.remove('attention-target'));
+  document.querySelectorAll('.course.needs-attention').forEach(x=>x.classList.remove('needs-attention'));
+}
 function focusExactCaptureIssue(issue){
   if(!issue)return;
-  document.querySelectorAll('.exact-missing-focus').forEach(el=>el.classList.remove('exact-missing-focus'));
   const row=document.querySelector(`[data-course-loc="${issue.pi}|${issue.s}|${issue.c}"]`);
   if(!row)return;
-  const exact=issue.type==='area'
-    ?row.querySelector('.area-buttons')
-    :issue.type==='competence'
-      ?row.querySelector('.comp-buttons')
-      :row;
   row.scrollIntoView({behavior:'smooth',block:'center'});
-  (exact||row).classList.add('exact-missing-focus');
-  setTimeout(()=>{(exact||row).classList.remove('exact-missing-focus')},4500);
+  const target=issue.type==='area'?row.querySelector('.area-buttons'):row.querySelector('.comp-buttons');
+  target?.classList.add('attention-target');
+  row.classList.add('needs-attention');
 }
 window.goToCaptureIssue=function(pi,s,c,type='competence'){
-  const target=captureIssues().find(x=>x.pi===Number(pi)&&x.s===Number(s)&&x.c===Number(c)&&x.type===type);
-  if(!target){
-    toast('Ese pendiente ya fue corregido.');
-    refreshCaptureErrorState();
-    return;
-  }
-
-  currentProgramIndex=target.pi;
-  workflowState.expectedProgramIndex=target.pi;
+  currentProgramIndex=pi;
+  workflowState.expectedProgramIndex=pi;
   workflowState.reviewUnlocked=false;
   persist({touch:false,schedule:false});
   activateViewDirect('captura');
   renderCurrentProgram();
-  requestAnimationFrame(()=>focusExactCaptureIssue(target));
-}
-
+  requestAnimationFrame(()=>focusExactCaptureIssue({pi,s,c,type}));
+};
 function refreshCaptureErrorState(){
   if(!captureErrorModeActive)return;
   const root=$('captureErrors');
@@ -2851,14 +3033,23 @@ function refreshCaptureErrorState(){
     root.innerHTML=statusBox(profileCheck.errors,'Complete los datos del profesor.');
   }
 }
-function favoriteCount(){const u=new Set();programs().forEach(p=>p.semesters.forEach((sem,s)=>sem.forEach((name,c)=>{if(getAns(p.id,s,c,name).ideal)u.add(`${p.id}|${s}|${c}`)})));return u.size}
+function currentProgramFavoriteCount(p){
+  let total=0;
+  p?.semesters?.forEach((sem,s)=>sem.forEach((name,c)=>{
+    if(getAns(p.id,s,c,name).ideal)total++;
+  }));
+  return total;
+}
 function updateProgress(){
-  const x=overallStats(),pct=x.total?Math.round(x.done/x.total*100):0;
-  $('progressText').textContent=`${x.done} de ${x.total} revisadas (${pct}%)${x.remainingUnique?` · ${x.remainingUnique} pendiente${x.remainingUnique===1?'':'s'}`:''}`;
-  $('progressBar').style.width=pct+'%';
-  $('idealCounter').textContent=`Materias favoritas: ${favoriteCount()} · opcionales`;
-  const complete=programs().filter(p=>programStats(p).missing===0).length;
-  if($('programCounter'))$('programCounter').textContent=`Programas completos: ${complete} de ${programs().length}`;
+  const p=currentProgram();
+  if(!p)return;
+  const x=programStats(p);
+  $('progressText').textContent=`${x.resolved} de ${x.total} asignaturas revisadas (${x.pct}%)`;
+  $('progressBar').style.width=x.pct+'%';
+  $('idealCounter').textContent=`Seleccionadas/configuradas: ${x.selected} · Deshabilitadas o No aplica: ${x.disabled} · Favoritas: ${currentProgramFavoriteCount(p)}`;
+  if($('programCounter'))$('programCounter').textContent=x.missing
+    ?`Pendientes en este programa: ${x.missing}`
+    :'Programa completo · puede continuar';
 }
 function currentProgram(){return programs()[currentProgramIndex]}
 function eligibleCourses(p){const opts=[];p.semesters.forEach((sem,s)=>sem.forEach((name,c)=>{const a=getAns(p.id,s,c,name);if(['X','XX'].includes(a.status)&&(a.origins||[]).length)opts.push({id:`${s}|${c}`,text:`${s+1}.° · ${subjectCase(name)}`})}));return opts}
@@ -2938,7 +3129,25 @@ function rowCoordinatorEnabled(pid,s,c,name){
 }
 
 
-const pastelTitles=['#eef4f9','#f7efe7','#edf6f0','#f2effa','#fff4ea','#ecf6f8','#f8eef1','#eef5e9'];
+const PROGRAM_CAPTURE_THEMES={
+  ind_procesos:{bg:'#fff0ea',border:'#efb6a5',accent:'#d05e43',strong:'#9d3f2b'},
+  ind_plasticos:{bg:'#f4efff',border:'#cdbdeb',accent:'#8a67c3',strong:'#624395'},
+  mec_auto:{bg:'#edf6ff',border:'#b9d7ef',accent:'#4a8fc4',strong:'#2c6794'},
+  mec_ind:{bg:'#eaf7f4',border:'#afd9d1',accent:'#3b9185',strong:'#276a62'},
+  mec_moldes:{bg:'#fff6df',border:'#e9cf8e',accent:'#c18a2b',strong:'#8a611d'},
+  auto_diseno:{bg:'#eaf8fb',border:'#acd9e2',accent:'#3f95a5',strong:'#2b6d79'},
+  mantenimiento:{bg:'#eef8e8',border:'#bfddb0',accent:'#6e9f4f',strong:'#4f7538'},
+  nano:{bg:'#fff0f5',border:'#e7bdd0',accent:'#c56f90',strong:'#914e68'}
+};
+const PROGRAM_CAPTURE_FALLBACKS=[
+  {bg:'#eef4f9',border:'#bfd2e0',accent:'#5685a5',strong:'#38617e'},
+  {bg:'#f7efe7',border:'#dfc8b0',accent:'#a97a50',strong:'#7e5837'},
+  {bg:'#edf6f0',border:'#bddbc7',accent:'#5f9872',strong:'#467253'},
+  {bg:'#f2effa',border:'#cec3e4',accent:'#7c69aa',strong:'#5d4d84'}
+];
+function captureThemeForProgram(p,index=currentProgramIndex){
+  return PROGRAM_CAPTURE_THEMES[p?.id]||PROGRAM_CAPTURE_FALLBACKS[Math.abs(index)%PROGRAM_CAPTURE_FALLBACKS.length];
+}
 function captureGuideHtml(){
   return `<div class="instruction-band card capture-guide-band capture-guide-current">
     <div class="instruction-title">Cómo capturar cada asignatura</div>
@@ -3000,9 +3209,18 @@ function renderCurrentProgram(){
 
   const p=currentProgram();if(!p)return;
   $('programStep').textContent=`Programa ${currentProgramIndex+1} de ${programs().length}`;
-  $('programFlowName').innerHTML=`<span class="program-focus-label">Programa / salida lateral que está capturando</span><strong class="program-exit-focus">${escapeHtml(p.exit||p.name)}</strong><span class="program-degree-context">${p.exit?`Programa de referencia · ${escapeHtml(p.name)}`:escapeHtml(p.name)}</span>`;
+  $('programFlowName').innerHTML=`<span class="program-focus-label">Salida lateral / TSU que está capturando</span><strong class="program-exit-focus">${escapeHtml(p.exit||p.name)}</strong><span class="program-degree-context">${p.exit?`Programa educativo de referencia · ${escapeHtml(p.name)}`:escapeHtml(p.name)}</span>`;
   const st=programStats(p);
-  let bg = pastelTitles[currentProgramIndex % pastelTitles.length];
+  const theme=captureThemeForProgram(p,currentProgramIndex);
+  const header=document.querySelector('.program-header-flow');
+  if(header){
+    header.style.setProperty('--program-bg',theme.bg);
+    header.style.setProperty('--program-border',theme.border);
+    header.style.setProperty('--program-accent',theme.accent);
+    header.style.setProperty('--program-strong',theme.strong);
+  }
+  const prevBtn=$('flowPrevBtn');
+  if(prevBtn)prevBtn.textContent=currentProgramIndex===0?'← Volver a Datos del profesor':'← Anterior';
 
 
   const guideSteps=[
@@ -3024,7 +3242,6 @@ function renderCurrentProgram(){
     ${commonNoticeHtml(p.id)}
     ${renderCoordinator(p)}
     <div class="program-scroll-wrap">
-      <div class="program-progress-strip"><span>${st.done}/${st.total} revisadas${st.missing?` · ${st.missing} pendientes`:''}</span></div>
       <div class="scroll-hint">↔ Si la pantalla es más angosta, desplácese horizontalmente para ver todas las columnas.</div>
       <div class="semesters-grid">`;
 
@@ -3116,9 +3333,28 @@ function renderCurrentProgram(){
     flowBtn.onclick=()=>saveAndNextProgram();
   }
   requestAnimationFrame(adjustSemesterColumnWidths);
-  updateProgress();lockRevisionNav();updateNavState();applyEditState();
+  // En cada clic académico actualizamos solo el programa visible; las validaciones globales
+  // quedan para los cambios de etapa. Esto evita recorridos repetidos de todos los programas.
+  updateProgress();
+  applyEditState();
   refreshCaptureErrorState();
 }
+window.backToProgramProfile=function(){
+  currentProgramIndex=0;
+  store.currentProgramIndex=0;
+  if(sequentialProfessorMode()){
+    workflowState.profileConfirmed=profileLooksComplete();
+    workflowState.expectedProgramIndex=0;
+    workflowState.reviewUnlocked=false;
+  }
+  persist({touch:false,schedule:false});
+  renderCurrentProgram();
+  activateViewDirect('captura');
+  updateNavState();
+  requestAnimationFrame(()=>window.scrollTo({top:Math.max(0,($('captura')?.offsetTop||0)-55),behavior:'smooth'}));
+  return true;
+};
+
 window.prevProgram=function(){
   if(currentProgramIndex<=0){
     workflowState.profileConfirmed=false;
@@ -3134,6 +3370,7 @@ window.prevProgram=function(){
   workflowState.reviewUnlocked=false;
   persist({touch:false,schedule:false});
   renderCurrentProgram();
+  updateNavState();
   scrollTo({top:$('captura').offsetTop-55,behavior:'smooth'});
 }
 
@@ -3190,34 +3427,26 @@ window.saveAndNextProgram=function(){
   workflowState.reviewUnlocked=false;
   persist({touch:false,schedule:false});
   renderCurrentProgram();
+  updateNavState();
   scrollTo({top:$('captura').offsetTop-55,behavior:'smooth'});
 }
 
-function pendingCourseNames(limit=4){
-  const seen=new Set(),names=[];
-  programs().forEach(p=>p.semesters.forEach((sem,s)=>sem.forEach((name,c)=>{
-    if(isEnglish(name))return;
-    const a=getAns(p.id,s,c,name);
-    if(a.status!=='pending')return;
-    const logical=logicalCourseKey(p.id,s,c,name);
-    if(seen.has(logical))return;
-    seen.add(logical);names.push(subjectCase(name));
-  })));
-  return names.slice(0,limit);
-}
-function validateCapture(){
-  const x=overallStats(),errs=[];
+function validateCapture(stats=null){
+  const x=stats||overallStats(),errs=[];
   if(x.remainingUnique){
-    const names=pendingCourseNames(4);
+    const names=(x.pendingUnique||[]).slice(0,4).map(item=>subjectCase(item.name));
     errs.push(`Falta${x.remainingUnique===1?'':'n'} ${x.remainingUnique} asignatura${x.remainingUnique===1?'':'s'} por revisar${names.length?`: ${names.join(', ')}${x.remainingUnique>names.length?'…':''}`:'.'}`);
   }
   if(x.invalid)errs.push(`${x.invalid} asignatura(s) tienen X/XX pero no tienen área de conocimiento.`);
-  
-  return{ok:!errs.length,errors:errs}
+  return{ok:!errs.length,errors:errs};
 }
-function validateAll(){const p=validateProfile(),c=validateCapture();return{ok:p.ok&&c.ok,errors:[...p.errors,...c.errors]}}
-function reviewAvailable(){
-  const complete=validateAll().ok;
+function validateAll(profileResult=null,captureResult=null){
+  const p=profileResult||validateProfile();
+  const c=captureResult||validateCapture();
+  return{ok:p.ok&&c.ok,errors:[...p.errors,...c.errors]};
+}
+function reviewAvailable(completeOverride=null){
+  const complete=typeof completeOverride==='boolean'?completeOverride:validateAll().ok;
 
   if(sequentialProfessorMode()){
     return workflowState.reviewUnlocked && complete;
@@ -3328,8 +3557,12 @@ function printHeader(){
 function metaCentered(){return `<div class="meta center compactline"><span><b>Nombre:</b> ${printedProfessorName()}</span><span><b>Categoría:</b> ${store.profile?.categoria||''}</span><span><b>Competencia:</b> X = Medio · XX = Alto</span><span><b>Área de conocimiento:</b> 1 Formación · 2 Docencia · 3 Laboral</span></div>`}
 function signatures(){return `<div class="sign"><div class="signature-line">${printedProfessorName()}<br>Firma del Profesor</div><div class="stamp-box">SELLO</div><div class="signature-line">${cfg.jefe}<br>Jefe de Unidad de Coordinación Académica</div></div>`}
 function preambleSheet(){
-  const p=store.profile||{},e=p.extra||{},f=['Licenciatura o TSU','Posgrado 1','Posgrado 2','Posgrado 3','Posgrado 4','Posgrado 5','Posgrado 6'];
-  return `<div class="sheet profile-first-sheet">${printHeader()}<div class="meta center compactline first-profile-meta"><span class="first-meta-item"><b class="first-meta-label">Nombre:</b><strong class="first-meta-value">${printedProfessorName()}</strong></span><span class="first-meta-item"><b class="first-meta-label">Categoría:</b><strong class="first-meta-value">${store.profile?.categoria||''}</strong></span></div><table class="profileTable"><tr><th colspan="4">1. FORMACIÓN PROFESIONAL</th></tr>${f.map((lab,i)=>`<tr><td><b>${lab}</b></td><td>${e[`f${i+1}a`]||''}</td><td><b>Institución</b></td><td>${e[`f${i+1}b`]||''}</td></tr>`).join('')}<tr><th colspan="4">2. EXPERIENCIA DOCENTE</th></tr>${[1,2,3,4].map(i=>`<tr><td><b>Institución ${i}</b></td><td colspan="2">${e[`d${i}a`]||''}</td><td><b>Periodo:</b> ${e[`d${i}c`]||''}</td></tr>`).join('')}<tr><th colspan="4">3. EXPERIENCIA LABORAL</th></tr>${[1,2,3,4,5].map(i=>`<tr><td><b>Organización ${i}</b></td><td>${e[`l${i}a`]||''}</td><td><b>Cargo:</b> ${e[`l${i}b`]||''}</td><td><b>Periodo:</b> ${e[`l${i}c`]||''}</td></tr>`).join('')}</table>${signatures()}</div>`
+  const p=store.profile||{},e=p.extra||{},counts=normalizedProfileRowCounts(p);
+  const formation=Array.from({length:counts.formation},(_,n)=>n+1);
+  const teaching=Array.from({length:counts.docencia},(_,n)=>n+1);
+  const work=Array.from({length:counts.laboral},(_,n)=>n+1);
+  const expanded=(formation.length+teaching.length+work.length)>18?' expanded-profile':'';
+  return `<div class="sheet profile-first-sheet${expanded}">${printHeader()}<div class="meta center compactline first-profile-meta"><span class="first-meta-item"><b class="first-meta-label">Nombre:</b><strong class="first-meta-value">${printedProfessorName()}</strong></span><span class="first-meta-item"><b class="first-meta-label">Categoría:</b><strong class="first-meta-value">${store.profile?.categoria||''}</strong></span></div><table class="profileTable"><tr><th colspan="4">1. FORMACIÓN PROFESIONAL</th></tr>${formation.map(i=>`<tr><td><b>${i===1?'Licenciatura o TSU':`Posgrado ${i-1}`}</b></td><td>${e[`f${i}a`]||''}</td><td><b>Institución</b></td><td>${e[`f${i}b`]||''}</td></tr>`).join('')}<tr><th colspan="4">2. EXPERIENCIA DOCENTE</th></tr>${teaching.map(i=>`<tr><td><b>Institución ${i}</b></td><td colspan="2">${e[`d${i}a`]||''}</td><td><b>Periodo:</b> ${e[`d${i}c`]||''}</td></tr>`).join('')}<tr><th colspan="4">3. EXPERIENCIA LABORAL</th></tr>${work.map(i=>`<tr><td><b>Organización ${i}</b></td><td>${e[`l${i}a`]||''}</td><td><b>Cargo:</b> ${e[`l${i}b`]||''}</td><td><b>Periodo:</b> ${e[`l${i}c`]||''}</td></tr>`).join('')}</table>${signatures()}</div>`;
 }
 function pastelColor(index){
   return ['#dcecf8','#f5e3d2','#dfeee2','#e8e1f2','#f8e7d7','#dceff0','#f2dde3','#e1ecd7'][index % 8]
@@ -5067,42 +5300,49 @@ window.exportExcel=function(){if(!isAdmin()){toast('Solo el administrador puede 
 
 
 
+function updateProfileStepIndicator(){
+  const pBtn=document.querySelector('.main-nav button[data-view="perfil"]');
+  if(pBtn)pBtn.classList.toggle('complete',profileLooksComplete());
+}
 function setupAutoSave(){
   let timer=null;
+  const isProfileField=target=>target.matches('#perfil input,#perfil select,#perfil textarea')&&!target.closest('#commissionsBlock');
   document.addEventListener('input',e=>{
-    if(!editingAllowed())return;
-    if(!e.target.matches('#perfil input,#perfil select,#perfil textarea'))return;
+    if(!editingAllowed()||!isProfileField(e.target))return;
     e.target.classList.remove('required-field-error');
     const wrap=e.target.closest('label,.form-row');if(wrap)wrap.classList.remove('required-wrap-error');
-    clearTimeout(timer);timer=setTimeout(()=>{collectProfile();updateNavState()},500);
+    clearTimeout(timer);
+    timer=setTimeout(()=>{
+      store.profile=profileFromInputs();
+      persist();
+      updateProfileStepIndicator();
+    },550);
   });
   document.addEventListener('change',e=>{
-    if(!editingAllowed())return;
-    if(e.target.matches('#perfil input,#perfil select,#perfil textarea')){collectProfile();updateNavState()}
+    if(!editingAllowed()||!isProfileField(e.target))return;
+    clearTimeout(timer);
+    store.profile=profileFromInputs();
+    persist();
+    updateProfileStepIndicator();
   });
 }
 
-
-
-
 function setupPlanningAutoSave(){
   let timer=null;
-  document.addEventListener('input',e=>{
-    if(!planningEnabled()||!planningEditingAllowed())return;
-    if(!e.target.matches('#commissionsBlock input,#commissionsBlock textarea'))return;
-    clearTimeout(timer);
-    timer=setTimeout(()=>{
-      collectPlanning();
-      persist();
-      updateNavState();
-    },450);
-  });
-  document.addEventListener('change',e=>{
-    if(!planningEnabled()||!planningEditingAllowed())return;
-    if(!e.target.matches('#commissionsBlock input,#commissionsBlock textarea'))return;
+  const isPlanningField=target=>target.matches('#commissionsBlock input,#commissionsBlock textarea');
+  const savePlanningDraft=()=>{
     collectPlanning();
     persist();
-    updateNavState();
+  };
+  document.addEventListener('input',e=>{
+    if(!planningEnabled()||!planningEditingAllowed()||!isPlanningField(e.target))return;
+    clearTimeout(timer);
+    timer=setTimeout(savePlanningDraft,550);
+  });
+  document.addEventListener('change',e=>{
+    if(!planningEnabled()||!planningEditingAllowed()||!isPlanningField(e.target))return;
+    clearTimeout(timer);
+    savePlanningDraft();
   });
 }
 function setupResilienceGuards(){
@@ -5131,7 +5371,6 @@ function setupResilienceGuards(){
 }
 
 function init(){
-  installLegacyBackupGuard();
   loadProfile();
   resetWorkflowState();
   updatePeriodBadges();

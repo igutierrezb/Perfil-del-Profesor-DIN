@@ -661,3 +661,22 @@
     flex:0 0 23px!important;
   }
 }
+
+
+/* V85 · filas ampliables y tema de programa en móvil */
+@media screen and (max-width:900px){
+  .profile-row-actions{display:grid;grid-template-columns:1fr;gap:6px}
+  .profile-add-row-btn{width:100%;min-height:44px}
+  .profile-added-row{padding-right:8px!important;padding-bottom:54px!important}
+  .profile-row-delete{
+    position:absolute;
+    left:8px;
+    right:8px;
+    bottom:7px;
+    top:auto;
+    transform:none;
+    width:auto;
+    min-height:38px;
+  }
+  .program-name-flow .program-exit-focus{font-size:16px!important}
+}

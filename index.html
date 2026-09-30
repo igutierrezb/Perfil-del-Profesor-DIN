@@ -4,9 +4,9 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Perfil Académico Docente · División Industrial UTEQ</title>
-<meta name="pad-build" content="V84-2026-09-30">
-<link rel="stylesheet" href="styles.css?v=20260930-84">
-<link rel="stylesheet" href="mobile.css?v=20260930-84">
+<meta name="pad-build" content="V85-2026-09-30">
+<link rel="stylesheet" href="styles.css?v=20260930-85">
+<link rel="stylesheet" href="mobile.css?v=20260930-85">
 <meta name="theme-color" content="#0b2b46">
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-capable" content="yes">
@@ -124,6 +124,10 @@
         <span class="required-note">1ª línea obligatoria</span>
       </div>
       <div id="formacion"></div>
+      <div class="profile-row-actions">
+        <button id="addFormationRowBtn" type="button" class="profile-add-row-btn" onclick="addProfileRow('formation')">＋ Agregar otro posgrado</button>
+        <small>Puede agregar hasta Posgrado 10. Todo renglón agregado deberá completarse.</small>
+      </div>
       <div class="save-row"><button class="save-btn" onclick="saveSection()">Guardar formación profesional</button></div>
     </div>
 
@@ -134,6 +138,10 @@
         <span class="required-note">1ª línea obligatoria</span>
       </div>
       <div id="docencia"></div>
+      <div class="profile-row-actions">
+        <button id="addTeachingRowBtn" type="button" class="profile-add-row-btn" onclick="addProfileRow('docencia')">＋ Agregar experiencia docente</button>
+        <small>Puede registrar hasta 10 instituciones. Todo renglón agregado deberá completarse.</small>
+      </div>
       <div class="save-row"><button class="save-btn" onclick="saveSection()">Guardar experiencia docente</button></div>
     </div>
 
@@ -144,6 +152,10 @@
         <span class="required-note">1ª línea obligatoria</span>
       </div>
       <div id="laboral"></div>
+      <div class="profile-row-actions">
+        <button id="addWorkRowBtn" type="button" class="profile-add-row-btn" onclick="addProfileRow('laboral')">＋ Agregar experiencia laboral</button>
+        <small>Puede registrar hasta 10 organizaciones. Todo renglón agregado deberá completarse.</small>
+      </div>
       <div class="save-row"><button class="save-btn" onclick="saveSection()">Guardar experiencia laboral</button></div>
     </div>
 
@@ -282,7 +294,7 @@
       <div class="program-step-badge" id="programStep"></div>
       <div class="program-name-flow" id="programFlowName"></div>
       <div class="flow-buttons">
-        <button class="prev-emphasis" onclick="prevProgram()">← Anterior</button>
+        <button id="flowPrevBtn" class="prev-emphasis" onclick="prevProgram()">← Anterior</button>
         <div class="flow-save-stack">
           <button id="flowNextBtn" class="primary" onclick="saveAndNextProgram()">Guardar y continuar →</button>
           <button class="save-progress-btn" onclick="saveCurrentProgramProgress(true)">Guardar avances</button>
@@ -309,12 +321,12 @@
     </div>
     <div id="reviewReadiness" class="card review-readiness no-print"></div>
     <div class="actions no-print review-final-actions review-final-actions-top">
-      <button onclick="go('captura')">← Volver a captura</button>
+      <button onclick="backToProgramProfile()">← Volver a Perfil por programa</button>
       <button class="primary final-print-btn" onclick="printProfile()">Finalizar e imprimir / guardar PDF</button>
     </div>
     <div id="printArea"></div>
     <div class="actions no-print review-final-actions review-final-actions-bottom">
-      <button onclick="go('captura')">← Volver a captura</button>
+      <button onclick="backToProgramProfile()">← Volver a Perfil por programa</button>
       <button class="primary final-print-btn" onclick="printProfile()">Finalizar e imprimir / guardar PDF</button>
     </div>
   </section>
@@ -668,6 +680,6 @@
 <script src="https://accounts.google.com/gsi/client" async defer></script>
 
 
-<script type="module" src="app.js?v=20260930-84"></script>
+<script type="module" src="app.js?v=20260930-85"></script>
 </body>
 </html>
