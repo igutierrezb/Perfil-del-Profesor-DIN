@@ -1,0 +1,44 @@
+PERFIL DEL PROFESOR DIN · V83 CORRECCIÓN
+Fecha: 29-sep-2026
+
+ARCHIVOS A SUSTITUIR EN LA RAÍZ DEL REPOSITORIO:
+- app.js
+- index.html
+- styles.css
+- mobile.css
+- build-cloudflare.sh
+
+NO ACTUALIZAR:
+- firestore.rules
+- .github/workflows/deploy-pages.yml
+
+Después de sustituir los cinco archivos, haga Commit changes en GitHub y espere a que GitHub Pages termine el despliegue.
+
+CAMBIOS PRINCIPALES:
+1. Transferencia explícita de edición entre dispositivos. No hay toma automática del control.
+2. El segundo dispositivo ya no debe quedarse indefinidamente en “recuperando perfil”.
+3. El primer dispositivo guarda lo pendiente antes de ceder la edición y queda en solo lectura, sin marcar el perfil como finalizado.
+4. Si el primer dispositivo no responde, aparece “Recuperar edición aquí” como acción explícita.
+5. Validación cruzada de Posgrados, Experiencia docente y Experiencia laboral.
+6. Campos pendientes marcados en rojo, mensaje exacto y enfoque al primer pendiente.
+7. Confirmación al continuar sin ninguna comisión, incluso cuando se eligió “No aplica”.
+8. “Guardar avances” conserva información incompleta; “Guardar y continuar” valida.
+9. Las etapas superiores funcionan como indicador, no como navegación para el profesor.
+10. Mayor énfasis visual al TSU / salida lateral que se está capturando.
+11. La transición de Datos del profesor a Perfil por programa ya no espera el guardado de nube para mostrar la siguiente pantalla.
+
+PRUEBAS RECOMENDADAS:
+A. Iniciar sesión en un solo dispositivo y confirmar que entra normalmente.
+B. Dejar un posgrado parcialmente capturado y verificar bloqueo + rojo + mensaje.
+C. Dejar una experiencia docente parcialmente capturada y verificar bloqueo + rojo + mensaje.
+D. No registrar comisiones / elegir No aplica y comprobar el mensaje de confirmación.
+E. Confirmar que después aparece por separado el aviso de instrucciones del Perfil por programa.
+F. Verificar que el encabezado resalte la salida lateral/TSU.
+G. Abrir la misma cuenta en otro dispositivo: debe aparecer “Continuar edición aquí”.
+H. Transferir: el dispositivo anterior debe guardar y quedar en solo lectura con mensaje de transferencia.
+I. Si el dispositivo anterior no responde, usar “Recuperar edición aquí”.
+J. Cerrar y volver a entrar sin Finalizar: el perfil debe seguir editable.
+K. Finalizar únicamente mediante el botón explícito de finalización.
+
+IMPORTANTE:
+Este generador verifica que el contenido del main sea exactamente la V82 que fue revisada antes de aplicar cambios. Si detecta que el repositorio cambió, se detiene para evitar sobrescribir una versión distinta.

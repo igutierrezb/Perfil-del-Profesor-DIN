@@ -1,0 +1,17 @@
+VALIDACIÓN AUTOMÁTICA DEL PAQUETE
+
+Fuente: main V82 verificada por SHA de blob Git.
+
+OK · versión V83
+OK · sin toma automática antigua
+OK · transferencia explícita
+OK · recuperación explícita
+OK · confirmación sin comisiones
+OK · validación de posgrado
+OK · validación docente
+OK · avance visual no bloqueante
+OK · salida lateral resaltada
+OK · index V83
+OK · estilos de transferencia
+OK · corrección móvil
+OK · build V83

@@ -643,3 +643,21 @@
     box-shadow:inset 4px 0 0 rgba(205,132,42,.62);
   }
 }
+
+
+/* V83 · corrección específica del indicador de etapas en móvil */
+@media screen and (max-width:520px){
+  .main-nav button span.nav-label{
+    width:auto!important;
+    height:auto!important;
+    white-space:normal!important;
+    word-break:normal!important;
+    overflow-wrap:normal!important;
+    hyphens:none!important;
+  }
+  .main-nav button .nav-num{
+    width:23px!important;
+    height:23px!important;
+    flex:0 0 23px!important;
+  }
+}

@@ -10654,3 +10654,158 @@ body.capture-orientation-open{overflow:hidden!important}
 .course.validation-pending .name{
   font-weight:800;
 }
+
+
+/* =========================================================
+   V83 · claridad de flujo, validación y transferencia
+   ========================================================= */
+.main-nav button.flow-indicator-only{
+  cursor:default!important;
+  pointer-events:none!important;
+}
+.main-nav button:not(.admin-tab) .nav-label{
+  display:block;
+  width:auto!important;
+  height:auto!important;
+  max-width:none!important;
+  white-space:normal!important;
+  word-break:normal!important;
+  overflow-wrap:normal!important;
+  hyphens:none!important;
+  line-height:1.2!important;
+}
+.program-name-flow{
+  display:flex;
+  flex-direction:column;
+  gap:4px;
+  min-width:0;
+}
+.program-focus-label{
+  font-size:10px;
+  font-weight:900;
+  letter-spacing:.06em;
+  text-transform:uppercase;
+  opacity:.72;
+}
+.program-exit-focus{
+  display:block;
+  font-size:18px;
+  line-height:1.22;
+  font-weight:900;
+}
+.program-degree-context{
+  display:block;
+  font-size:11px;
+  line-height:1.3;
+  opacity:.78;
+}
+.required-field-error,
+.mobile-required-focus{
+  border:2px solid #b3261e!important;
+  box-shadow:0 0 0 3px rgba(179,38,30,.10)!important;
+  background:#fff8f7!important;
+}
+.required-wrap-error{
+  border-radius:10px;
+  background:rgba(179,38,30,.045);
+}
+.planning-question-error{
+  outline:2px solid #b3261e!important;
+  outline-offset:2px;
+}
+.session-transfer-modal{
+  position:fixed;
+  inset:0;
+  z-index:10050;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  padding:20px;
+  background:rgba(5,22,35,.72);
+  backdrop-filter:blur(5px);
+}
+.session-transfer-modal.hidden{display:none!important}
+.session-transfer-card{
+  width:min(560px,100%);
+  max-height:92vh;
+  overflow:auto;
+  border-radius:20px;
+  background:#fff;
+  padding:24px;
+  box-shadow:0 24px 70px rgba(0,0,0,.30);
+  text-align:left;
+}
+.session-transfer-icon{
+  width:48px;
+  height:48px;
+  border-radius:50%;
+  display:grid;
+  place-items:center;
+  font-size:25px;
+  font-weight:900;
+  background:#edf5fa;
+  margin-bottom:12px;
+}
+.session-transfer-card h2{margin:0 0 8px}
+.session-transfer-card p{margin:0 0 14px;line-height:1.5}
+.session-transfer-state{
+  margin:14px 0;
+  padding:12px 14px;
+  border-radius:12px;
+  background:#f3f7fa;
+  line-height:1.45;
+  font-size:13px;
+}
+.session-transfer-state.warn{background:#fff6df}
+.session-transfer-state.error{background:#fff0ef}
+.session-transfer-actions{
+  display:flex;
+  flex-wrap:wrap;
+  gap:8px;
+  margin:16px 0 12px;
+}
+.session-transfer-actions button{min-height:42px}
+.session-recover-btn{
+  background:#fff;
+  border:1px solid #a7bac6;
+}
+.session-transfer-card small{
+  display:block;
+  line-height:1.45;
+  opacity:.75;
+}
+body.session-transfer-open{overflow:hidden}
+
+@media screen and (max-width:900px){
+  .main-nav{
+    grid-template-columns:repeat(3,minmax(0,1fr))!important;
+  }
+  .main-nav button:not(.admin-tab){
+    min-width:0!important;
+    padding:8px 6px!important;
+  }
+  .main-nav button:not(.admin-tab) .nav-label{
+    font-size:10px!important;
+    line-height:1.15!important;
+  }
+  .program-exit-focus{font-size:16px}
+  .session-transfer-card{padding:20px 16px}
+  .session-transfer-actions{
+    display:grid;
+    grid-template-columns:1fr;
+  }
+  .session-transfer-actions button{width:100%}
+}
+@media screen and (max-width:520px){
+  .main-nav button span.nav-label{
+    width:auto!important;
+    height:auto!important;
+  }
+  .main-nav button .nav-num{
+    width:23px!important;
+    height:23px!important;
+  }
+  .main-nav button:not(.admin-tab) .nav-label{
+    font-size:9px!important;
+  }
+}

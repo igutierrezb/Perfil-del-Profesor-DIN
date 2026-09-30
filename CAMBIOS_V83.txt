@@ -1,0 +1,18 @@
+CAMBIOS V83 · PERFIL DEL PROFESOR DIN
+
+- Sesión única: se elimina la toma automática de control después de 3.5 s.
+- Transferencia: acción explícita “Continuar edición aquí”.
+- Recuperación: acción explícita “Recuperar edición aquí” solo si el dispositivo anterior no responde.
+- La carga del perfil no queda bloqueada esperando la transferencia.
+- Heartbeat protegido: un dispositivo que ya cedió control no puede volver a proclamarse activo por una actualización tardía.
+- Se refresca el contador de escrituras de Firestore antes de habilitar escritura en el nuevo dispositivo.
+- Estado de sesión y estado de finalización quedan separados.
+- Posgrados 1–6: si una fila se inicia, estudio e institución deben completarse.
+- Experiencia docente 2–4: si una fila se inicia, institución y periodo deben completarse.
+- Experiencia laboral 2–5 conserva validación cruzada.
+- “Guardar y continuar” muestra los errores y lleva al primer campo pendiente.
+- Se solicita confirmación cuando no se registró ninguna comisión, incluido “No aplica”.
+- El guardado de nube posterior al avance deja de bloquear la transición visual.
+- Barra de etapas: indicador no navegable para profesores.
+- Corrección responsive para evitar que los textos de las etapas se compriman.
+- Salida lateral/TSU actual resaltada con mayor jerarquía visual.
