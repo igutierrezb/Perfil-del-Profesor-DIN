@@ -4,13 +4,10 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Perfil Académico Docente · División Industrial UTEQ</title>
-<meta name="pad-build" content="V91-2026-09-30">
-<link rel="stylesheet" href="styles.css?v=20260930-91">
-<link rel="stylesheet" href="mobile.css?v=20260930-91">
+<meta name="pad-build" content="V92-2026-09-30">
+<link rel="stylesheet" href="styles.css?v=20260930-92">
+<link rel="stylesheet" href="mobile.css?v=20260930-92">
 <meta name="theme-color" content="#0b2b46">
-<meta name="mobile-web-app-capable" content="yes">
-<meta name="apple-mobile-web-app-capable" content="yes">
-<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="icon" href="favicon.ico" sizes="any">
 <link rel="icon" type="image/png" sizes="32x32" href="favicon-32x32.png">
@@ -18,6 +15,16 @@
 <link rel="apple-touch-icon" href="apple-touch-icon.png">
 </head>
 <body>
+<div id="desktopOnlyGate" class="desktop-only-gate hidden" role="main" aria-labelledby="desktopOnlyTitle">
+  <div class="desktop-only-card">
+    <img src="icon-din.png" alt="División Industrial" class="desktop-only-logo">
+    <div class="eyebrow">Universidad Tecnológica de Querétaro · División Industrial</div>
+    <h1 id="desktopOnlyTitle">Captura disponible únicamente en computadora</h1>
+    <p>Por el nivel de análisis, concentración y reflexión que requiere el Perfil del Profesor, esta página debe elaborarse en una computadora de escritorio o portátil.</p>
+    <p class="desktop-only-note">La captura no está disponible en teléfonos ni tabletas.</p>
+  </div>
+</div>
+
 <div id="loginGate" class="login-gate">
   <div class="login-card">
     <picture class="login-brand-picture">
@@ -37,8 +44,8 @@
       <div class="login-security-note">
         Use una cuenta <strong>@uteq.edu.mx</strong>. Esta plataforma no solicita ni almacena su contraseña;
         el acceso se valida directamente mediante Google.<br>
-        Si existe una sesión reciente en otro dispositivo, podrá continuar la edición aquí con una sola confirmación.
-        Los datos que ya hayan sido guardados en la nube se conservarán.
+        La información se guarda en la nube únicamente al pulsar <strong>Guardar y continuar</strong>.
+        Si no hubo cambios, avanzar no genera una nueva escritura.
       </div>
       <small>La información vertida en esta plataforma se administra bajo los mismos criterios señalados en el
         <a href="https://www.uteq.edu.mx/ConoceLaUTEQ/Default.aspx?gXr=217" target="_blank" rel="noopener">Aviso de Privacidad de la UTEQ</a>.
@@ -63,7 +70,7 @@
     <div class="hero-side">
       <div class="hero-chip">Formato institucional · EA-F-86</div>
       <div id="authStatus" class="auth-status">Sin sesión</div>
-      <div class="save-cloud-line"><span id="lastSaved">Guardado local</span><span id="cloudStatus">Guardado manual en nube</span><span id="sessionStatus" class="session-status neutral">Verificando dispositivo…</span></div>
+      <div class="save-cloud-line"><span id="lastSaved">Guardado local</span><span id="cloudStatus">Guardado manual en nube</span></div>
       <div class="auth-buttons">
         <button id="btnLogin" class="ghost" onclick="signIn()">Ingresar con cuenta institucional</button>
         <button id="btnLogout" class="ghost hidden" onclick="signOutApp()">Cerrar sesión</button>
@@ -114,7 +121,7 @@
         </select>
       </label>
       </div>
-      <div class="save-row"><button class="save-btn" onclick="saveSection()">Guardar datos del profesor</button></div>
+      
     </div>
 
 
@@ -128,7 +135,7 @@
         <button id="addFormationRowBtn" type="button" class="profile-add-row-btn" onclick="addProfileRow('formation')">＋ Agregar otro posgrado</button>
         <small>Puede agregar hasta Posgrado 10. Todo renglón agregado deberá completarse.</small>
       </div>
-      <div class="save-row"><button class="save-btn" onclick="saveSection()">Guardar formación profesional</button></div>
+      
     </div>
 
 
@@ -142,7 +149,7 @@
         <button id="addTeachingRowBtn" type="button" class="profile-add-row-btn" onclick="addProfileRow('docencia')">＋ Agregar experiencia docente</button>
         <small>Puede registrar hasta 10 instituciones. Todo renglón agregado deberá completarse.</small>
       </div>
-      <div class="save-row"><button class="save-btn" onclick="saveSection()">Guardar experiencia docente</button></div>
+      
     </div>
 
 
@@ -156,7 +163,7 @@
         <button id="addWorkRowBtn" type="button" class="profile-add-row-btn" onclick="addProfileRow('laboral')">＋ Agregar experiencia laboral</button>
         <small>Puede registrar hasta 10 organizaciones. Todo renglón agregado deberá completarse.</small>
       </div>
-      <div class="save-row"><button class="save-btn" onclick="saveSection()">Guardar experiencia laboral</button></div>
+      
     </div>
 
 
@@ -257,9 +264,7 @@
 
 
 <div id="planningErrors"></div>
-      <div class="save-row commissions-save-row">
-        <button class="save-btn" onclick="savePlanning(true)">Guardar comisiones y observaciones</button>
-      </div>
+      
     </div>
 
 
@@ -297,7 +302,6 @@
         <button id="flowPrevBtn" class="prev-emphasis" onclick="prevProgram()">← Anterior</button>
         <div class="flow-save-stack">
           <button id="flowNextBtn" class="primary" onclick="saveAndNextProgram()">Guardar y continuar →</button>
-          <button class="save-progress-btn" onclick="saveCurrentProgramProgress(true)">Guardar avances</button>
         </div>
       </div>
 
@@ -624,21 +628,6 @@
 
 
 
-<div id="sessionTransferModal" class="session-transfer-modal hidden" role="dialog" aria-modal="true" aria-labelledby="sessionTransferTitle">
-  <div class="session-transfer-card">
-    <div class="session-transfer-icon">⇄</div>
-    <h2 id="sessionTransferTitle">Edición detectada en otro dispositivo</h2>
-    <p id="sessionTransferText">Existe una sesión reciente de edición en otro dispositivo.</p>
-    <div id="sessionTransferState" class="session-transfer-state warn"><strong>Puede continuar aquí.</strong> La sesión anterior quedará en solo lectura.</div>
-    <div class="session-transfer-actions">
-      <button id="sessionContinueHereBtn" type="button" class="primary" onclick="continueEditingHere()">Continuar edición aquí</button>
-      <button type="button" class="ghost" onclick="closeSessionTransferModal()">Continuar en solo lectura</button>
-    </div>
-    <small>Los datos ya guardados en la nube se conservan. Los cambios que no se hayan guardado en el otro dispositivo permanecen únicamente en ese equipo.</small>
-  </div>
-</div>
-
-
 <div id="finalizeProfileModal" class="finalize-modal hidden" role="dialog" aria-modal="true" aria-labelledby="finalizeModalTitle">
   <div class="finalize-modal-card">
     <div class="finalize-modal-head">
@@ -673,6 +662,6 @@
 <script src="catalog.js?v=20260929-80"></script>
 <script src="https://accounts.google.com/gsi/client" async defer></script>
 
-<script type="module" src="app.js?v=20260930-91"></script>
+<script type="module" src="app.js?v=20260930-92"></script>
 </body>
 </html>

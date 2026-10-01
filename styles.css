@@ -11293,3 +11293,36 @@ button.is-busy::after{
 .session-status.readonly{font-weight:700}
 .teacher-admin-status.individual-open strong{color:#14613f}
 .teacher-admin-status.individual-disabled strong{color:#8e3429}
+
+
+/* =========================================================
+   V92 · uso exclusivo en computadora + guardado manual único
+   ========================================================= */
+.desktop-only-gate{
+  position:fixed;
+  inset:0;
+  z-index:20000;
+  display:grid;
+  place-items:center;
+  min-height:100dvh;
+  padding:24px;
+  background:linear-gradient(145deg,#eef4f7,#dce8ee);
+}
+.desktop-only-gate.hidden{display:none!important}
+.desktop-only-card{
+  width:min(620px,100%);
+  padding:32px;
+  border-radius:24px;
+  background:#fff;
+  border:1px solid #cad9e1;
+  box-shadow:0 24px 70px rgba(8,39,58,.18);
+  text-align:center;
+}
+.desktop-only-logo{width:76px;height:76px;object-fit:contain;margin:0 auto 12px}
+.desktop-only-card h1{margin:8px 0 14px;color:#12334b;font-size:clamp(25px,5vw,34px);line-height:1.12}
+.desktop-only-card p{margin:0 auto 12px;max-width:52ch;color:#425f70;font-size:16px;line-height:1.6}
+.desktop-only-card .desktop-only-note{font-weight:800;color:#174e6d}
+body.desktop-only-active{overflow:hidden!important}
+body.desktop-only-active > *:not(#desktopOnlyGate){display:none!important}
+.program-save-actions{justify-content:flex-end}
+.flow-save-stack{display:flex;justify-content:flex-end}

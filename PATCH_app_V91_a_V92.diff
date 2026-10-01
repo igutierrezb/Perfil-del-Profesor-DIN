@@ -1,0 +1,459 @@
+--- /mnt/data/Perfil-DIN-V91-Sesion-Permisos/app.js	2026-10-01 00:07:27.914104447 +0000
++++ /mnt/data/Perfil-DIN-V92-Control-Definitivo/app.js	2026-10-01 00:12:35.193703954 +0000
+@@ -1,6 +1,6 @@
+ import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.13.2/firebase-app.js';
+ import { getAuth, GoogleAuthProvider, signInWithCredential, signOut, onAuthStateChanged, setPersistence, browserLocalPersistence } from 'https://www.gstatic.com/firebasejs/10.13.2/firebase-auth.js';
+-import { getFirestore, doc, getDoc, setDoc, updateDoc, collection, getDocs, onSnapshot, serverTimestamp, addDoc, runTransaction } from 'https://www.gstatic.com/firebasejs/10.13.2/firebase-firestore.js';
++import { getFirestore, doc, getDoc, getDocFromServer, setDoc, updateDoc, collection, getDocs, onSnapshot, serverTimestamp, addDoc, runTransaction } from 'https://www.gstatic.com/firebasejs/10.13.2/firebase-firestore.js';
+ 
+ 
+ const $=id=>document.getElementById(id);
+@@ -58,6 +58,8 @@
+    ========================================================= */
+ const CLOUD_READ_TIMEOUT_MS=6000;
+ const CLOUD_WRITE_UI_TIMEOUT_MS=1400;
++const ADMIN_PERMISSION_WRITE_TIMEOUT_MS=10000;
++const ADMIN_PERMISSION_VERIFY_TIMEOUT_MS=7000;
+ const SESSION_STATUS_READ_TIMEOUT_MS=3500;
+ const SESSION_LEASE_MS=8*60*1000;
+ const SESSION_LEASE_TOUCH_MIN_MS=3*60*1000;
+@@ -176,7 +178,9 @@
+   el.className=`session-status ${kind}`;
+ }
+ function sessionCanWrite(){
+-  return isAdmin() || (!!currentUser && sessionHasControl && !!activeSessionId && !sessionActivationBusy);
++  // V92: no existe candado por dispositivo. El guardado manual confirmado más reciente
++  // es la referencia en nube. El control real de escritura es administrativo.
++  return !!currentUser;
+ }
+ function nextSessionWriteSeq(){
+   sessionWriteSeq=Math.max(sessionWriteSeq,Number(store.sessionWriteSeq)||0)+1;
+@@ -209,40 +213,12 @@
+   clearInterval(sessionHeartbeatTimer);
+   sessionHeartbeatTimer=null;
+ }
+-async function renewSessionLease({force=false}={}){
+-  if(!db||!currentUser||!sessionHasControl||!activeSessionId||isAdmin())return false;
+-  if(!force && Date.now()-sessionLastLeaseTouchMs<SESSION_LEASE_TOUCH_MIN_MS)return true;
+-  try{
+-    const ref=doc(db,'profileSessions',currentUser.uid);
+-    let renewed=false;
+-    await runTransaction(db,async tx=>{
+-      const snap=await tx.get(ref);
+-      if(!snap.exists())return;
+-      const d=snap.data()||{};
+-      if(String(d.activeSessionId||'')!==activeSessionId)return;
+-      tx.set(ref,{
+-        activeDevice:deviceLabel(),
+-        activeDeviceId:getOrCreateDeviceId(),
+-        activeEmail:currentUser.email||'',
+-        heartbeatMs:Date.now(),
+-        heartbeatAt:serverTimestamp()
+-      },{merge:true});
+-      renewed=true;
+-    });
+-    if(renewed)sessionLastLeaseTouchMs=Date.now();
+-    return renewed;
+-  }catch(e){
+-    console.warn('No fue posible renovar la sesión de edición',e);
+-    return false;
+-  }
+-}
+-async function heartbeatSession(){
+-  return renewSessionLease({force:true});
+-}
+-function startSessionHeartbeat(){
+-  // V91: sin escrituras periódicas. La sesión se renueva al reclamarla y al guardar manualmente.
+-  stopSessionHeartbeat();
++async function renewSessionLease(){
++  // V92: compatibilidad con llamadas heredadas. No escribe profileSessions.
++  return true;
+ }
++async function heartbeatSession(){return true}
++function startSessionHeartbeat(){stopSessionHeartbeat()}
+ function captureVisibleStateBeforeHandoff(){
+   try{
+     if($('apPat'))store.profile=profileFromInputs();
+@@ -276,46 +252,16 @@
+   if(store.syncPending)updateCloudStatus('Cambios locales pendientes · pulse Guardar y continuar','warn');
+   return true;
+ }
+-async function forceClaimSession({force=false,preferRemote=false}={}){
+-  if(!db||!currentUser||isAdmin())return true;
+-  if(sessionClaimInFlight)return false;
+-  sessionClaimInFlight=true;
+-  try{
+-    activeSessionId=activeSessionId||getOrCreateSessionId();
+-    const ref=doc(db,'profileSessions',currentUser.uid);
+-    let claimed=false;
+-    const result=await withTimeout(runTransaction(db,async tx=>{
+-      const snap=await tx.get(ref);
+-      const d=snap.exists()?snap.data():{};
+-      const other=String(d.activeSessionId||'');
+-      const heartbeat=Number(d.heartbeatMs)||0;
+-      const sameDevice=sessionBelongsToThisDevice(d);
+-      const stale=sessionIsStale(other,heartbeat,d);
+-      if(other&&other!==activeSessionId&&!sameDevice&&!stale&&!force)return;
+-      tx.set(ref,{
+-        activeSessionId,
+-        activeDevice:deviceLabel(),
+-        activeDeviceId:getOrCreateDeviceId(),
+-        activeEmail:currentUser.email||'',
+-        heartbeatMs:Date.now(),
+-        heartbeatAt:serverTimestamp(),
+-        takeoverRequestedSessionId:null,
+-        takeoverRequestedDevice:null,
+-        takeoverRequestedAtMs:null,
+-        lastHandoffToSessionId:null,
+-        leaseVersion:2
+-      },{merge:true});
+-      claimed=true;
+-    }),5000,false);
+-    if(result===false||!claimed)return false;
+-    sessionConflictKnown=false;
+-    sessionLastLeaseTouchMs=Date.now();
+-    await activateSessionControl({preferRemote});
+-    hideSessionTransferModal();
+-    return true;
+-  }finally{
+-    sessionClaimInFlight=false;
+-  }
++async function forceClaimSession({preferRemote=false}={}){
++  if(!currentUser)return false;
++  sessionHasControl=true;
++  sessionConflictKnown=false;
++  sessionActivationBusy=false;
++  if(preferRemote)await loadRemoteProfile({preferRemote:true});
++  hideSessionTransferModal();
++  applyEditState();
++  updateNavState();
++  return true;
+ }
+ function hideSessionTransferModal(){
+   const modal=$('sessionTransferModal');
+@@ -431,88 +377,28 @@
+   });
+ }
+ async function requestSingleDeviceControl(){
+-  if(!db||!currentUser)return false;
+-  if(isAdmin()){
+-    sessionHasControl=true;
+-    sessionConflictKnown=false;
+-    updateSessionStatus('Sesión administrativa','ok');
+-    applyEditState();
+-    updateNavState();
+-    return true;
+-  }
+-
+-  activeSessionId=getOrCreateSessionId();
+-  const ref=doc(db,'profileSessions',currentUser.uid);
+-  watchSessionDocument(ref);
+-
+-  const initial=await withTimeout(getDoc(ref),SESSION_STATUS_READ_TIMEOUT_MS,null);
+-  if(!initial){
+-    sessionHasControl=false;
+-    sessionConflictKnown=false;
+-    updateSessionStatus('Modo local seguro · sesión remota no disponible','warn');
+-    applyEditState();
+-    return false;
+-  }
+-  const d=initial.exists()?initial.data():{};
+-  sessionSnapshotCache=d;
+-  const active=String(d.activeSessionId||'');
+-  const heartbeat=Number(d.heartbeatMs)||0;
+-  const device=String(d.activeDevice||'otro dispositivo');
+-
+-  if(!active || active===activeSessionId || sessionBelongsToThisDevice(d) || sessionIsStale(active,heartbeat,d)){
+-    sessionConflictKnown=false;
+-    const claimed=await forceClaimSession({force:false,preferRemote:false});
+-    if(!claimed){
+-      updateSessionStatus('Perfil disponible · reintente activar edición si la necesita','warn');
+-    }
+-    return claimed;
+-  }
+-
+-  sessionHasControl=false;
+-  sessionConflictKnown=true;
+-  sessionTransferModalDismissed=false;
+-  sessionConflictDevice=device;
+-  updateSessionStatus(`Solo lectura temporal · edición activa en ${device}`,'readonly');
+-  showSessionTransferModal({device});
++  if(!currentUser)return false;
++  sessionHasControl=true;
++  sessionConflictKnown=false;
++  sessionActivationBusy=false;
++  sessionTransferModalDismissed=true;
++  hideSessionTransferModal();
++  updateSessionStatus('Guardado manual activo','ok');
+   applyEditState();
+   updateNavState();
+-  return false;
+-}
+-function scheduleSessionControlRetry(){
+-  // V91: no hay polling. Firestore notifica cambios mediante onSnapshot.
++  return true;
+ }
+-async function retrySessionControl(){return false}
++function scheduleSessionControlRetry(){/* V92: sin control remoto de dispositivo */}
++async function retrySessionControl(){return !!currentUser}
+ async function releaseSessionIfOwned(){
+-  if(!db||!currentUser||!activeSessionId||isAdmin())return;
+-  try{
+-    const ref=doc(db,'profileSessions',currentUser.uid);
+-    await withTimeout(runTransaction(db,async tx=>{
+-      const snap=await tx.get(ref);
+-      if(!snap.exists())return;
+-      const d=snap.data()||{};
+-      sessionWriteSeq=Math.max(sessionWriteSeq,Number(d.sessionWriteSeq)||0);
+-      store.sessionWriteSeq=sessionWriteSeq;
+-      if(String(d.activeSessionId||'')!==activeSessionId)return;
+-      tx.set(ref,{
+-        activeSessionId:null,
+-        activeDevice:null,
+-        activeDeviceId:null,
+-        heartbeatMs:0,
+-        heartbeatAt:serverTimestamp(),
+-        takeoverRequestedSessionId:null,
+-        takeoverRequestedDevice:null,
+-        takeoverRequestedAtMs:null,
+-        lastHandoffToSessionId:null
+-      },{merge:true});
+-    }),3000,false);
+-  }catch(e){console.warn('No fue posible liberar la sesión activa',e)}
++  // V92: no hay una sesión exclusiva que liberar en Firestore.
+   sessionHasControl=false;
+   sessionConflictKnown=false;
+   stopSessionHeartbeat();
+ }
+ 
+ const allowedDomain=(window.PAD_ALLOWED_DOMAIN||'uteq.edu.mx').toLowerCase();
+-const PAD_BUILD_VERSION='V91-2026-09-30';
++const PAD_BUILD_VERSION='V92-2026-09-30';
+ window.PAD_BUILD_VERSION=PAD_BUILD_VERSION;
+ const adminEmail=(window.PAD_ADMIN_EMAIL||'ivan.gutierrez@uteq.edu.mx').toLowerCase();
+ const googleClientId=String(window.PAD_GOOGLE_CLIENT_ID||'').trim();
+@@ -731,14 +617,12 @@
+     if(cfg.editingLocked)return 'global-admin';
+     if(submissionLockedForCurrentPeriod())return 'finalized';
+   }
+-  if(sessionConflictKnown&&!sessionHasControl)return 'session';
+   if(currentUser&&(!bootstrapComplete||sessionActivationBusy))return 'initializing';
+   return '';
+ }
+ function editingAllowed(){
+   if(currentUser&&(!bootstrapComplete||sessionActivationBusy))return false;
+   if(!administrativeEditingAllowed())return false;
+-  if(sessionConflictKnown&&!sessionHasControl)return false;
+   return true;
+ }
+ function sequentialProfessorMode(){
+@@ -816,8 +700,7 @@
+ function requireEditing(){
+   if(editingAllowed())return true;
+   const reason=editingLockReason();
+-  if(reason==='session') toast('La edición está activa en otro dispositivo. Pulse “Continuar edición aquí” para trasladarla a este equipo.');
+-  else if(reason==='individual-admin') toast('Administración deshabilitó temporalmente la edición de este perfil.');
++  if(reason==='individual-admin') toast('Administración deshabilitó temporalmente la edición de este perfil.');
+   else if(reason==='finalized') toast('Este perfil ya fue finalizado. Si requiere corregirlo, solicite al JUCA habilitar su edición.');
+   else if(reason==='deadline') toast('La fecha límite de captura ya concluyó. El JUCA puede habilitar individualmente su perfil si corresponde.');
+   else if(reason==='global-admin') toast('La edición general está cerrada por Administración.');
+@@ -852,14 +735,7 @@
+     banner.classList.toggle('hidden',!locked);
+     banner.classList.toggle('finalized-profile-banner',reason==='finalized');
+     if(locked){
+-      if(reason==='session'){
+-        banner.innerHTML=`<strong>↔ Edición activa en otro dispositivo</strong>
+-          <ul>
+-            <li>Su permiso administrativo de edición puede estar habilitado, pero otro dispositivo conserva actualmente la sesión de edición.</li>
+-            <li>Puede trasladar la edición a este equipo sin borrar ningún dato ya guardado.</li>
+-          </ul>
+-          <button type="button" class="primary session-inline-takeover" onclick="continueEditingHere()">Continuar edición aquí</button>`;
+-      }else if(reason==='individual-admin'){
++      if(reason==='individual-admin'){
+         banner.textContent='🔒 Administración deshabilitó temporalmente la edición de este perfil. Puede consultar e imprimir la información guardada.';
+       }else if(reason==='finalized'){
+         banner.innerHTML=`<strong>🔒 Perfil finalizado</strong>
+@@ -1380,8 +1256,6 @@
+     planningByPeriod:mergeRecordPreservingRemote(remote.planningByPeriod||{},planningByPeriod),
+     clientUpdatedAt:Number(store.localUpdatedAt)||Date.now(),
+     dataRevision:Number(store.dataRevision)||0,
+-    writerSessionId:activeSessionId||null,
+-    sessionWriteSeq:nextSessionWriteSeq(),
+     updatedAt:serverTimestamp()
+   };
+   // Los controles administrativos nunca viajan en el guardado manual del profesor.
+@@ -1426,7 +1300,6 @@
+     const safePayload=profileCloudPayload({releaseEditOverride});
+     await setDoc(doc(db,'profiles',currentUser.uid),safePayload,{merge:true});
+     updateRemoteProfileShadow(safePayload);
+-    renewSessionLease({force:false}).catch(e=>console.warn('Renovación de sesión posterior al guardado',e));
+     lastCloudTeacherFingerprint=fingerprintBefore;
+     cloudTeacherFingerprintKnown=true;
+     store.cloudUpdatedAt=version;
+@@ -1481,7 +1354,6 @@
+     const safePayload=profileCloudPayload();
+     await setDoc(doc(db,'profiles',currentUser.uid),safePayload,{merge:true});
+     updateRemoteProfileShadow(safePayload);
+-    renewSessionLease({force:false}).catch(e=>console.warn('Renovación de sesión posterior al guardado',e));
+     lastCloudTeacherFingerprint=fingerprintBefore;
+     cloudTeacherFingerprintKnown=true;
+     store.cloudUpdatedAt=Number(store.localUpdatedAt)||Date.now();
+@@ -1837,12 +1709,8 @@
+     }
+   },e=>console.warn('No fue posible escuchar el estado del perfil',e));
+ 
+-  // La sesión se negocia en segundo plano. Nunca mantiene oculta la aplicación.
+-  requestSingleDeviceControl().catch(e=>{
+-    console.warn('Control de sesión pendiente',e);
+-    updateSessionStatus('Perfil disponible · control de edición pendiente','warn');
+-    scheduleSessionControlRetry();
+-  });
++  // V92: no existe arbitraje entre dispositivos. El último guardado manual confirmado prevalece.
++  requestSingleDeviceControl().catch(e=>console.warn('No fue posible inicializar el estado local de edición',e));
+ }
+ async function loadTeachersForExport(){
+   if(!db||!isAdmin()){
+@@ -2127,7 +1995,6 @@
+     }
+     authReady=true;
+     updateAuthUI();
+-    updateSessionStatus('Perfil disponible · verificando nube…','warn');
+     applyEditState();
+     updateNavState();
+ 
+@@ -3815,7 +3682,6 @@
+     <div class="program-save">
+       <small>${st.missing?'Las filas resaltadas indican información pendiente.':'Programa completo.'}</small>
+       <div class="program-save-actions">
+-        <button class="save-progress-btn" onclick="saveCurrentProgramProgress(true)">Guardar avances</button>
+         <button class="save-btn" onclick="saveAndNextProgram()">${lastProgram?'Guardar y continuar a revisión →':'Guardar y continuar →'}</button>
+       </div>
+     </div>
+@@ -4705,13 +4571,13 @@
+   const r=teacherAdminCache[uid]||{};
+   const who=r.name||r.email||'este profesor';
+   const question=enable
+-    ?`¿Habilitar la edición para ${who}?
+-
+-No se modificará ni eliminará ningún dato del perfil. Únicamente se permitirá que el profesor vuelva a editar su información.`
+-    :`¿Deshabilitar la edición para ${who}?
+-
+-No se modificará ni eliminará ningún dato. El profesor podrá consultar e imprimir su perfil, pero no podrá cambiar registros hasta que Administración lo habilite nuevamente.`;
++    ?`¿Habilitar la edición para ${who}?\n\nNo se modificará ni eliminará ningún dato del perfil. Únicamente se permitirá que el profesor vuelva a editar su información.`
++    :`¿Deshabilitar la edición para ${who}?\n\nNo se modificará ni eliminará ningún dato. El profesor podrá consultar e imprimir su perfil, pero no podrá cambiar registros hasta que Administración lo habilite nuevamente.`;
+   if(!confirm(question))return;
++  if(navigator.onLine===false){
++    alert('No hay conexión a Internet. El permiso no se modificó. Conéctese y vuelva a intentarlo.');
++    return;
++  }
+ 
+   const row=document.querySelector(`[data-teacher-uid="${CSS.escape(uid)}"]`);
+   const btn=row?.querySelector('.teacher-reopen-btn');
+@@ -4721,34 +4587,59 @@
+     btn.textContent=enable?'Habilitando…':'Deshabilitando…';
+   }
+ 
++  const ref=doc(db,'profiles',uid);
++  const timeoutToken='__PAD_ADMIN_WRITE_TIMEOUT__';
+   try{
+-    // V87: una sola escritura. No se descarga nuevamente toda la colección.
+-    await updateDoc(doc(db,'profiles',uid),{
++    // V92: setDoc+merge es tolerante a documentos parcialmente creados y no toca información académica.
++    const writeResult=await withTimeout(setDoc(ref,{
+       individualEditEnabled:!!enable,
+       individualEditDisabled:!enable,
+       reopenedAt:enable?serverTimestamp():null,
+       reopenedBy:enable?(currentUser.email||''):null,
+       individualEditUpdatedAt:serverTimestamp()
+-    });
++    },{merge:true}),ADMIN_PERMISSION_WRITE_TIMEOUT_MS,timeoutToken);
+ 
+-    r.individualEditEnabled=!!enable;
+-    r.individualEditDisabled=!enable;
+-    r.updatedAt=new Date();
++    if(writeResult===timeoutToken){
++      const err=new Error('Firestore no confirmó la operación dentro de 10 segundos.');
++      err.code='deadline-exceeded';
++      throw err;
++    }
++
++    // Confirmación contra servidor: el botón sólo informa éxito cuando el permiso realmente quedó aplicado.
++    const verified=await withTimeout(getDocFromServer(ref),ADMIN_PERMISSION_VERIFY_TIMEOUT_MS,null);
++    if(!verified||!verified.exists()){
++      const err=new Error('No fue posible verificar el permiso directamente en Firestore.');
++      err.code='verification-failed';
++      throw err;
++    }
++    const fresh=verified.data()||{};
++    if(!!fresh.individualEditEnabled!==!!enable || !!fresh.individualEditDisabled===!!enable){
++      const err=new Error('Firestore respondió, pero el estado de edición no coincide con la operación solicitada.');
++      err.code='verification-mismatch';
++      throw err;
++    }
++
++    r.individualEditEnabled=!!fresh.individualEditEnabled;
++    r.individualEditDisabled=!!fresh.individualEditDisabled;
++    r.updatedAt=fresh.updatedAt||r.updatedAt||new Date();
+     teacherAdminCache[uid]=r;
+     updateTeacherAdminRowVisual(uid);
+-    toast(enable?'Edición habilitada. Los datos existentes se conservaron.':'Edición bloqueada. Los datos existentes se conservaron sin cambios.');
++    toast(enable?'Edición habilitada y confirmada en Firestore.':'Edición deshabilitada y confirmada en Firestore.');
+   }catch(e){
+     console.error('Error de edición individual',e);
++    const code=e?.code||'sin código';
++    const extra=code==='permission-denied'
++      ?'\n\nLa cuenta administrativa fue reconocida por la página, pero Firestore rechazó la operación. Publique las reglas V92 incluidas en el paquete.'
++      :code==='deadline-exceeded'
++        ?'\n\nLa operación tardó demasiado y el botón fue liberado para evitar que quede procesando indefinidamente. Revise conexión y reglas de Firestore.'
++        :'';
++    alert(`No fue posible ${enable?'habilitar':'deshabilitar'} la edición individual.\n\nCódigo: ${code}${extra}\n\nNo se eliminó ni modificó información académica.`);
++  }finally{
+     if(btn){
+       btn.disabled=false;
+       btn.classList.remove('is-busy');
+-      btn.textContent=enable?'Habilitar edición':'Deshabilitar edición';
+     }
+-    alert(`No fue posible ${enable?'habilitar':'deshabilitar'} la edición individual.
+-
+-Código: ${e?.code||'sin código'}
+-
+-El perfil no fue modificado.`);
++    updateTeacherAdminRowVisual(uid);
+   }
+ }
+ window.toggleTeacherEditOverride=function(uid,enable){return window.setTeacherEditAccess(uid,enable)}
+@@ -5976,12 +5867,6 @@
+   });
+ }
+ function setupResilienceGuards(){
+-  document.addEventListener('visibilitychange',()=>{
+-    if(document.visibilityState==='visible'&&sessionHasControl){
+-      heartbeatSession().catch(()=>{});
+-    }
+-  });
+-
+   window.addEventListener('online',()=>{
+     if(store.syncPending){
+       updateCloudStatus('Conexión recuperada · cambios pendientes de guardado manual','warn');
+@@ -6013,7 +5898,21 @@
+   });
+ }
+ 
++function mobileClientBlocked(){
++  const ua=navigator.userAgent||'';
++  const uaMobile=!!navigator.userAgentData?.mobile;
++  const classic=/Android|iPhone|iPad|iPod|Mobile|Silk|Kindle|Windows Phone/i.test(ua);
++  const ipadOs=navigator.platform==='MacIntel' && Number(navigator.maxTouchPoints||0)>1;
++  const coarseSmall=window.matchMedia?.('(pointer: coarse) and (max-width: 1100px)')?.matches===true;
++  return uaMobile || classic || ipadOs || coarseSmall;
++}
++function showDesktopOnlyGate(){
++  document.body.classList.add('desktop-only-active');
++  const gate=$('desktopOnlyGate');
++  if(gate)gate.classList.remove('hidden');
++}
+ function init(){
++  if(mobileClientBlocked()){showDesktopOnlyGate();return;}
+   loadProfile();
+   resetWorkflowState();
+   updatePeriodBadges();

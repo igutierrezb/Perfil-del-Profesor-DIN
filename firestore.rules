@@ -21,32 +21,6 @@ service cloud.firestore {
       return institutional() && request.auth.uid == uid;
     }
 
-    function sessionPath(uid) {
-      return /databases/$(database)/documents/profileSessions/$(uid);
-    }
-
-    function sessionExists(uid) {
-      return exists(sessionPath(uid));
-    }
-
-    function validSessionCreate(uid) {
-      return sessionExists(uid)
-        && request.resource.data.writerSessionId is string
-        && request.resource.data.writerSessionId == get(sessionPath(uid)).data.activeSessionId
-        && request.resource.data.sessionWriteSeq is int;
-    }
-
-    function validSessionUpdate(uid) {
-      return sessionExists(uid)
-        && request.resource.data.writerSessionId is string
-        && request.resource.data.writerSessionId == get(sessionPath(uid)).data.activeSessionId
-        && request.resource.data.sessionWriteSeq is int
-        && (
-          !resource.data.keys().hasAll(['sessionWriteSeq'])
-          || request.resource.data.sessionWriteSeq > resource.data.sessionWriteSeq
-        );
-    }
-
     function adminOnlyFields() {
       return [
         'individualEditDisabled',
@@ -89,40 +63,40 @@ service cloud.firestore {
       allow write: if admin();
     }
 
+    // V92: los documentos de sesión heredados dejan de decidir quién puede escribir.
+    // Se conservan temporalmente por compatibilidad, pero profiles ya no depende de ellos.
     match /profileSessions/{uid} {
-      allow read: if admin() || own(uid);
-      allow create, update: if admin() || own(uid);
+      allow read, create, update: if admin() || own(uid);
       allow delete: if admin();
     }
 
     match /profiles/{uid} {
       allow read: if admin() || own(uid);
 
-      // Creación normal del perfil por el propio profesor.
-      // Los controles administrativos no pueden nacer desde el cliente del profesor.
+      // El profesor crea únicamente su propio perfil y nunca controles administrativos.
       allow create: if admin()
         || (
           own(uid)
-          && (!sessionExists(uid) || validSessionCreate(uid))
           && !request.resource.data.keys().hasAny(adminOnlyFields())
           && !request.resource.data.keys().hasAny(['individualEditEnabled'])
         );
 
-      // El profesor sólo puede escribir si:
-      // 1) su sesión es la sesión activa;
-      // 2) Administración no bloqueó individualmente su perfil;
-      // 3) no intenta cambiar campos reservados a Administración.
-      // individualEditEnabled sólo puede pasar de true a false al volver a finalizar.
+      // V92: el único candado duro individual es individualEditDisabled.
+      // No existe requisito de sesión/dispositivo. El último guardado manual confirmado prevalece.
       allow update: if admin()
         || (
           own(uid)
           && profileNotIndividuallyBlocked()
-          && (!sessionExists(uid) || validSessionUpdate(uid))
           && ownerDoesNotChangeAdminFields()
           && ownerMayCloseOwnReopen()
         );
 
       allow delete: if admin();
+    }
+
+    // Respaldo administrativo previo a operaciones destructivas.
+    match /profileArchives/{uid}/snapshots/{snapshotId} {
+      allow read, create, update, delete: if admin();
     }
 
     match /audit/{entry} {
