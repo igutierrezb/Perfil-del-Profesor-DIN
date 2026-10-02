@@ -21,6 +21,12 @@ service cloud.firestore {
       return institutional() && request.auth.uid == uid;
     }
 
+    function auditIdentityMatches() {
+      return institutional()
+        && request.resource.data.uid == request.auth.uid
+        && request.resource.data.email == request.auth.token.email;
+    }
+
     function adminOnlyFields() {
       return [
         'individualEditDisabled',
@@ -63,8 +69,7 @@ service cloud.firestore {
       allow write: if admin();
     }
 
-    // V93: profileSessions queda definitivamente fuera de uso.
-    // Los documentos históricos se conservan, pero ningún cliente puede leerlos o escribirlos.
+    // V93+: profileSessions permanece definitivamente fuera de uso.
     match /profileSessions/{uid} {
       allow read, write: if false;
     }
@@ -72,7 +77,6 @@ service cloud.firestore {
     match /profiles/{uid} {
       allow read: if admin() || own(uid);
 
-      // El profesor crea únicamente su propio perfil y nunca controles administrativos.
       allow create: if admin()
         || (
           own(uid)
@@ -80,8 +84,6 @@ service cloud.firestore {
           && !request.resource.data.keys().hasAny(['individualEditEnabled'])
         );
 
-      // V93: el único candado duro individual es individualEditDisabled.
-      // No existe requisito de sesión/dispositivo. El último guardado manual confirmado prevalece.
       allow update: if admin()
         || (
           own(uid)
@@ -90,17 +92,19 @@ service cloud.firestore {
           && ownerMayCloseOwnReopen()
         );
 
-      allow delete: if admin();
+      // V95: ningún cliente puede borrar físicamente un perfil.
+      // El flujo administrativo permitido es resguardar/restaurar.
+      allow delete: if false;
     }
 
-    // Respaldo administrativo previo a operaciones destructivas.
     match /profileArchives/{uid}/snapshots/{snapshotId} {
       allow read, create, update, delete: if admin();
     }
 
     match /audit/{entry} {
       allow read: if admin();
-      allow create: if institutional();
+      // V95: toda entrada debe quedar ligada al UID y correo autenticados.
+      allow create: if auditIdentityMatches();
       allow update, delete: if false;
     }
   }

@@ -3,7 +3,11 @@ import { getAuth, GoogleAuthProvider, signInWithCredential, signOut, onAuthState
 import { getFirestore, doc, getDoc, collection, getDocs, writeBatch as liteWriteBatch, doc as liteDoc, setDoc as liteSetDoc, updateDoc as liteUpdateDoc, collection as liteCollection, addDoc as liteAddDoc, serverTimestamp as liteServerTimestamp } from 'https://www.gstatic.com/firebasejs/10.13.2/firebase-firestore-lite.js';
 
 
+
+
 const $=id=>document.getElementById(id);
+
+
 
 
 const GLOBAL_SETTINGS_CACHE_KEY='PAD_UTEQ_GLOBAL_SETTINGS';
@@ -46,6 +50,7 @@ let remoteProfileShadow=null;
 let sessionConflictKnown=false;
 let teacherAdminCacheLoaded=false;
 
+
 /* =========================================================
    V93 · GUARDADO MANUAL Y BAJO CONSUMO
    - Sin sesiones exclusivas por dispositivo.
@@ -53,6 +58,7 @@ let teacherAdminCacheLoaded=false;
    - Firestore se usa sólo para lecturas puntuales y acciones manuales.
    ========================================================= */
 const CLOUD_READ_TIMEOUT_MS=6000;
+
 
 function withTimeout(promise,ms,fallbackValue=null){
   let timer=null;
@@ -109,6 +115,7 @@ async function ensurePdfLibraries(){
   return loadExternalScriptOnce('https://cdn.jsdelivr.net/npm/jspdf@2.5.1/dist/jspdf.umd.min.js',()=>!!window.jspdf?.jsPDF);
 }
 
+
 function sessionCanWrite(){
   // V93: no existe candado por dispositivo.
   return !!currentUser;
@@ -118,11 +125,14 @@ async function releaseSessionIfOwned(){
   return true;
 }
 
+
 const allowedDomain=(window.PAD_ALLOWED_DOMAIN||'uteq.edu.mx').toLowerCase();
-const PAD_BUILD_VERSION='V94-2026-10-01';
+const PAD_BUILD_VERSION='V95-2026-10-01';
 window.PAD_BUILD_VERSION=PAD_BUILD_VERSION;
 const adminEmail=(window.PAD_ADMIN_EMAIL||'ivan.gutierrez@uteq.edu.mx').toLowerCase();
 const googleClientId=String(window.PAD_GOOGLE_CLIENT_ID||'').trim();
+
+
 
 
 const PLANNING_DAYS=[
@@ -136,6 +146,8 @@ const PLANNING_SLOTS=[
   ['07:00','08:00'],['08:00','09:00'],['09:00','10:00'],['10:00','11:00'],
   ['11:00','12:00'],['12:00','13:00'],['13:00','14:00'],['14:00','15:00'],['15:00','16:00']
 ];
+
+
 
 
 function emptyCommission(){
@@ -172,6 +184,8 @@ function migratePlanningRecord(raw){
   if(!raw||typeof raw!=='object')return defaultPlanningRecord();
 
 
+
+
   // Compatibilidad con V46/V47: conserva información capturada previamente.
   if(!Array.isArray(raw.commissions)){
     const oldName=String(raw.commissionName||'').trim();
@@ -189,6 +203,8 @@ function migratePlanningRecord(raw){
     raw.commissionMode=(raw.scheduleMode==='yes'||raw.managementMode==='yes'||names.length)?'yes':
       ((raw.scheduleMode==='na'&&raw.managementMode==='na')?'na':'');
   }
+
+
 
 
   raw.projectMode=raw.projectMode||raw.pidetMode||'';
@@ -232,6 +248,10 @@ function commissionScheduleSummary(commission){
     return daySlots.length?`${day.label}: ${daySlots.join(', ')}`:'';
   }).filter(Boolean).join(' | ');
 }
+
+
+
+
 
 
 
@@ -290,6 +310,10 @@ function programAcronym(pr){
   };
   return map[pr.id]||pr.id.replace(/^custom_/,'PE-').slice(0,12).toUpperCase();
 }
+
+
+
+
 
 
 
@@ -475,6 +499,7 @@ function applyEditState(){
     }
   }
 
+
   const planningLocked=!planningEditingAllowed();
   applyPlanningEditState();
   if(!isAdmin()&&individualEditBlocked()){
@@ -482,6 +507,7 @@ function applyEditState(){
     clearTimeout(cloudRetryTimer);
   }
   updateReviewFinalizeUI();
+
 
   const planningBanner=$('commissionsLockedBanner');
   if(planningBanner){
@@ -512,6 +538,10 @@ window.toggleEditingLock=async function(){
     alert('No fue posible cambiar el estado general de edición. Revise la conexión con Firestore.');
   }
 }
+
+
+
+
 
 
 
@@ -572,6 +602,8 @@ function commonNoticeHtml(pid){
     </div>
   </div>`;
 }
+
+
 
 
 function getAns(pid,s,c,name){
@@ -645,6 +677,8 @@ function cloudHasTeacherData(data){
     finalizedAtMs:Number(data?.finalizedAtMs)||null
   });
 }
+
+
 
 
 // =========================================================
@@ -744,6 +778,7 @@ function showCloudWriteFailure(error,action='guardar'){
   alert(`No fue posible ${action}.\n\nCódigo: ${code||'sin código'}.\n\nLa información capturada permanece conservada localmente.`);
 }
 
+
 async function saveTeacherChangesNow(reason='guardado manual'){
   if(manualSaveInFlight){
     toast('Ya hay un guardado en curso.');
@@ -764,12 +799,14 @@ async function saveTeacherChangesNow(reason='guardado manual'){
     return {ok:false,wrote:false};
   }
 
+
   if(cloudTeacherFingerprintKnown&&!teacherHasUnsavedCloudChanges()){
     store.syncPending=false;
     persistStoreSnapshot();
     updateCloudStatus('Sin cambios nuevos · no se realizó escritura','ok');
     return {ok:true,wrote:false};
   }
+
 
   manualSaveInFlight=true;
   updateCloudStatus('Guardando cambios…','warn');
@@ -797,6 +834,7 @@ async function saveTeacherChangesNow(reason='guardado manual'){
   }
 }
 
+
 function persist(options={}){
   const {touch=true}=options;
   cfg.periodo=cfg.periodo||'SEP 2026 - AGO 2027';
@@ -814,6 +852,7 @@ function persist(options={}){
   store.currentProgramIndex=0;
   store.lastSavedAt=now;
 
+
   const fingerprint=currentTeacherFingerprint();
   const previousLocalFingerprint=String(store.lastLocalTeacherFingerprint||'');
   const teacherDataChanged=!previousLocalFingerprint || fingerprint!==previousLocalFingerprint;
@@ -825,6 +864,7 @@ function persist(options={}){
   store.syncPending=cloudTeacherFingerprintKnown
     ? fingerprint!==lastCloudTeacherFingerprint
     : (!!store.syncPending || (touch&&teacherDataChanged));
+
 
   lastSavedAt=store.lastSavedAt;
   try{
@@ -843,6 +883,8 @@ function persist(options={}){
 function statusBox(errors,title){return `<div class="status-box bad"><b>${title}</b><ul>${errors.map(x=>`<li>${x}</li>`).join('')}</ul></div>`}
 function updatePeriodBadges(){ $('periodBadgeGate').textContent=`Periodo de vigencia · ${cfg.periodo}`; $('periodBadgeInline').textContent=`Periodo de vigencia · ${cfg.periodo}`; }
 function authConfigured(){return !!(window.FIREBASE_CONFIG&&window.FIREBASE_CONFIG.apiKey&&window.FIREBASE_CONFIG.projectId&&window.FIREBASE_CONFIG.appId)}
+
+
 
 
 function updateCloudStatus(text,kind='neutral'){
@@ -875,6 +917,8 @@ function cacheGlobalSettings(){
     console.warn('No fue posible conservar la configuración global en caché',e);
   }
 }
+
+
 
 
 function applyGlobalSettings(data){
@@ -928,10 +972,14 @@ function resetLocalTeacherData({keepProfile=false}={}){
   lastSavedAt=null;
 
 
+
+
   localStorage.setItem('PAD_UTEQ',JSON.stringify({
     ...store,cfg,answers,programMeta,customPrograms,programOverrides,
     disabledPrograms,programAcronyms,commonRules,transversalRules,currentProgramIndex:0,lastSavedAt
   }));
+
+
 
 
   buildProfileRows();
@@ -994,6 +1042,7 @@ async function archiveTeacherProfileBeforeChange(uid,reason){
   return data;
 }
 
+
 function profileCloudPayload({releaseEditOverride=false}={}){
   const remote=remoteProfileShadow||{};
   const payload={
@@ -1040,6 +1089,7 @@ async function syncProfileToCloud({reason='guardado manual',releaseEditOverride=
     return false;
   }
 
+
   const fingerprintBefore=currentTeacherFingerprint();
   if(!force&&!releaseEditOverride&&cloudTeacherFingerprintKnown&&fingerprintBefore===lastCloudTeacherFingerprint){
     store.syncPending=false;
@@ -1047,6 +1097,7 @@ async function syncProfileToCloud({reason='guardado manual',releaseEditOverride=
     updateCloudStatus('Sin cambios nuevos · no se realizó escritura','ok');
     return true;
   }
+
 
   cloudSyncInFlight=true;
   const version=Number(store.localUpdatedAt)||Date.now();
@@ -1097,6 +1148,7 @@ async function forceProfileCheckpointToCloud(reason='guardado manual',options={}
     return false;
   }
 
+
   const fingerprintBefore=currentTeacherFingerprint();
   if(!force&&cloudTeacherFingerprintKnown&&fingerprintBefore===lastCloudTeacherFingerprint){
     store.syncPending=false;
@@ -1105,6 +1157,7 @@ async function forceProfileCheckpointToCloud(reason='guardado manual',options={}
     updateCloudStatus('Sin cambios nuevos · no se realizó escritura','ok');
     return true;
   }
+
 
   try{
     const safePayload=profileCloudPayload({releaseEditOverride});
@@ -1131,6 +1184,8 @@ async function forceProfileCheckpointToCloud(reason='guardado manual',options={}
     return false;
   }
 }
+
+
 
 
 function applyProfileContent(data){
@@ -1166,6 +1221,8 @@ function restoreUserBackupBeforeCloud(){
   if(!backupHasTeacherData(backup))return false;
 
 
+
+
   applyProfileContent(backup);
   if('submittedPeriod' in backup)store.submittedPeriod=backup.submittedPeriod||null;
   if('finalizedAtMs' in backup)store.finalizedAtMs=Number(backup.finalizedAtMs)||null;
@@ -1179,10 +1236,14 @@ function restoreUserBackupBeforeCloud(){
   currentProgramIndex=0;
 
 
+
+
   renderLoadedProfile();
   updateCloudStatus('Respaldo local cargado · verificando nube…','warn');
   return true;
 }
+
+
 
 
 async function loadRemoteProfile({preferRemote=false}={}){
@@ -1194,6 +1255,8 @@ async function loadRemoteProfile({preferRemote=false}={}){
       const d=snap.data()||{};
       updateRemoteProfileShadow(d);
       const backup=readUserBackup();
+
+
 
 
       // V94 · RESGUARDO NO DESTRUCTIVO.
@@ -1224,6 +1287,8 @@ async function loadRemoteProfile({preferRemote=false}={}){
       }
 
 
+
+
       const remoteUpdatedAt=Number(d.clientUpdatedAt)||timestampToMs(d.updatedAt)||0;
       const localUpdatedAt=Number(backup?.localUpdatedAt)||0;
       const remoteRevision=Number(d.dataRevision)||0;
@@ -1239,8 +1304,12 @@ async function loadRemoteProfile({preferRemote=false}={}){
         Object.keys(remoteProgramMeta).length===0;
 
 
+
+
       const localHasData=backupHasTeacherData(backup);
       const remoteHasData=cloudHasTeacherData(d);
+
+
 
 
       // Prioridad de recuperación:
@@ -1262,9 +1331,13 @@ async function loadRemoteProfile({preferRemote=false}={}){
         !explicitResetIsNew;
 
 
+
+
       if('individualEditEnabled' in d)store.individualEditEnabled=!!d.individualEditEnabled;
       if('individualEditDisabled' in d)store.individualEditDisabled=!!d.individualEditDisabled;
       if('profileResetToken' in d)store.profileResetToken=d.profileResetToken||null;
+
+
 
 
       if(localIsNewer || preserveLocalAgainstEmptyCloud){
@@ -1300,6 +1373,8 @@ async function loadRemoteProfile({preferRemote=false}={}){
         remoteProfileLoaded=true;
         updateCloudStatus('Sincronizado','ok');
       }
+
+
 
 
       if(store.submittedPeriod===cfg.periodo){
@@ -1355,6 +1430,7 @@ async function initCloud(){
   if(!db||!currentUser)return;
   cloudAvailable=true;
 
+
   // V93: una sola lectura de configuración al iniciar. No hay listener permanente.
   try{
     const ref=doc(db,'settings','app');
@@ -1374,6 +1450,7 @@ async function initCloud(){
     console.warn('Configuración remota no disponible',e);
     updateCloudStatus(cloudErrorText(e,'Configuración local disponible'),'warn');
   }
+
 
   // V93: una sola lectura del perfil al iniciar. No existe onSnapshot permanente.
   // Los cambios de permiso hechos por Administración se aplican al recargar la página.
@@ -1406,8 +1483,12 @@ function teacherCoordinator(t,pid,s,c){
 }
 
 
+
+
 function isInstitutional(email){return !!email&&email.toLowerCase().endsWith('@'+allowedDomain)}
 function isAdmin(){return !!currentUser&&currentUser.email&&currentUser.email.toLowerCase()===adminEmail}
+
+
 
 
 function showApp(visible){document.querySelector('header').style.display=visible?'block':'none';document.querySelector('.main-nav').style.display=visible?'flex':'none';document.querySelector('main').style.display=visible?'block':'none';document.querySelector('.site-footer').style.display=visible?'block':'none';$('loginGate').classList.toggle('hidden',visible)}
@@ -1452,6 +1533,8 @@ async function signInWithGoogleIdentity(){
     alert(googleAuthErrorMessage('No fue posible cargar el servicio de acceso de Google (accounts.google.com). Verifique la conexión o las restricciones de red y vuelva a intentarlo.'));
     return false;
   }
+
+
 
 
   return await new Promise(resolve=>{
@@ -1515,6 +1598,8 @@ async function signInWithGoogleIdentity(){
 }
 
 
+
+
 function updateAuthUI(){
   const gateStatus=$('authStatusGate'),topStatus=$('authStatus');
   if(authConfigured()){
@@ -1574,6 +1659,7 @@ window.signOutApp=async function(){
       }
       saveUserBackup();
 
+
       // V90: cerrar sesión NO escribe automáticamente el perfil en Firestore.
       if(teacherHasUnsavedCloudChanges()){
         const closeAnyway=confirm(
@@ -1586,8 +1672,10 @@ window.signOutApp=async function(){
       }
     }
 
+
     await releaseSessionIfOwned();
     if(auth)await signOut(auth);
+
 
     // Se elimina sólo la copia de trabajo compartida por privacidad.
     // Se conservan PAD_UTEQ_PROFILE_<UID> y PAD_UTEQ_GLOBAL_SETTINGS.
@@ -1607,6 +1695,8 @@ window.signOutApp=async function(){
 }
 
 
+
+
 function initAuth(){
   if(!authConfigured()){updateAuthUI();return}
   const fbApp=initializeApp(window.FIREBASE_CONFIG);
@@ -1615,11 +1705,15 @@ function initAuth(){
   dbLite=db;
 
 
+
+
   // Se configura al iniciar la aplicación. Así el clic de acceso queda
   // libre para abrir Google inmediatamente, algo importante en Safari/iOS.
   authPersistenceReady=setPersistence(auth,browserLocalPersistence).catch(e=>{
     console.warn('No fue posible establecer persistencia local de Auth',e);
   });
+
+
 
 
   onAuthStateChanged(auth,async user=>{
@@ -1631,6 +1725,7 @@ function initAuth(){
     bootstrapComplete=false;
     authReady=false;
 
+
     if(user&&!isInstitutional(user.email||'')){
       await signOut(auth);
       currentUser=null;
@@ -1639,12 +1734,14 @@ function initAuth(){
       return;
     }
 
+
     if(!currentUser){
       bootstrapComplete=true;
       updateAuthUI();
       updateCountdownUI();
       return;
     }
+
 
     // V87.1: una copia local dañada o un error de render nunca puede bloquear el acceso.
     try{
@@ -1657,6 +1754,7 @@ function initAuth(){
     updateAuthUI();
     applyEditState();
     updateNavState();
+
 
     try{
       await initCloud();
@@ -1673,6 +1771,10 @@ function initAuth(){
     }
   });
 }
+
+
+
+
 
 
 
@@ -1696,6 +1798,8 @@ window.togglePlanningPage=async function(){
   updatePlanningAvailability();
   toast('El apartado de Comisiones permanece habilitado.');
 }
+
+
 
 
 function renderCommissionScheduleGrid(commission){
@@ -1798,8 +1902,10 @@ function renderPlanning(){
   const record=currentPlanningRecord(true);
   cfg.planningEnabled=true;
 
+
   root.querySelectorAll('input[name="planningCommissionMode"]').forEach(x=>x.checked=x.value===record.commissionMode);
   root.querySelectorAll('input[name="planningProjectMode"]').forEach(x=>x.checked=x.value===record.projectMode);
+
 
   planningCommissionEditorIndex=null;
   planningCommissionEditorOpen=false;
@@ -1810,6 +1916,7 @@ function renderPlanning(){
   if($('planningProjectHours'))$('planningProjectHours').value=record.projectHours||'';
   if($('planningProjectReference'))$('planningProjectReference').value=record.projectReference||'';
   if($('planningComments'))$('planningComments').value=record.comments||'';
+
 
   updatePlanningConditionalUI();
   updatePlanningAvailability();
@@ -1834,6 +1941,7 @@ function collectPlanning(){
   record.commissionMode=document.querySelector('input[name="planningCommissionMode"]:checked')?.value||record.commissionMode||'';
   record.projectMode=document.querySelector('input[name="planningProjectMode"]:checked')?.value||record.projectMode||'';
   record.commissions=(record.commissions||[]).filter(c=>!commissionIsBlank(c));
+
 
   record.projectName=$('planningProjectName')?.value.trim()||'';
   record.projectRole=$('planningProjectRole')?.value.trim()||'';
@@ -1991,6 +2099,7 @@ function validatePlanningForAdvance(opts={}){
   };
   if(opts.visual)clearPlanningValidation();
 
+
   // Comisiones son opcionales. Solo se validan como bloque obligatorio si el profesor indicó que sí tiene.
   if(record.commissionMode==='yes'){
     const commissions=(record.commissions||[]);
@@ -2004,6 +2113,7 @@ function validatePlanningForAdvance(opts={}){
     });
   }
 
+
   // El proyecto conserva las reglas vigentes de V80/V81.
   if(!['yes','na'].includes(record.projectMode)){
     mark('planningProjectCard','Indique si participa en un proyecto avalado por la Universidad o seleccione No aplica.');
@@ -2012,6 +2122,7 @@ function validatePlanningForAdvance(opts={}){
     if(!record.projectRole)mark('planningProjectCard','Capture la responsabilidad que ocupa en el proyecto.');
     if(String(record.projectHours||'').trim()==='')mark('planningProjectCard','Capture las horas autorizadas para el proyecto.');
   }
+
 
   if(opts.visual&&firstCard){
     requestAnimationFrame(()=>firstCard.scrollIntoView({behavior:'smooth',block:'center'}));
@@ -2031,6 +2142,8 @@ function validatePlanning(opts={}){
   if(opts.visual)clearPlanningValidation();
 
 
+
+
   if(!['yes','na'].includes(record.commissionMode)){
     mark('planningCommissionsCard','Indique si tiene comisiones autorizadas por la Dirección o seleccione No aplica.');
   }else if(record.commissionMode==='yes'){
@@ -2046,6 +2159,8 @@ function validatePlanning(opts={}){
   }
 
 
+
+
   if(!['yes','na'].includes(record.projectMode)){
     mark('planningProjectCard','Indique si participa en un proyecto avalado por la Universidad o seleccione No aplica.');
   }else if(record.projectMode==='yes'){
@@ -2053,6 +2168,8 @@ function validatePlanning(opts={}){
     if(!record.projectRole)mark('planningProjectCard','Capture la responsabilidad que ocupa en el proyecto.');
     if(String(record.projectHours||'').trim()==='')mark('planningProjectCard','Capture las horas autorizadas para el proyecto.');
   }
+
+
 
 
   if(opts.visual&&firstCard){
@@ -2074,17 +2191,23 @@ window.savePlanning=async function(show=false){
   planningByPeriod[cfg.periodo]=record;
   persist({schedule:false});
 
+
   const saved=await saveTeacherChangesNow('guardado manual de Comisiones');
   if(!saved.ok){
     if($('planningErrors'))$('planningErrors').innerHTML='<div class="status-box bad"><b>No se confirmó el guardado en nube.</b><br>La información permanece conservada en este dispositivo. Inténtelo nuevamente antes de avanzar.</div>';
     return false;
   }
 
+
   if($('planningErrors'))$('planningErrors').innerHTML='<div class="status-box ok"><b>Comisiones guardadas.</b><br>La información queda disponible para consulta y para el concentrado administrativo.</div>';
   updateNavState();
   if(show)toast(saved.wrote?'Comisiones guardadas en nube.':'Sin cambios nuevos; no fue necesaria otra escritura.');
   return true;
 }
+
+
+
+
 
 
 
@@ -2111,13 +2234,17 @@ window.acceptCaptureOrientation=function(){
 }
 
 
+
+
 window.go=function(id,force=false){
   if(id==='admin'&&!isAdmin()){
     toast('Administración disponible únicamente para ivan.gutierrez@uteq.edu.mx');
     return false;
   }
 
+
   const sequential=sequentialProfessorMode();
+
 
   if(id==='captura'&&sequential&&!workflowState.profileConfirmed){
     activateViewDirect('perfil');
@@ -2130,6 +2257,7 @@ window.go=function(id,force=false){
     return false;
   }
 
+
   if(id==='revision'&&sequential){
     const v=validateAll();
     if(!workflowState.reviewUnlocked||!v.ok){
@@ -2140,6 +2268,7 @@ window.go=function(id,force=false){
     }
   }
 
+
   if(id==='captura'&&!force&&!sequential){
     const p=validateProfile({visual:true,focusFirst:true});
     if(!p.ok){
@@ -2148,6 +2277,7 @@ window.go=function(id,force=false){
     }
   }
 
+
   if(id==='revision'&&!force&&!sequential){
     const v=validateAll();
     if(!reviewAvailable()){
@@ -2155,6 +2285,7 @@ window.go=function(id,force=false){
       return false;
     }
   }
+
 
   if(id==='perfil'&&sequential){
     workflowState.profileConfirmed=false;
@@ -2166,6 +2297,7 @@ window.go=function(id,force=false){
     workflowState.reviewUnlocked=false;
   }
 
+
   activateViewDirect(id);
   if(id==='revision'){buildPrint();updateReviewFinalizeUI();}
   if(id==='admin')renderAdmin();
@@ -2173,6 +2305,7 @@ window.go=function(id,force=false){
   updateNavState();
   return true;
 };
+
 
 document.querySelectorAll('.main-nav button').forEach(b=>b.onclick=()=>{
   const id=b.dataset.view;
@@ -2182,6 +2315,7 @@ document.querySelectorAll('.main-nav button').forEach(b=>b.onclick=()=>{
   }
   window.go(id);
 });
+
 
 function profileLooksComplete(){
   return validateProfile().ok;
@@ -2211,6 +2345,7 @@ function updateNavState(){
   const cBtn=document.querySelector('.main-nav button[data-view="captura"]');
   const rBtn=document.querySelector('.main-nav button[data-view="revision"]');
 
+
   // Un solo recorrido global por actualización de etapa.
   const profile=validateProfile();
   const stats=overallStats();
@@ -2219,12 +2354,14 @@ function updateNavState(){
   const ps=programs();
   const completePrograms=ps.filter(pr=>programStats(pr).missing===0).length;
 
+
   if(pBtn)pBtn.classList.toggle('complete',profile.ok);
   if(cBtn)cBtn.classList.toggle('complete',capture.ok);
   if(rBtn){
     rBtn.classList.toggle('complete',all.ok);
     rBtn.classList.toggle('readable',reviewAvailable(all.ok)&&!all.ok);
   }
+
 
   const sequential=sequentialProfessorMode();
   const bootstrapLocked=!!currentUser&&!bootstrapComplete;
@@ -2241,6 +2378,7 @@ function updateNavState(){
       :'';
   });
 }
+
 
 const PROFILE_ROW_CONFIG={
   formation:{base:7,max:11,prefix:'f',suffixes:['a','b']},
@@ -2285,6 +2423,7 @@ function buildProfileRows(){
   store.profile=store.profile||{};
   store.profile.rowCounts=counts;
 
+
   $('formacion').innerHTML=Array.from({length:counts.formation},(_,n)=>{
     const i=n+1;
     const label=i===1?'Licenciatura o TSU':`Posgrado ${i-1}`;
@@ -2297,6 +2436,7 @@ function buildProfileRows(){
     </div>`;
   }).join('');
 
+
   $('docencia').innerHTML=Array.from({length:counts.docencia},(_,n)=>{
     const i=n+1;
     const added=i>PROFILE_ROW_CONFIG.docencia.base;
@@ -2307,6 +2447,7 @@ function buildProfileRows(){
       ${profileRowDeleteButton('docencia',i)}
     </div>`;
   }).join('');
+
 
   $('laboral').innerHTML=Array.from({length:counts.laboral},(_,n)=>{
     const i=n+1;
@@ -2412,6 +2553,7 @@ window.removeProfileRow=function(kind,index){
   const hasData=keys.some(k=>String(profile.extra?.[k]||'').trim());
   if(hasData&&!confirm('Este renglón contiene información. ¿Desea eliminarlo?'))return false;
 
+
   for(let i=index;i<counts[kind];i++){
     cfgRow.suffixes.forEach(s=>{
       const to=`${cfgRow.prefix}${i}${s}`;
@@ -2432,20 +2574,24 @@ window.removeProfileRow=function(kind,index){
 function captureProfileLocallyWithoutCloud(){
   if(!currentUser||!editingAllowed())return;
 
+
   const before=JSON.stringify({
     profile:store.profile||{},
     planningByPeriod:planningByPeriod||{}
   });
+
 
   store.profile=profileFromInputs();
   if(planningEnabled()){
     try{collectPlanning()}catch(_){}
   }
 
+
   const after=JSON.stringify({
     profile:store.profile||{},
     planningByPeriod:planningByPeriod||{}
   });
+
 
   const now=Date.now();
   store.answers=answers;
@@ -2454,17 +2600,20 @@ function captureProfileLocallyWithoutCloud(){
   store.lastSavedAt=now;
   store.currentProgramIndex=0;
 
+
   if(before!==after){
     store.localUpdatedAt=now;
     store.dataRevision=(Number(store.dataRevision)||0)+1;
     store.syncPending=true;
   }
 
+
   try{
     localStorage.setItem('PAD_UTEQ',JSON.stringify(store));
     saveUserBackup();
   }catch(_){}
 }
+
 
 function requiredProfileChecks(p,e){
   const counts=normalizedProfileRowCounts(p);
@@ -2482,6 +2631,7 @@ function requiredProfileChecks(p,e){
     {el:document.querySelector('[data-g="l1c"]'),missing:!e.l1c,msg:'Capture el periodo de la primera línea de Experiencia laboral.'}
   ];
 
+
   for(let i=2;i<=counts.formation;i++){
     const study=String(e[`f${i}a`]||'').trim();
     const institution=String(e[`f${i}b`]||'').trim();
@@ -2493,6 +2643,7 @@ function requiredProfileChecks(p,e){
     );
   }
 
+
   for(let i=2;i<=counts.docencia;i++){
     const institution=String(e[`d${i}a`]||'').trim();
     const period=String(e[`d${i}c`]||'').trim();
@@ -2503,6 +2654,7 @@ function requiredProfileChecks(p,e){
       {el:document.querySelector(`[data-g="d${i}c"]`),missing:!period,msg:`Experiencia docente ${i}: capture el periodo.`}
     );
   }
+
 
   for(let i=2;i<=counts.laboral;i++){
     const a=String(e[`l${i}a`]||'').trim();
@@ -2543,6 +2695,7 @@ function validateProfile(opts={}){
   return{ok:!errors.length,errors,checks}
 }
 
+
 window.saveSection=async function(){
   if(!requireEditing())return false;
   collectProfile();
@@ -2555,9 +2708,11 @@ window.continueToCapture=async function(){
   if(!requireEditing())return false;
   try{document.activeElement?.blur()}catch(_){}
 
+
   const v=validateProfile({visual:true,focusFirst:false});
   const errorBox=$('profileErrors');
   if(errorBox)errorBox.innerHTML=v.ok?'':statusBox(v.errors,'Complete los datos obligatorios antes de continuar.');
+
 
   if(!v.ok){
     const missing=v.checks.filter(x=>x.missing&&x.el);
@@ -2581,6 +2736,7 @@ window.continueToCapture=async function(){
     return false;
   }
 
+
   if(planningEnabled()){
     const record=collectPlanning();
     const hasCommission=commissionHasCapturedData(record);
@@ -2598,6 +2754,7 @@ window.continueToCapture=async function(){
       }
     }
 
+
     const planningCheck=validatePlanningForAdvance({visual:true,record});
     if(!planningCheck.ok){
       if($('planningErrors'))$('planningErrors').innerHTML=statusBox(
@@ -2608,19 +2765,23 @@ window.continueToCapture=async function(){
       return false;
     }
 
+
     record.completedAtMs=Date.now();
     record.updatedAtMs=Date.now();
     planningByPeriod[cfg.periodo]=record;
     if($('planningErrors'))$('planningErrors').innerHTML='';
   }
 
+
   // V90: consolidar el estado local; todavía NO se cambia de pantalla.
   store.profile=profileFromInputs();
   persist({schedule:false});
 
+
   // Guardado manual obligatorio. Si no hubo cambios reales, se omite la escritura.
   const saved=await saveTeacherChangesNow('Guardar y continuar: Datos del profesor');
   if(!saved.ok)return false;
+
 
   clearRequiredHighlights();
   document.querySelectorAll('#perfil .mobile-required-focus').forEach(el=>el.classList.remove('mobile-required-focus'));
@@ -2633,11 +2794,13 @@ window.continueToCapture=async function(){
   renderCurrentProgram();
   activateViewDirect('captura');
 
+
   const capture=$('captura');
   requestAnimationFrame(()=>{
     const top=(capture?.offsetTop||0)-48;
     window.scrollTo({top:Math.max(0,top),behavior:'smooth'});
   });
+
 
   updateNavState();
   requestAnimationFrame(()=>{
@@ -2646,6 +2809,7 @@ window.continueToCapture=async function(){
   });  toast(saved.wrote?'Cambios guardados. Continúe con Programa 1.':'Sin cambios nuevos. Continúe con Programa 1.');
   return true;
 }
+
 
 function originCode(a){return(a.origins||[]).join('')}
 function originTooltip(code){
@@ -2794,6 +2958,10 @@ function replicateCommon(pid,s,c,r){
 
 
 
+
+
+
+
 function strictSubjectKey(name){
   return String(name||'').trim().replace(/\s+/g,' ').toLocaleLowerCase('es-MX');
 }
@@ -2835,6 +3003,8 @@ function explicitTransversalPeers(pid,s,c,name){
       else if(b.pid===pid&&b.s===s&&b.c===c)peers.push(a);
       return;
     }
+
+
 
 
     // Compatibilidad con las reglas creadas en V59.
@@ -2922,6 +3092,8 @@ function courseTransversalBadge(pid,s,c,name){
 }
 
 
+
+
 function programStats(p){
   let total=0,resolved=0,selected=0,disabled=0,missing=0;
   p.semesters.forEach((sem,s)=>sem.forEach((name,c)=>{
@@ -2987,6 +3159,8 @@ function captureIssues(){
 }
 let captureErrorModeActive=false;
 let captureValidationEmphasis=false;
+
+
 
 
 function captureIssuePanel(issues){
@@ -3089,6 +3263,8 @@ window.toggleCoordinator=function(pid,id,checked){
 function renderCoordinator(p){ return ''; }
 
 
+
+
 function currentProgramIssues(){
   const p=currentProgram();
   if(!p)return [];
@@ -3136,6 +3312,10 @@ function canLeaveCurrentProgram(){
 
 
 
+
+
+
+
 function rowCoordinatorChecked(pid,s,c){
   return !!(((programMeta[pid]||{}).coordinators||[]).includes(`${s}|${c}`));
 }
@@ -3143,6 +3323,8 @@ function rowCoordinatorEnabled(pid,s,c,name){
   const a=getAns(pid,s,c,name);
   return !isEnglish(name) && !/no\s+aplica/i.test(name) && a.status!=='off' && ['X','XX'].includes(a.status);
 }
+
+
 
 
 const PROGRAM_CAPTURE_THEMES={
@@ -3198,6 +3380,8 @@ function captureGuideHtml(){
 }
 
 
+
+
 function adjustSemesterColumnWidths(){
   document.querySelectorAll('.semester-card').forEach(card=>{
     card.classList.remove('needs-wide-subjects');
@@ -3214,14 +3398,17 @@ function renderCurrentProgram(){
   const totalPrograms=programs().length;
   if(!totalPrograms)return;
 
+
   if(currentProgramIndex<0||currentProgramIndex>=totalPrograms){
     currentProgramIndex=0;
   }
+
 
   if(workflowState.expectedProgramIndex<0||workflowState.expectedProgramIndex>totalPrograms){
     workflowState.expectedProgramIndex=currentProgramIndex;
     workflowState.reviewUnlocked=false;
   }
+
 
   const p=currentProgram();if(!p)return;
   $('programStep').textContent=`Programa ${currentProgramIndex+1} de ${programs().length}`;
@@ -3239,6 +3426,8 @@ function renderCurrentProgram(){
   if(prevBtn)prevBtn.textContent=currentProgramIndex===0?'← Volver a Datos del profesor':'← Anterior';
 
 
+
+
   const guideSteps=[
     '1. Habilita la asignatura que puedes impartir',
     '2. Selecciona tu nivel de competencia: X = media · XX = alta',
@@ -3248,6 +3437,8 @@ function renderCurrentProgram(){
   ];
   const guideText=`Guía rápida: ${guideSteps.join(' · ')}`;
   const guideTrack=guideSteps.map(step=>`<span class="guide-step">${step}</span>`).join('');
+
+
 
 
   let h=`<article class="program">
@@ -3260,6 +3451,8 @@ function renderCurrentProgram(){
     <div class="program-scroll-wrap">
       <div class="scroll-hint">↔ Si la pantalla es más angosta, desplácese horizontalmente para ver todas las columnas.</div>
       <div class="semesters-grid">`;
+
+
 
 
   p.semesters.forEach((sem,s)=>{
@@ -3279,6 +3472,8 @@ function renderCurrentProgram(){
       </div>`;
 
 
+
+
     sem.forEach((name,c)=>{
       const a=getAns(p.id,s,c,name);
       const na=isEnglish(name);
@@ -3292,8 +3487,12 @@ function renderCurrentProgram(){
       const loc=`${currentProgramIndex}|${s}|${c}`;
 
 
+
+
       h+=`<div class="course ${pending?'pending':''} ${a.status==='off'?'off':''} ${reviewed&&a.status!=='off'?'reviewed':''} ${na?'na na-clean':''} ${needsAttention?'needs-attention':''} ${captureValidationEmphasis&&needsAttention?'validation-pending':''}" data-course-loc="${loc}" data-course-key="${p.id}|${s}|${c}">
         <div class="name">${subjectCase(name)}${subjectHours(p.id,s,c)?` <small class="course-hours">(${subjectHours(p.id,s,c)} h)</small>`:''}${na?' · NO APLICA':''}${!na?courseTransversalBadge(p.id,s,c,name):''}</div>`;
+
+
 
 
       if(na){
@@ -3303,6 +3502,8 @@ function renderCurrentProgram(){
           <input type="checkbox" ${enabled?'checked':''} onchange="setEnabled('${p.id}',${s},${c},decodeURIComponent('${enc}'),this.checked)">
           <span class="switch"></span><span>${enabled?'Sí':'No'}</span>
         </label>`;
+
+
 
 
         if(enabled){
@@ -3324,10 +3525,14 @@ function renderCurrentProgram(){
       }
 
 
+
+
       h+=`</div>`;
     });
     h+='</div>';
   });
+
+
 
 
   const lastProgram=currentProgramIndex===programs().length-1;
@@ -3339,6 +3544,8 @@ function renderCurrentProgram(){
       </div>
     </div>
   </article>`;
+
+
 
 
   $('programs').innerHTML=h;
@@ -3370,6 +3577,7 @@ window.backToProgramProfile=function(){
   return true;
 };
 
+
 window.prevProgram=function(){
   if(currentProgramIndex<=0){
     workflowState.profileConfirmed=false;
@@ -3380,6 +3588,7 @@ window.prevProgram=function(){
     return;
   }
 
+
   currentProgramIndex--;
   workflowState.expectedProgramIndex=currentProgramIndex;
   workflowState.reviewUnlocked=false;
@@ -3388,6 +3597,7 @@ window.prevProgram=function(){
   updateNavState();
   scrollTo({top:$('captura').offsetTop-55,behavior:'smooth'});
 }
+
 
 window.saveCurrentProgramProgress=async function(show=true){
   if(!requireEditing())return false;
@@ -3400,6 +3610,7 @@ window.saveCurrentProgramProgress=async function(show=true){
   return true;
 }
 
+
 window.saveAndNextProgram=async function(){
   if(sequentialProfessorMode()){
     if(!workflowState.profileConfirmed){
@@ -3407,6 +3618,7 @@ window.saveAndNextProgram=async function(){
       toast('Confirme primero Datos del profesor.');
       return false;
     }
+
 
     if(currentProgramIndex!==workflowState.expectedProgramIndex){
       currentProgramIndex=Math.max(0,Math.min(workflowState.expectedProgramIndex,programs().length-1));
@@ -3416,17 +3628,22 @@ window.saveAndNextProgram=async function(){
     }
   }
 
+
   if(!canLeaveCurrentProgram())return false;
+
 
   captureValidationEmphasis=false;
   persist({schedule:false});
   const saved=await saveTeacherChangesNow(`Guardar y continuar: Programa ${currentProgramIndex+1}`);
   if(!saved.ok)return false;
 
+
   toast(saved.wrote?'Programa guardado en nube.':'Programa sin cambios nuevos; no fue necesaria otra escritura.');
+
 
   if(currentProgramIndex>=programs().length-1){
     const v=validateAll();
+
 
     if(!v.ok){
       workflowState.reviewUnlocked=false;
@@ -3435,11 +3652,13 @@ window.saveAndNextProgram=async function(){
       return false;
     }
 
+
     workflowState.expectedProgramIndex=programs().length;
     workflowState.reviewUnlocked=true;
     validateAndReview(true);
     return true;
   }
+
 
   currentProgramIndex++;
   workflowState.expectedProgramIndex=currentProgramIndex;
@@ -3450,6 +3669,7 @@ window.saveAndNextProgram=async function(){
   scrollTo({top:$('captura').offsetTop-55,behavior:'smooth'});
   return true;
 }
+
 
 function validateCapture(stats=null){
   const x=stats||overallStats(),errs=[];
@@ -3468,12 +3688,15 @@ function validateAll(profileResult=null,captureResult=null){
 function reviewAvailable(completeOverride=null){
   const complete=typeof completeOverride==='boolean'?completeOverride:validateAll().ok;
 
+
   if(sequentialProfessorMode()){
     return workflowState.reviewUnlocked && complete;
   }
 
+
   return complete || cfg.editingLocked || deadlinePassed() || individualEditBlocked() || submissionLockedForCurrentPeriod();
 }
+
 
 function profileFormallyFinalized(){
   if(store.submittedPeriod!==cfg.periodo || !Number(store.finalizedAtMs))return false;
@@ -3510,10 +3733,12 @@ function updateReviewFinalizeUI(){
       :'<strong>➜ Último paso</strong><span>Revise cuidadosamente el contenido. Cuando todo sea correcto, pulse <b>Finalizar e imprimir / guardar PDF</b> para concluir formalmente el perfil.</span>';
 }
 
+
 function showCaptureErrors(errs){
   captureErrorModeActive=true;
   const profileCheck=validateProfile();
   const issues=captureIssues();
+
 
   if(!profileCheck.ok){
     workflowState.profileConfirmed=false;
@@ -3527,6 +3752,7 @@ function showCaptureErrors(errs){
     toast('Señalamos exactamente el dato que falta completar.');
     return;
   }
+
 
   if(issues.length){
     captureValidationEmphasis=true;
@@ -3544,17 +3770,21 @@ function showCaptureErrors(errs){
   }
 }
 
+
 window.validateAndReview=function(fromSequentialFlow=false){
   if(editingAllowed())collectProfile();
   persist();
 
+
   const v=validateAll();
+
 
   if(sequentialProfessorMode()){
     const sequenceFinished=
       fromSequentialFlow===true &&
       workflowState.profileConfirmed &&
       workflowState.expectedProgramIndex===programs().length;
+
 
     if(!sequenceFinished||!v.ok){
       workflowState.reviewUnlocked=false;
@@ -3563,6 +3793,7 @@ window.validateAndReview=function(fromSequentialFlow=false){
       return false;
     }
 
+
     workflowState.reviewUnlocked=true;
   }else if(!reviewAvailable()){
     showCaptureErrors(v.errors);
@@ -3570,27 +3801,35 @@ window.validateAndReview=function(fromSequentialFlow=false){
     return false;
   }
 
+
   $('captureErrors').innerHTML='';
   $('validation').innerHTML=v.ok
     ?`<div class="status-box ok"><b>Perfil completo.</b><br>La información puede formalizarse e imprimirse.</div>`
     :`<div class="status-box info"><b>Consulta en modo solo lectura.</b><br>La edición está cerrada, pero puede revisar e imprimir el perfil capturado.</div>`;
 
+
   buildPrint();
   return window.go('revision',true);
 }
+
 
 function lockRevisionNav(){
   const btn=$('navRevision');
   if(!btn)return;
 
+
   const locked=sequentialProfessorMode()
     ?!workflowState.reviewUnlocked
     :!reviewAvailable();
 
+
   btn.classList.toggle('locked',locked);
 }
 
+
 window.saveAll=function(show=false){if(!requireEditing())return;collectProfile();persist({schedule:false});updateProgress();lockRevisionNav();if(show)toast('Borrador conservado localmente.')}
+
+
 
 
 function formatLocalProfileDateTime(ms){
@@ -3668,11 +3907,13 @@ function buildPrint(collectCurrent=true){
 async function finalizeCurrentProfile(){
   collectProfile();
 
+
   const finalCheck=validateAll();
   if(!finalCheck.ok)throw new Error('No se puede finalizar un perfil con información pendiente.');
   if(sequentialProfessorMode()&&!workflowState.reviewUnlocked){
     throw new Error('No se puede finalizar sin concluir el recorrido secuencial.');
   }
+
 
   // V93: guardar + finalizar ocurre en UNA sola escritura del documento del profesor.
   persist({schedule:false});
@@ -3684,6 +3925,7 @@ async function finalizeCurrentProfile(){
     individualEditDisabled:!!store.individualEditDisabled
   };
 
+
   const releaseEditOverride=individualEditOverride();
   store.submittedPeriod=cfg.periodo;
   store.finalizedAtMs=Date.now();
@@ -3692,11 +3934,13 @@ async function finalizeCurrentProfile(){
   store.individualEditDisabled=false;
   persist({touch:false,schedule:false});
 
+
   lastCloudErrorCode='';
   const finalSyncOk=await forceProfileCheckpointToCloud(
     'finalización formal del perfil',
     {force:true,releaseEditOverride}
   );
+
 
   if(!finalSyncOk){
     store.submittedPeriod=previousFinalState.submittedPeriod;
@@ -3717,18 +3961,22 @@ async function finalizeCurrentProfile(){
     return {preSyncOk:false,finalSyncOk:false,finalized:false};
   }
 
+
   store.finalizationCloudConfirmed=true;
   store.syncPending=false;
   persistStoreSnapshot();
   updateCloudStatus('Perfil finalizado y sincronizado','ok');
 
+
   // Sólo se conserva auditoría para el evento formal.
   Promise.resolve(writeAudit('Perfil finalizado y sincronizado para impresión/guardado PDF'))
     .catch(e=>console.warn('Auditoría de finalización no disponible',e));
 
+
   applyEditState();updateNavState();
   return {preSyncOk:true,finalSyncOk:true,finalized:true};
 }
+
 
 function profileDocumentBaseName(){
   const p=store.profile||{};
@@ -3750,6 +3998,8 @@ async function createMobileLandscapePdf(){
   if(!sheets.length)return false;
 
 
+
+
   document.body.classList.add('mobile-pdf-capture');
   try{
     const {jsPDF}=window.jspdf;
@@ -3757,6 +4007,8 @@ async function createMobileLandscapePdf(){
     const pageH=215.9; // 8.5 in
     const margin=4;
     const pdf=new jsPDF({orientation:'landscape',unit:'mm',format:[pageW,pageH],compress:true});
+
+
 
 
     for(let i=0;i<sheets.length;i++){
@@ -3780,6 +4032,8 @@ async function createMobileLandscapePdf(){
     }
 
 
+
+
     pdf.save(safeProfilePdfFilename());
     return true;
   }finally{
@@ -3800,6 +4054,8 @@ async function openProfilePrintDialog(){
   }
 
 
+
+
   document.body.classList.add('printing-profile');
   const previousTitle=document.title;
   document.title=profileDocumentBaseName();
@@ -3810,6 +4066,8 @@ async function openProfilePrintDialog(){
   window.addEventListener('afterprint',cleanup,{once:true});
   requestAnimationFrame(()=>setTimeout(()=>window.print(),80));
 }
+
+
 
 
 let finalizeDialogResolver=null;
@@ -3831,6 +4089,7 @@ window.resolveFinalizeDialog=function(value){
 window.printProfile=async function(){
   const v=validateAll();
 
+
   if(sequentialProfessorMode()&&(!workflowState.reviewUnlocked||!v.ok)){
     toast('Concluya primero Datos del profesor y todos los programas en orden.');
     if(!v.ok)showCaptureErrors(v.errors);
@@ -3841,6 +4100,8 @@ window.printProfile=async function(){
     showCaptureErrors(v.errors);
     return;
   }
+
+
 
 
   if(planningEnabled()){
@@ -3856,6 +4117,8 @@ window.printProfile=async function(){
       return;
     }
   }
+
+
 
 
   if(isAdmin()){
@@ -3876,6 +4139,8 @@ window.printProfile=async function(){
   }
 
 
+
+
   if(!v.ok){
     const proceed=window.confirm(
       'El perfil no cumple todavía todas las validaciones. Puede imprimir el estado actual, pero NO se marcará como concluido.\n\n¿Desea continuar con la impresión?'
@@ -3888,11 +4153,15 @@ window.printProfile=async function(){
   }
 
 
+
+
   const ok=await showFinalizeDialog();
   if(!ok){
     toast('La captura permanece abierta.');
     return;
   }
+
+
 
 
   const result=await finalizeCurrentProfile();
@@ -3905,6 +4174,8 @@ window.printProfile=async function(){
   toast('Perfil concluido. La edición quedó bloqueada. Para cualquier modificación posterior, consulte a su JUCA.');
   await openProfilePrintDialog();
 }
+
+
 
 
 function toLocalDateTimeValue(ts){
@@ -3931,6 +4202,8 @@ window.clearDeadline=function(){
 }
 
 
+
+
 window.saveAdmin=function(){
   const previousPeriod=cfg.periodo;
   cfg.jefe=$('jefe').value.trim()||cfg.jefe;
@@ -3940,7 +4213,11 @@ window.saveAdmin=function(){
   cfg.periodo=$('periodoAdmin').value.trim()||cfg.periodo;
 
 
+
+
   cfg.planningEnabled=true;
+
+
 
 
   // El cambio de periodo nunca borra profile, answers, programMeta ni planeaciones de periodos anteriores.
@@ -3948,6 +4225,8 @@ window.saveAdmin=function(){
   saveGlobalSettings(previousPeriod===cfg.periodo?'Configuración institucional actualizada':`Periodo actualizado de ${previousPeriod} a ${cfg.periodo} sin borrar perfiles`);
   toast(previousPeriod===cfg.periodo?'Configuración guardada.':'Periodo actualizado. El apartado de Comisiones permanece habilitado.');
 }
+
+
 
 
 function timestampToMs(value){
@@ -3981,6 +4260,10 @@ function formatTeacherCompletion(d){
 
 
 
+
+
+
+
 window.refreshTeacherAdminProgress=async function(){
   if(!isAdmin())return;
   const btn=$('refreshTeacherProgressBtn');
@@ -4006,26 +4289,38 @@ window.refreshTeacherAdminProgress=async function(){
 }
 
 
+
+
 function teacherCaptureProgress(remoteAnswers={}){
   let totalSubjects=0,completedSubjects=0,totalPrograms=0,completedPrograms=0;
+
+
 
 
   programs().forEach(pr=>{
     let programTotal=0,programCompleted=0;
 
 
+
+
     pr.semesters.forEach((sem,s)=>sem.forEach((name,c)=>{
       if(isEnglish(name))return;
+
+
 
 
       programTotal++;
       totalSubjects++;
 
 
+
+
       const a=remoteAnswers?.[key(pr.id,s,c)]||{status:'pending',origins:[]};
       const complete=
         a.status==='off' ||
         (['X','XX'].includes(a.status) && Array.isArray(a.origins) && a.origins.length>0);
+
+
 
 
       if(complete){
@@ -4035,6 +4330,8 @@ function teacherCaptureProgress(remoteAnswers={}){
     }));
 
 
+
+
     if(programTotal>0){
       totalPrograms++;
       if(programCompleted===programTotal)completedPrograms++;
@@ -4042,9 +4339,13 @@ function teacherCaptureProgress(remoteAnswers={}){
   });
 
 
+
+
   const pct=totalSubjects?Math.round((completedSubjects/totalSubjects)*100):0;
   return {pct,totalSubjects,completedSubjects,totalPrograms,completedPrograms};
 }
+
+
 
 
 async function renderTeacherAdminList(){
@@ -4160,6 +4461,8 @@ function escapeHtml(value){
 }
 
 
+
+
 window.printTeacherProfile=async function(uid){
   if(!isAdmin()||!db)return;
   const cached=teacherAdminCache[uid]||{};
@@ -4172,11 +4475,15 @@ window.printTeacherProfile=async function(uid){
     const d=snap.data()||{};
 
 
+
+
     const previousProfile=store.profile;
     const previousAnswers=answers;
     const previousProgramMeta=programMeta;
     const previousFinalizedAtMs=store.finalizedAtMs;
     const previousSubmittedPeriod=store.submittedPeriod;
+
+
 
 
     try{
@@ -4185,6 +4492,8 @@ window.printTeacherProfile=async function(uid){
       programMeta=JSON.parse(JSON.stringify(d.programMeta||{}));
       store.finalizedAtMs=Number(d.finalizedAtMs)||null;
       store.submittedPeriod=d.submittedPeriod||null;
+
+
 
 
       buildPrint(false);
@@ -4203,6 +4512,8 @@ window.printTeacherProfile=async function(uid){
 }
 
 
+
+
 function updateTeacherAdminRowVisual(uid){
   const r=teacherAdminCache[uid];
   if(!r)return;
@@ -4214,6 +4525,7 @@ function updateTeacherAdminRowVisual(uid){
   const individuallyDisabled=!!r.individualEditDisabled;
   row.classList.remove('individual-disabled','individual-open','finished','open');
   row.classList.add(retired?'individual-disabled':individuallyDisabled?'individual-disabled':override?'individual-open':doneNow?'finished':'open');
+
 
   const status=row.querySelector('.teacher-admin-status');
   if(status){
@@ -4232,6 +4544,7 @@ function updateTeacherAdminRowVisual(uid){
             :doneNow?`Última edición: ${lastEdit} · Perfil concluido`:`Última edición: ${lastEdit}`;
     }
   }
+
 
   const btn=row.querySelector('.teacher-reopen-btn');
   if(btn){
@@ -4252,6 +4565,24 @@ function updateTeacherAdminRowVisual(uid){
   }
 }
 
+
+
+function updateTeacherAdminProgressVisual(uid){
+  const r=teacherAdminCache[uid];
+  if(!r)return;
+  const row=document.querySelector(`[data-teacher-uid="${CSS.escape(uid)}"]`);
+  const root=row?.querySelector('.teacher-admin-progress');
+  if(!root)return;
+  const p=r.captureProgress||teacherCaptureProgress({});
+  root.title=`${p.completedSubjects} de ${p.totalSubjects} asignaturas revisadas`;
+  root.innerHTML=`<div class="teacher-progress-top">
+    <strong>${p.pct}%</strong>
+    <span>${p.completedSubjects}/${p.totalSubjects} asignaturas</span>
+  </div>
+  <div class="teacher-progress-track"><i style="width:${p.pct}%"></i></div>
+  <small>${p.completedPrograms}/${p.totalPrograms} programas completos</small>`;
+}
+
 window.setTeacherEditAccess=async function(uid,enable){
   if(!isAdmin()||!dbLite)return;
   const r=teacherAdminCache[uid]||{};
@@ -4265,6 +4596,7 @@ window.setTeacherEditAccess=async function(uid,enable){
     return;
   }
 
+
   const row=document.querySelector(`[data-teacher-uid="${CSS.escape(uid)}"]`);
   const btn=row?.querySelector('.teacher-reopen-btn');
   if(btn){
@@ -4272,6 +4604,7 @@ window.setTeacherEditAccess=async function(uid,enable){
     btn.classList.add('is-busy');
     btn.textContent=enable?'Habilitando…':'Deshabilitando…';
   }
+
 
   try{
     await liteSetDoc(liteDoc(dbLite,'profiles',uid),{
@@ -4281,6 +4614,7 @@ window.setTeacherEditAccess=async function(uid,enable){
       reopenedBy:enable?(currentUser.email||''):null,
       individualEditUpdatedAt:liteServerTimestamp()
     },{merge:true});
+
 
     r.individualEditEnabled=!!enable;
     r.individualEditDisabled=!enable;
@@ -4315,7 +4649,11 @@ window.restoreTeacherProfile=async function(uid){
     return false;
   }
   try{
-    await liteSetDoc(liteDoc(dbLite,'profiles',uid),{
+    // V95: restauración atómica. Estado + auditoría se confirman juntos.
+    const profileRef=liteDoc(dbLite,'profiles',uid);
+    const auditRef=liteDoc(liteCollection(dbLite,'audit'));
+    const batch=liteWriteBatch(dbLite);
+    batch.update(profileRef,{
       deletedByAdmin:false,
       individualEditDisabled:false,
       individualEditEnabled:true,
@@ -4323,8 +4661,17 @@ window.restoreTeacherProfile=async function(uid){
       reopenedBy:currentUser?.email||'',
       individualEditUpdatedAt:liteServerTimestamp(),
       updatedAt:liteServerTimestamp()
-    },{merge:true});
-    await writeAudit(`Perfil restaurado por Administración: ${r.email||uid}`);
+    });
+    batch.set(auditRef,{
+      action:`Perfil restaurado por Administración: ${r.email||uid}`,
+      email:currentUser?.email||'',
+      uid:currentUser?.uid||'',
+      targetUid:uid,
+      at:liteServerTimestamp(),
+      period:cfg.periodo
+    });
+    await batch.commit();
+
     r.deletedByAdmin=false;
     r.individualEditDisabled=false;
     r.individualEditEnabled=true;
@@ -4347,15 +4694,18 @@ window.restoreTeacherProfile=async function(uid){
     return true;
   }catch(e){
     console.error('No fue posible restaurar el perfil',e);
-    alert('No fue posible restaurar el perfil. No se eliminó ni sustituyó información académica.');
+    alert('No fue posible restaurar el perfil. La operación completa se canceló y no se eliminó ni sustituyó información académica.');
     return false;
   }
 }
-
 window.toggleTeacherEditOverride=function(uid,enable){return window.setTeacherEditAccess(uid,enable)}
 
 
+
+
 window.reopenTeacherProfile=function(uid){return window.toggleTeacherEditOverride(uid,true)}
+
+
 
 
 function confirmAdministrativeDeletion(firstMessage,secondLabel){
@@ -4371,30 +4721,57 @@ function confirmAdministrativeDeletion(firstMessage,secondLabel){
 }
 
 
+
+
 window.resetTeacherProgramProfile=async function(uid){
-  if(!isAdmin()||!db)return;
+  if(!isAdmin()||!db||!dbLite)return;
   const r=teacherAdminCache[uid]||{};
   const who=r.name||r.email||'este profesor';
-
 
   const ok=confirmAdministrativeDeletion(
     `¿CONFIRMAR eliminación de las asignaturas capturadas de ${who}?\n\n`+
     `Se borrarán respuestas por asignatura, niveles X/XX, áreas de conocimiento, coordinaciones, favoritas y el estado de finalización.\n\n`+
     `Se conservarán los datos del profesor, pero la edición quedará habilitada para corregirlos y comenzar desde cero el Perfil por programa.\n\n`+
-    `Esta acción no se puede deshacer desde esta pantalla.`,
+    `Antes del cambio se guardará una copia íntegra en profileArchives. Esta acción no se puede deshacer desde esta pantalla.`,
     'la eliminación de las asignaturas capturadas'
   );
   if(!ok)return;
-
+  if(navigator.onLine===false){
+    alert('No hay conexión a Internet. No se realizó ningún cambio.');
+    return;
+  }
 
   try{
-    await archiveTeacherProfileBeforeChange(uid,'Antes de reiniciar asignaturas capturadas');
-    const resetToken=`${Date.now()}-${uid}`;
-    await liteUpdateDoc(liteDoc(dbLite,'profiles',uid),{
+    // V95: una sola lectura y un commit atómico: respaldo + reinicio + auditoría.
+    const profileRef=liteDoc(dbLite,'profiles',uid);
+    const snap=await getDoc(doc(db,'profiles',uid));
+    if(!snap.exists())throw new Error('El perfil seleccionado no existe.');
+    const data=snap.data()||{};
+    if(data.deletedByAdmin===true){
+      alert('El perfil está resguardado. Restáurelo antes de reiniciar sus asignaturas.');
+      return;
+    }
+
+    const now=Date.now();
+    const resetToken=`${now}-${uid}`;
+    const archiveRef=liteDoc(dbLite,'profileArchives',uid,'snapshots',String(now));
+    const auditRef=liteDoc(liteCollection(dbLite,'audit'));
+    const batch=liteWriteBatch(dbLite);
+
+    batch.set(archiveRef,{
+      ...data,
+      archivedUid:uid,
+      archiveReason:'Antes de reiniciar asignaturas capturadas',
+      archivedAt:liteServerTimestamp(),
+      archivedAtMs:now,
+      archivedBy:currentUser?.email||''
+    });
+    batch.update(profileRef,{
       answers:{},
       programMeta:{},
       submittedPeriod:null,
       finalizedAtMs:null,
+      finalizedDataRevision:0,
       individualEditEnabled:true,
       individualEditDisabled:false,
       profileResetToken:resetToken,
@@ -4402,20 +4779,38 @@ window.resetTeacherProgramProfile=async function(uid){
       programProfileResetBy:currentUser?.email||'',
       updatedAt:liteServerTimestamp()
     });
-    await writeAudit(`Asignaturas capturadas eliminadas por Administración: ${r.email||uid}`);
-    toast('Asignaturas eliminadas. El profesor iniciará nuevamente el Perfil por programa.');
-    await renderTeacherAdminList();
+    batch.set(auditRef,{
+      action:`Asignaturas capturadas eliminadas por Administración: ${r.email||uid}`,
+      email:currentUser?.email||'',
+      uid:currentUser?.uid||'',
+      targetUid:uid,
+      at:liteServerTimestamp(),
+      period:cfg.periodo
+    });
+    await batch.commit();
+
+    // Actualización local de una sola fila; no vuelve a leer toda /profiles.
+    r.submittedPeriod=null;
+    r.finalizedAtMs=0;
+    r.individualEditEnabled=true;
+    r.individualEditDisabled=false;
+    r.profileResetToken=resetToken;
+    r.updatedAt=new Date();
+    r.captureProgress=teacherCaptureProgress({});
+    teacherAdminCache[uid]=r;
+    updateTeacherAdminRowVisual(uid);
+    updateTeacherAdminProgressVisual(uid);
+    toast('Asignaturas eliminadas y respaldo confirmado. El profesor iniciará nuevamente el Perfil por programa.');
   }catch(e){
     console.error(e);
-    alert('No fue posible eliminar las asignaturas capturadas. Verifique la conexión y las reglas de Firestore.');
+    alert('No fue posible eliminar las asignaturas capturadas. La operación completa se canceló; verifique la conexión y las reglas de Firestore.');
   }
 }
-
-
 window.deleteTeacherProfile=async function(uid){
   if(!isAdmin()||!db||!dbLite)return;
   const r=teacherAdminCache[uid]||{};
   const who=r.name||r.email||'este profesor';
+
 
   const first=confirm(
     `¿RESGUARDAR el perfil de ${who}?\n\n`+
@@ -4435,6 +4830,7 @@ window.deleteTeacherProfile=async function(uid){
     return;
   }
 
+
   try{
     // Una sola lectura puntual del perfil afectado.
     const profileRef=liteDoc(dbLite,'profiles',uid);
@@ -4446,12 +4842,14 @@ window.deleteTeacherProfile=async function(uid){
       return;
     }
 
+
     const now=Date.now();
     const archiveId=String(now);
     const archiveRef=liteDoc(dbLite,'profileArchives',uid,'snapshots',archiveId);
     const auditRef=liteDoc(liteCollection(dbLite,'audit'));
     const deletionToken=`SAFE-${now}-${uid}`;
     const batch=liteWriteBatch(dbLite);
+
 
     batch.set(archiveRef,{
       ...data,
@@ -4480,6 +4878,7 @@ window.deleteTeacherProfile=async function(uid){
     });
     await batch.commit();
 
+
     // Actualización visual local: no vuelve a leer toda la colección de perfiles.
     r.deletedByAdmin=true;
     r.individualEditEnabled=false;
@@ -4504,6 +4903,9 @@ window.deleteTeacherProfile=async function(uid){
 
 
 
+
+
+
 function transversalAvailablePrograms(){
   return allPrograms();
 }
@@ -4525,10 +4927,14 @@ function renderTransversalAdmin(){
   if(!source||!target)return;
 
 
+
+
   const ps=transversalAvailablePrograms();
   const oldSource=source.value,oldTarget=target.value;
   source.innerHTML=ps.map(p=>`<option value="${p.id}">${escapeHtml(programAcronym(p))} · ${escapeHtml(p.name)} — ${escapeHtml(p.exit)}</option>`).join('');
   if(oldSource&&ps.some(p=>p.id===oldSource))source.value=oldSource;
+
+
 
 
   renderTransversalSemesterOptions('source',false);
@@ -4570,6 +4976,8 @@ window.saveTransversalRule=function(){
   const target=endpointFromControls('target');
 
 
+
+
   if(!source||!target){toast('Seleccione completamente la materia de origen y la materia de destino.');return}
   if(isProjectIntegrator(source.name)||isProjectIntegrator(target.name)){
     toast('Proyecto integrador siempre debe permanecer autónomo.');
@@ -4579,6 +4987,8 @@ window.saveTransversalRule=function(){
     toast('La materia de origen y la de destino deben ser distintas.');
     return;
   }
+
+
 
 
   const samePair=transversalRules.some(rule=>{
@@ -4591,6 +5001,8 @@ window.saveTransversalRule=function(){
   if(samePair){toast('Esta relación transversal ya está configurada.');return}
 
 
+
+
   transversalRules.push({
     id:`TR_${Date.now()}`,
     source:{pid:source.pid,s:source.s,c:source.c},
@@ -4598,6 +5010,8 @@ window.saveTransversalRule=function(){
     sourceName:source.name,
     targetName:target.name
   });
+
+
 
 
   store.transversalRules=transversalRules;
@@ -4652,6 +5066,8 @@ function renderTransversalRulesList(){
     }
 
 
+
+
     // Compatibilidad con relaciones de V59 ya guardadas.
     const source=allPrograms().find(x=>x.id===rule.sourceProgramId);
     const targets=(rule.targetProgramIds||[]).map(id=>allPrograms().find(x=>x.id===id)).filter(Boolean);
@@ -4662,6 +5078,12 @@ function renderTransversalRulesList(){
     </div>`;
   }).join('');
 }
+
+
+
+
+
+
 
 
 
@@ -4690,6 +5112,8 @@ function renderAcademicRelationsTree(){
   if(!root)return;
 
 
+
+
   const commonHtml=commonRules.length
     ?commonRules.map(rule=>{
       const sems=(rule.semesters||[]).map(s=>`${s+1}.°`).join(', ');
@@ -4699,6 +5123,8 @@ function renderAcademicRelationsTree(){
     :'<li class="tree-empty">No hay troncos comunes configurados.</li>';
 
 
+
+
   const automaticGroups=exactSameNameGroups();
   const automaticHtml=automaticGroups.length
     ?automaticGroups.map(group=>{
@@ -4706,6 +5132,8 @@ function renderAcademicRelationsTree(){
       return `<li class="tree-branch automatic"><div class="tree-line"><span class="tree-type automatic">Mismo nombre</span><strong>${escapeHtml(subjectCase(group.name))}</strong><small>${group.locations.length} apariciones vinculables</small></div><ul>${children}</ul></li>`;
     }).join('')
     :'<li class="tree-empty">No hay materias repetidas por nombre exacto.</li>';
+
+
 
 
   const explicitHtml=transversalRules.length
@@ -4722,11 +5150,15 @@ function renderAcademicRelationsTree(){
     :'<li class="tree-empty">No hay relaciones transversales 1 a 1 configuradas.</li>';
 
 
+
+
   root.innerHTML=`
     <section class="relation-tree-section"><h3>1. Troncos comunes</h3><ul class="relation-tree-root">${commonHtml}</ul></section>
     <section class="relation-tree-section"><h3>2. Materias vinculadas automáticamente por mismo nombre</h3><p class="relation-tree-note">Se excluyen Inglés y Proyecto integrador. Deshabilitar una materia continúa siendo una decisión individual.</p><ul class="relation-tree-root">${automaticHtml}</ul></section>
     <section class="relation-tree-section"><h3>3. Relaciones transversales configuradas</h3><ul class="relation-tree-root">${explicitHtml}</ul></section>`;
 }
+
+
 
 
 function renderAdmin(){
@@ -4765,6 +5197,8 @@ function renderSemesterEditors(values=null){
   ensureProgramEditorSemesters();
 
 
+
+
   $('newProgramSemesters').innerHTML=programEditorSemesters.map((sem,s)=>`
     <section class="semester-subject-editor" data-semester="${s}">
       <div class="semester-editor-head">
@@ -4776,9 +5210,13 @@ function renderSemesterEditors(values=null){
       </div>
 
 
+
+
       <div class="subject-editor-labels">
         <span>Materia</span><span>Horas</span><span>Acciones</span>
       </div>
+
+
 
 
       <div class="subject-editor-list">
@@ -4805,6 +5243,8 @@ function renderSemesterEditors(values=null){
             </div>
           </div>`).join('')}
       </div>
+
+
 
 
       <button type="button" class="add-subject-btn" onclick="addProgramSubject(${s})">＋ Agregar materia</button>
@@ -4930,12 +5370,16 @@ window.saveProgramEditor=function(){
   const hours=parsed.map(rows=>rows.map(x=>x.hours));
 
 
+
+
   if(!name||!exit){toast('Complete el nombre del programa y la salida lateral.');return}
   if(parsed.some(rows=>!rows.length)){toast('Cada cuatrimestre debe contener al menos una materia.');return}
   if(parsed.some(rows=>rows.some(x=>!x.name||!x.hours))){
     toast('Revise cada materia: debe tener nombre y horas.');
     return;
   }
+
+
 
 
   if(editingProgramId){
@@ -4957,6 +5401,8 @@ window.saveProgramEditor=function(){
   }
 
 
+
+
   const id=slug(name);
   customPrograms.push({id,name,exit,common:null,semesters,hours});
   persist();
@@ -4970,12 +5416,20 @@ window.saveNewProgram=window.saveProgramEditor;
 
 
 
+
+
+
+
 window.setProgramAcronym=function(id,value){
   if(!isAdmin())return;
   const clean=String(value||'').trim().toUpperCase();
   if(!clean){toast('El acrónimo no puede quedar vacío.');renderProgramAdminList();return}
   programAcronyms[id]=clean;persist();saveGlobalSettings('Acrónimo de programa actualizado');renderProgramAdminList();toast('Acrónimo actualizado.');
 }
+
+
+
+
 
 
 
@@ -5042,6 +5496,8 @@ window.deleteCommonRule=function(id){
 }
 
 
+
+
 window.toggleProgramEnabled=function(id){
   if(!isAdmin()){toast('Solo el administrador puede cambiar programas.');return}
   if(disabledPrograms.includes(id))disabledPrograms=disabledPrograms.filter(x=>x!==id);
@@ -5072,10 +5528,14 @@ function renderProgramAdminList(){
 }
 
 
+
+
 window.deleteCustomProgram=function(id){if(!confirm('¿Eliminar este programa?'))return;customPrograms=customPrograms.filter(p=>p.id!==id);disabledPrograms=disabledPrograms.filter(x=>x!==id);currentProgramIndex=Math.min(currentProgramIndex,Math.max(0,programs().length-1));persist();saveGlobalSettings('Programa educativo eliminado');renderAdmin();renderCurrentProgram()}
 function renderCustomPrograms(){
   $('customProgramsList').innerHTML=customPrograms.length?`<h3 style="margin-top:16px">Programas agregados</h3>`+customPrograms.map(p=>`<div class="custom-program-item"><div><b>${p.name}</b><br>${p.exit}<br><small>${p.semesters.reduce((n,s)=>n+s.length,0)} materias · horas configuradas</small></div><div class="custom-program-actions"><button onclick="openProgramEditor('${p.id}')">Editar</button><button onclick="deleteCustomProgram('${p.id}')">Eliminar</button></div></div>`).join(''):''
 }
+
+
 
 
 function renderRules(){
@@ -5093,6 +5553,10 @@ function renderRules(){
     </div>`;
   }).join(''):'<div class="coord-empty">No hay troncos comunes configurados.</div>';
 }
+
+
+
+
 
 
 
@@ -5118,6 +5582,10 @@ function excelCategoryAbbreviation(category){
   }
   return raw;
 }
+
+
+
+
 
 
 
@@ -5160,6 +5628,8 @@ function selectedExcelQuarters(){
 }
 
 
+
+
 async function exportWorkbook(){
   const ready=await ensureExcelLibrary();
   const XLSX=window.XLSX;
@@ -5168,15 +5638,21 @@ async function exportWorkbook(){
   }
 
 
+
+
   collectProfile();
   const p=store.profile||{};
   const ps=programs();
+
+
 
 
   const teachers=await loadTeachersForExport();
   const exportSheets=selectedExcelSheets();
   const exportQuarters=selectedExcelQuarters();
   const includeQuarter=(semesterIndex)=>exportQuarters.has(semesterIndex+1);
+
+
 
 
   // --- Hoja 1: concentrado horizontal similar al archivo operativo ---
@@ -5190,6 +5666,8 @@ async function exportWorkbook(){
   aoa[4][0]='CUATRIMESTRE';
   aoa[5][0]='PROFESOR';
   aoa[5][1]='CATEGORÍA';
+
+
 
 
   let col=2;
@@ -5222,6 +5700,8 @@ async function exportWorkbook(){
   });
 
 
+
+
   const ws=XLSX.utils.aoa_to_sheet(aoa);
   ws['!merges']=merges;
   ws['!freeze']={xSplit:2,ySplit:6,topLeftCell:'C7',activePane:'bottomRight',state:'frozen'};
@@ -5233,13 +5713,19 @@ async function exportWorkbook(){
   ];
 
 
+
+
   const pastel=['DDEBF7','FCE4D6','E2F0D9','E4DFEC','FFF2CC','DDEBF7','F4CCCC','E2EFDA'];
+
+
 
 
   function styleCell(addr,style){
     if(!ws[addr])ws[addr]={t:'s',v:''};
     ws[addr].s=style;
   }
+
+
 
 
   // Columnas Profesor y Categoría
@@ -5251,6 +5737,10 @@ async function exportWorkbook(){
       border:{top:{style:'thin',color:{rgb:'AAB7C4'}},bottom:{style:'thin',color:{rgb:'AAB7C4'}},left:{style:'thin',color:{rgb:'AAB7C4'}},right:{style:'thin',color:{rgb:'AAB7C4'}}}
     }));
   }
+
+
+
+
 
 
 
@@ -5294,6 +5784,8 @@ async function exportWorkbook(){
   }
 
 
+
+
   // Programas y materias
   programRanges.forEach(range=>{
     const fill=pastel[range.index%pastel.length];
@@ -5328,6 +5820,10 @@ async function exportWorkbook(){
       }
     }
   });
+
+
+
+
 
 
 
@@ -5368,6 +5864,8 @@ async function exportWorkbook(){
   }
 
 
+
+
   // --- Hoja 2: Base maestra cruda (se conserva por compatibilidad) ---
   const base=[];
   teachers.forEach(t=>ps.forEach(pr=>pr.semesters.forEach((sem,s)=>{ if(!includeQuarter(s))return; sem.forEach((name,c)=>{
@@ -5391,6 +5889,8 @@ async function exportWorkbook(){
       'Coordinador de academia':teacherCoordinator(t,pr.id,s,c)?'✔':''
     });
   });})));
+
+
 
 
   const wsBase=XLSX.utils.json_to_sheet(base);
@@ -5418,6 +5918,10 @@ async function exportWorkbook(){
 
 
 
+
+
+
+
   // Favorita en Base maestra: ★ en negrita.
   if(base.length){
     const headers=Object.keys(base[0]);
@@ -5437,10 +5941,14 @@ async function exportWorkbook(){
   }
 
 
+
+
   wsBase['!cols']=[
     {wch:30},{wch:34},{wch:28},{wch:20},{wch:42},{wch:13},{wch:42},{wch:12},{wch:36},
     {wch:18},{wch:16},{wch:14},{wch:17},{wch:18},{wch:16},{wch:24}
   ];
+
+
 
 
   // --- Hoja 3: Catálogo ---
@@ -5455,6 +5963,10 @@ async function exportWorkbook(){
   })):[]));
   const wsCat=XLSX.utils.json_to_sheet(catalog);
   wsCat['!cols']=[{wch:42},{wch:13},{wch:42},{wch:12},{wch:36},{wch:18},{wch:16}];
+
+
+
+
 
 
 
@@ -5487,6 +5999,10 @@ async function exportWorkbook(){
   wsSummary['!autofilter']={ref:wsSummary['!ref']};
   wsSummary['!freeze']={ySplit:1,topLeftCell:'A2',activePane:'bottomLeft',state:'frozen'};
   wsSummary['!cols']=[{wch:42},{wch:16},{wch:12},{wch:38},{wch:18},{wch:16},{wch:14},{wch:14},{wch:16},{wch:23}];
+
+
+
+
 
 
 
@@ -5560,6 +6076,8 @@ async function exportWorkbook(){
   }
 
 
+
+
   const wb=XLSX.utils.book_new();
   if(exportSheets.has('concentrado'))XLSX.utils.book_append_sheet(wb,ws,'Concentrado perfiles');
   if(exportSheets.has('comisiones'))XLSX.utils.book_append_sheet(wb,wsPlanning,'Comisiones');
@@ -5569,9 +6087,15 @@ async function exportWorkbook(){
   if(!wb.SheetNames.length)throw new Error('Seleccione al menos una hoja para exportar.');
 
 
+
+
   XLSX.writeFile(wb,`Concentrado_Perfiles_DIN_${cfg.periodo.replace(/[^a-z0-9]+/gi,'_')}.xlsx`,{cellStyles:true,bookSST:true});
 }
 window.exportExcel=function(){if(!isAdmin()){toast('Solo el administrador puede exportar la base maestra.');return}exportWorkbook().catch(e=>alert('No fue posible generar Excel: '+e.message))}
+
+
+
+
 
 
 
@@ -5602,6 +6126,7 @@ function setupAutoSave(){
     updateProfileStepIndicator();
   });
 }
+
 
 function setupPlanningAutoSave(){
   let timer=null;
@@ -5639,19 +6164,23 @@ function setupResilienceGuards(){
     }
   });
 
+
   window.addEventListener('offline',()=>{
     if(currentUser)updateCloudStatus('Sin conexión · guardado local activo','warn');
   });
 
+
   window.addEventListener('beforeprint',()=>{
     if($('revision')?.classList.contains('active'))buildPrint(false);
   });
+
 
   window.addEventListener('pagehide',()=>{
     try{
       if(currentUser)captureProfileLocallyWithoutCloud();
     }catch(_){}
   });
+
 
   window.addEventListener('beforeunload',e=>{
     try{
@@ -5663,6 +6192,7 @@ function setupResilienceGuards(){
     }catch(_){}
   });
 }
+
 
 function mobileClientBlocked(){
   const ua=navigator.userAgent||'';
@@ -5697,6 +6227,8 @@ function init(){
   updateNavState();
 
 
+
+
   let resizeTimer=null;
   window.addEventListener('resize',()=>{
     clearTimeout(resizeTimer);
@@ -5704,6 +6236,10 @@ function init(){
   });
 }
 init();
+
+
+
+
 
 
 

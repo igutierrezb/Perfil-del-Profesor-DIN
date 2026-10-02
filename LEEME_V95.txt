@@ -1,0 +1,15 @@
+Perfil DIN V95 - instalación
+==============================
+
+Este ZIP contiene únicamente los archivos que cambian respecto de V94.
+
+Sustituir en la rama main:
+  1) app.js
+  2) index.html
+  3) firestore.rules
+
+No sustituir ni modificar deploy-pages.yml.
+
+Después de subirlos, publique firestore.rules en Firebase.
+
+La actualización no borra perfiles ni cambia la estructura académica.

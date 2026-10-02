@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Perfil Académico Docente · División Industrial UTEQ</title>
-<meta name="pad-build" content="V93-2026-09-30">
+<meta name="pad-build" content="V95-2026-10-01">
 <link rel="stylesheet" href="styles.css?v=20260930-93">
 <link rel="stylesheet" href="mobile.css?v=20260930-93">
 <meta name="theme-color" content="#0b2b46">
@@ -24,6 +24,7 @@
     <p class="desktop-only-note">La captura no está disponible en teléfonos ni tabletas.</p>
   </div>
 </div>
+
 
 <div id="loginGate" class="login-gate">
   <div class="login-card">
@@ -56,6 +57,8 @@
 </div>
 
 
+
+
 <header class="hero">
   <div class="hero-inner">
     <div class="brand-block">
@@ -83,12 +86,16 @@
 </div>
 
 
+
+
 <nav class="main-nav">
   <button data-view="perfil" class="active"><span class="nav-num">1</span><span class="nav-ico" aria-hidden="true">▣</span><span class="nav-label">Datos del profesor</span></button>
   <button data-view="captura"><span class="nav-num">2</span><span class="nav-ico" aria-hidden="true">▤</span><span class="nav-label">Perfil por programa</span></button>
   <button data-view="revision" id="navRevision"><span class="nav-num">3</span><span class="nav-ico" aria-hidden="true">⌕</span><span class="nav-label">Revisión e impresión</span></button>
   <button data-view="admin" id="adminTab" class="admin-tab hidden"><span class="nav-num">4</span><span class="nav-ico" aria-hidden="true">⚙</span> Administración</button>
 </nav>
+
+
 
 
 <main>
@@ -101,6 +108,8 @@
       </div>
       <div class="welcome-badge" id="profileStepBadge">Paso 1 de 3</div>
     </div>
+
+
 
 
     <div class="card section-card">
@@ -125,6 +134,8 @@
     </div>
 
 
+
+
     <div class="card section-card">
       <div class="section-head">
         <div><h2>1. Formación profesional</h2><p>La primera línea es obligatoria.</p></div>
@@ -137,6 +148,8 @@
       </div>
       
     </div>
+
+
 
 
     <div class="card section-card">
@@ -153,6 +166,8 @@
     </div>
 
 
+
+
     <div class="card section-card">
       <div class="section-head">
         <div><h2>3. Experiencia laboral</h2><p>Cada organización se captura en una sola línea: organización, cargo y periodo.</p></div>
@@ -167,6 +182,8 @@
     </div>
 
 
+
+
     <div id="commissionsBlock" class="card section-card commissions-section hidden">
       <div class="section-head commissions-section-head">
         <div>
@@ -177,6 +194,8 @@
       </div>
 
 
+
+
       <div class="commissions-reference-note">
         <strong>Referencia para planeación.</strong>
         Esta información no forma parte del Perfil del Profesor ni se incluye en el PDF.
@@ -184,7 +203,11 @@
       </div>
 
 
+
+
       <div id="commissionsLockedBanner" class="capture-lock-banner hidden"></div>
+
+
 
 
       <div class="commission-main-grid">
@@ -199,10 +222,14 @@
         </div>
 
 
+
+
         <div class="planning-choice-row commission-choice">
           <label class="choice-card option-yes"><input type="radio" name="planningCommissionMode" value="yes" onchange="planningModeChanged()"> Sí</label>
           <label class="choice-card option-no"><input type="radio" name="planningCommissionMode" value="na" onchange="planningModeChanged()"> No aplica</label>
         </div>
+
+
 
 
         <div id="planningCommissionsFields" class="planning-conditional hidden">
@@ -225,10 +252,14 @@
         </div>
 
 
+
+
         <div class="planning-choice-row commission-choice">
           <label class="choice-card option-yes"><input type="radio" name="planningProjectMode" value="yes" onchange="planningModeChanged()"> Sí</label>
           <label class="choice-card option-no"><input type="radio" name="planningProjectMode" value="na" onchange="planningModeChanged()"> No aplica</label>
         </div>
+
+
 
 
         <div id="planningProjectFields" class="planning-conditional planning-project-grid hidden">
@@ -263,9 +294,13 @@
 </div>
 
 
+
+
 <div id="planningErrors"></div>
       
     </div>
+
+
 
 
     <div id="profileErrors"></div>
@@ -273,6 +308,8 @@
       <button id="continueProfileBtn" type="button" class="primary">Guardar y continuar al perfil por programa →</button>
     </div>
   </section>
+
+
 
 
   <section id="captura" class="view">
@@ -292,7 +329,11 @@
     </div>
 
 
+
+
     <div id="editingLockedBanner" class="capture-lock-banner hidden"></div>
+
+
 
 
     <div class="card program-header-flow">
@@ -306,12 +347,18 @@
       </div>
 
 
+
+
     </div>
+
+
 
 
     <div id="programs"></div>
     <div id="captureErrors"></div>
   </section>
+
+
 
 
   <section id="revision" class="view">
@@ -341,11 +388,19 @@
 
 
 
+
+
+
+
+
+
   <section id="admin" class="view">
     <div class="admin-quickbar card">
       <button onclick="document.getElementById('captureControlCard').scrollIntoView({behavior:'smooth',block:'start'})">⚙ Control de captura</button>
       <button onclick="document.getElementById('institutionalConfig').scrollIntoView({behavior:'smooth',block:'start'})">▤ Configuración institucional</button>
     </div>
+
+
 
 
     <div class="admin-core-grid">
@@ -393,6 +448,8 @@
       </section>
 
 
+
+
 <section id="excelExportCard" class="card admin-core-card excel-admin-card">
   <div class="admin-core-head">
     <div>
@@ -423,23 +480,29 @@
 </div>
 
 
+
+
 </div>
+
+
 
 
     <div class="card teacher-admin-card">
       <div class="section-head teacher-admin-head">
         <div>
           <h2>Profesores y cierre de perfil</h2>
-          <p>Consulte quién ya concluyó, la fecha de cierre, habilite la edición de un solo profesor o elimine un perfil que ya no deba conservarse.</p>
+          <p>Consulte quién ya concluyó, la fecha de cierre, habilite la edición de un solo profesor o resguarde un perfil que ya no deba permanecer activo.</p>
         </div>
         <div class="teacher-admin-head-tools">
           <button id="refreshTeacherProgressBtn" type="button" class="teacher-refresh-btn" onclick="refreshTeacherAdminProgress()">↻ Actualizar avance</button>
           <div id="teacherAdminSummary" class="teacher-admin-summary">Cargando…</div>
         </div>
       </div>
-      <div class="teacher-delete-note">Eliminar perfil borra la información académica guardada en esta plataforma; no elimina la cuenta institucional del profesor.</div>
+      <div class="teacher-delete-note">Resguardar perfil no borra la información académica: la conserva íntegramente en solo lectura y permite restaurarla posteriormente.</div>
       <div id="teacherAdminList" class="teacher-admin-list"></div>
     </div>
+
+
 
 
     <div class="card programs-common-card">
@@ -466,6 +529,10 @@
 
 
 
+
+
+
+
     <details class="card academic-relations-card" id="academicRelationsCard">
       <summary class="academic-relations-summary">
         <div>
@@ -485,6 +552,8 @@
     </details>
 
 
+
+
     <div class="card transversal-admin-card">
       <div class="section-head transversal-admin-head">
         <div>
@@ -495,11 +564,15 @@
       </div>
 
 
+
+
       <div class="transversal-auto-note">
         <strong>Sincronización automática por nombre.</strong>
         Las asignaturas con el <b>mismo nombre exacto</b> comparten automáticamente competencia, área de conocimiento, coordinación y favorita.
         Si una materia se <b>deshabilita</b>, esa decisión sólo afecta a esa materia. <b>Proyecto integrador siempre permanece autónomo.</b>
       </div>
+
+
 
 
       <div class="transversal-pair-grid">
@@ -517,7 +590,11 @@
         </section>
 
 
+
+
         <div class="transversal-pair-arrow">→</div>
+
+
 
 
         <section class="transversal-side target">
@@ -535,9 +612,13 @@
       </div>
 
 
+
+
       <div class="transversal-actions">
         <button type="button" class="transversal-save-btn" onclick="saveTransversalRule()">＋ Agregar relación transversal</button>
       </div>
+
+
 
 
       <div class="transversal-configured">
@@ -545,6 +626,8 @@
         <div id="transversalRulesList"></div>
       </div>
     </div>
+
+
 
 
     <div id="programEditorCard" class="card program-editor-card">
@@ -555,6 +638,8 @@
         </div>
         <span id="programEditorMode" class="editor-mode-badge">Nuevo</span>
       </div>
+
+
 
 
       <div class="admin-grid">
@@ -571,8 +656,12 @@
     </div>
 
 
+
+
   </section>
 </main>
+
+
 
 
 <footer class="site-footer">
@@ -583,7 +672,11 @@
 </footer>
 
 
+
+
 <div id="toast" class="toast"></div>
+
+
 
 
 <div id="captureOrientationModal" class="capture-orientation-modal hidden" role="dialog" aria-modal="true" aria-labelledby="captureOrientationTitle">
@@ -597,10 +690,14 @@
     </div>
 
 
+
+
     <div class="capture-orientation-principle">
       <strong>Mensaje para el llenado</strong>
       <span>El llenado de la información parte de un ejercicio de <b>autorreflexión y objetividad</b>. Seleccione únicamente las asignaturas que sean congruentes con su formación académica, experiencia docente y experiencia profesional.</span>
     </div>
+
+
 
 
     <div class="capture-orientation-grid">
@@ -612,10 +709,14 @@
     </div>
 
 
+
+
     <div class="capture-orientation-reference">
       <div><strong>Coordinador y Favorita</strong><span>Son referencias para apoyar el diseño de la planeación cuatrimestral; no aparecen en el formato impreso del Perfil del Profesor.</span></div>
       <div><strong>Comisiones y horarios</strong><span>Los horarios registrados para alguna comisión son una referencia para la planeación. <b>La prioridad es la atención de la clase frente a grupo</b> y cualquier descarga deberá sujetarse a la autorización correspondiente.</span></div>
     </div>
+
+
 
 
     <div class="capture-orientation-footer">
@@ -624,6 +725,10 @@
     </div>
   </div>
 </div>
+
+
+
+
 
 
 
@@ -658,10 +763,15 @@
 
 
 
+
+
+
+
 <script src="firebase-config.js?v=20260928-1"></script>
 <script src="catalog.js?v=20260929-80"></script>
 <script src="https://accounts.google.com/gsi/client" async defer></script>
 
-<script type="module" src="app.js?v=20261001-94"></script>
+
+<script type="module" src="app.js?v=20261001-95"></script>
 </body>
 </html>
