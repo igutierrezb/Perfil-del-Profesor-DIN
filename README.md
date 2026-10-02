@@ -1,15 +1,17 @@
-# Perfil Académico Docente DIN · Versión 29
+# Agenda de Salas Audiovisuales DIN · V6.5
 
-Cambio puntual:
-- Ya no es obligatorio marcar 3 materias favoritas.
-- Favorito pasa a ser completamente opcional.
-- El profesor puede seleccionar 0, 1 o cualquier cantidad de materias favoritas.
-- La selección de favoritas ya no bloquea la revisión, finalización ni impresión.
-- El contador muestra `opcionales`.
-- Favorito continúa siendo información administrativa y no aparece en el PDF.
+Agenda web de la División Industrial · Turno Matutino.
 
-## Deploy
-`deploy-pages.yml`: NO necesita actualización.
+## Arquitectura
 
-## Firestore
-`firestore.rules`: NO necesita actualización.
+- **Firestore**: reservaciones, `hourLocks`, bloqueos de sala, salas, usuarios, configuración y auditoría.
+- **Realtime Database**: presencia y señales efímeras de cambio entre usuarios.
+- **GitHub Pages**: interfaz estática.
+
+V6.5 conserva los datos existentes y evita recargar semanas completas cuando otro usuario modifica un evento: el cliente receptor consulta únicamente el documento afectado.
+
+## Actualización
+
+Lee `INSTRUCCIONES_V6.5.txt` y `CONFIGURAR_REALTIME_DATABASE_V6.5.txt`.
+
+`firebase.js`, `core.js`, `firestore.rules` y `.github/workflows/deploy-pages.yml` no requieren cambios respecto a V6.4.1.

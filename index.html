@@ -1,667 +1,654 @@
 <!doctype html>
 <html lang="es">
 <head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Perfil Académico Docente · División Industrial UTEQ</title>
-<meta name="pad-build" content="V92-2026-09-30">
-<link rel="stylesheet" href="styles.css?v=20260930-92">
-<link rel="stylesheet" href="mobile.css?v=20260930-92">
-<meta name="theme-color" content="#0b2b46">
-<link rel="manifest" href="manifest.webmanifest">
-<link rel="icon" href="favicon.ico" sizes="any">
-<link rel="icon" type="image/png" sizes="32x32" href="favicon-32x32.png">
-<link rel="icon" type="image/png" sizes="16x16" href="favicon-16x16.png">
-<link rel="apple-touch-icon" href="apple-touch-icon.png">
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#0f2430">
+  <meta name="description" content="Agenda semanal de reservación de salas audiovisuales de la División Industrial.">
+  <title>Agenda de Salas Audiovisuales DIN · División Industrial</title>
+  <link rel="icon" href="assets/favicon.ico" sizes="any">
+  <link rel="icon" type="image/png" sizes="32x32" href="assets/favicon-32x32.png">
+  <link rel="icon" type="image/png" sizes="16x16" href="assets/favicon-16x16.png">
+  <link rel="apple-touch-icon" sizes="180x180" href="assets/apple-touch-icon.png">
+  <link rel="manifest" href="manifest.webmanifest">
+  <link rel="stylesheet" href="styles.css?v=6.5.1">
+  <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js" defer></script>
+  <script type="module" src="app.js?v=6.5.1"></script>
 </head>
-<body>
-<div id="desktopOnlyGate" class="desktop-only-gate hidden" role="main" aria-labelledby="desktopOnlyTitle">
-  <div class="desktop-only-card">
-    <img src="icon-din.png" alt="División Industrial" class="desktop-only-logo">
-    <div class="eyebrow">Universidad Tecnológica de Querétaro · División Industrial</div>
-    <h1 id="desktopOnlyTitle">Captura disponible únicamente en computadora</h1>
-    <p>Por el nivel de análisis, concentración y reflexión que requiere el Perfil del Profesor, esta página debe elaborarse en una computadora de escritorio o portátil.</p>
-    <p class="desktop-only-note">La captura no está disponible en teléfonos ni tabletas.</p>
-  </div>
-</div>
 
-<div id="loginGate" class="login-gate">
-  <div class="login-card">
-    <picture class="login-brand-picture">
-      <source media="(max-width: 760px)" srcset="icon-192.png">
-      <img src="logo-din-horizontal.png" class="login-logo division-logo-full" alt="DIN · División Industrial · Turno Matutino">
-    </picture>
-    <div class="login-copy">
-      <div class="eyebrow">Universidad Tecnológica de Querétaro · División Industrial</div>
-      <h1>Perfil Académico Docente</h1>
-      <p>Acceso exclusivo con cuenta institucional <b>@uteq.edu.mx</b>.</p>
-      <div class="period-badge" id="periodBadgeGate">Periodo de vigencia · SEP 2026 - AGO 2027</div>
-      <div id="authStatusGate" class="auth-status gate">Sin sesión · requiere cuenta institucional</div>
-      <div id="deadlineGate" class="deadline-card compact">Fecha límite de captura no configurada.</div>
-      <div class="gate-actions">
-        <button id="btnLoginGate" class="primary big" onclick="signIn()">Ingresar con cuenta institucional</button>
-      </div>
-      <div class="login-security-note">
-        Use una cuenta <strong>@uteq.edu.mx</strong>. Esta plataforma no solicita ni almacena su contraseña;
-        el acceso se valida directamente mediante Google.<br>
-        La información se guarda en la nube únicamente al pulsar <strong>Guardar y continuar</strong>.
-        Si no hubo cambios, avanzar no genera una nueva escritura.
-      </div>
-      <small>La información vertida en esta plataforma se administra bajo los mismos criterios señalados en el
-        <a href="https://www.uteq.edu.mx/ConoceLaUTEQ/Default.aspx?gXr=217" target="_blank" rel="noopener">Aviso de Privacidad de la UTEQ</a>.
-      </small>
-      <div class="gate-credit">Sitio diseñado, creado y administrado por <b>Iván Gutiérrez Bautista</b>.</div>
+<body class="auth-pending">
+
+  <section id="auth-screen" class="auth-screen" aria-live="polite">
+    <div class="auth-card">
+      <img class="auth-logo" src="assets/logo-din-horizontal.png" alt="DIN · División Industrial · Turno Matutino">
+      <p class="eyebrow">DIVISIÓN INDUSTRIAL · TURNO MATUTINO</p>
+      <h1>Agenda de Salas Audiovisuales</h1>
+      <p id="auth-message">Inicia sesión con una cuenta autorizada para consultar y modificar la agenda compartida.</p>
+      <button id="sign-in" class="primary auth-button">Iniciar sesión con Google</button>
+      <button id="auth-sign-out" class="quiet auth-button" hidden>Cerrar sesión</button>
+      <small>Sincronización puntual: Firestore conserva los datos y la agenda solo recibe cambios necesarios.</small>
+      <small class="auth-credit">Elaborada y administrada por Iván Gutiérrez Bautista</small>
     </div>
-  </div>
-</div>
+  </section>
 
+  <header class="topbar">
+    <a class="brand" href="./" aria-label="Agenda de Salas Audiovisuales DIN">
+      <img class="brand-logo" src="assets/icon-din.png" alt="">
+      <span>
+        <b>DIN · DIVISIÓN INDUSTRIAL</b>
+        <small>Agenda de Salas Audiovisuales</small>
+        <em>Turno Matutino · UTEQ</em>
+      </span>
+    </a>
 
-<header class="hero">
-  <div class="hero-inner">
-    <div class="brand-block">
-      <img src="icon-din.png" class="hero-icon division-logo-emblem" alt="DIN · División Industrial">
-      <div>
-        <div class="eyebrow">Universidad Tecnológica de Querétaro · División Industrial</div>
-        <h1>Perfil Académico Docente</h1>
-        <p>Actualización, formalización y gestión del perfil por asignatura</p>
-        <div class="period-badge inline" id="periodBadgeInline">Periodo de vigencia · SEP 2026 - AGO 2027</div>
-      </div>
+    <div class="top-actions">
+      <span id="sync-status" class="sync-status" title="Estado de sincronización">● Sincronizando</span>
+      <span id="user-chip" class="user-chip"></span>
+      <button id="manage" class="quiet">Administración</button>
+      <button id="sign-out" class="quiet">Salir</button>
     </div>
-    <div class="hero-side">
-      <div class="hero-chip">Formato institucional · EA-F-86</div>
-      <div id="authStatus" class="auth-status">Sin sesión</div>
-      <div class="save-cloud-line"><span id="lastSaved">Guardado local</span><span id="cloudStatus">Guardado manual en nube</span></div>
-      <div class="auth-buttons">
-        <button id="btnLogin" class="ghost" onclick="signIn()">Ingresar con cuenta institucional</button>
-        <button id="btnLogout" class="ghost hidden" onclick="signOutApp()">Cerrar sesión</button>
+  </header>
+
+  <main>
+    <section class="intro intro-din">
+      <img class="intro-din-mark" src="assets/icon-din.png" alt="" aria-hidden="true">
+      <div class="intro-copy">
+        <p class="eyebrow">DIN · AGENDA DE RESERVACIONES</p>
+        <h1>Salas audiovisuales · División Industrial</h1>
+        <p class="subtitle">Consulta disponibilidad y reserva espacios con una agenda compartida, clara y sincronizada.</p>
       </div>
-    </div>
-  </div>
-</header>
-<div class="deadline-top-band">
-  <div id="deadlineHeader" class="deadline-card header-deadline">Fecha límite no configurada.</div>
-</div>
-
-
-<nav class="main-nav">
-  <button data-view="perfil" class="active"><span class="nav-num">1</span><span class="nav-ico" aria-hidden="true">▣</span><span class="nav-label">Datos del profesor</span></button>
-  <button data-view="captura"><span class="nav-num">2</span><span class="nav-ico" aria-hidden="true">▤</span><span class="nav-label">Perfil por programa</span></button>
-  <button data-view="revision" id="navRevision"><span class="nav-num">3</span><span class="nav-ico" aria-hidden="true">⌕</span><span class="nav-label">Revisión e impresión</span></button>
-  <button data-view="admin" id="adminTab" class="admin-tab hidden"><span class="nav-num">4</span><span class="nav-ico" aria-hidden="true">⚙</span> Administración</button>
-</nav>
-
-
-<main>
-  <section id="perfil" class="view active">
-    <div class="welcome card">
-      <div>
-        <span class="section-kicker">Actualización de perfil</span>
-        <h2>Información general del profesor</h2>
-        <p>Los datos obligatorios deben capturarse antes de continuar. La información se conserva para futuras actualizaciones.</p>
+      <div class="intro-actions">
+        <button id="block-room" class="quiet">Bloquear sala</button>
+        <button id="new" class="primary">＋ Nueva reservación</button>
       </div>
-      <div class="welcome-badge" id="profileStepBadge">Paso 1 de 3</div>
-    </div>
+    </section>
 
-
-    <div class="card section-card">
-      <div class="section-head">
-        <div><h2>Datos del profesor</h2><p>Capture apellidos, nombres y categoría como deberán aparecer en el formato.</p></div>
-        <span class="required-note">Obligatorio</span>
+    <section class="workspace" aria-label="Calendario de salas">
+      <div class="room-bar">
+        <div id="room-tabs" class="room-tabs" role="group" aria-label="Filtrar por sala"></div>
+        <span class="legend"><i></i>Disponible <i class="busy multi-user"></i>Reservado · color por usuario</span>
       </div>
-      <div class="teacher-line">
-        <label>Apellido paterno *<input id="apPat" placeholder="Ej. Hernández"></label>
-        <label>Apellido materno *<input id="apMat" placeholder="Ej. López"></label>
-        <label>Nombres *<input id="nombres" placeholder="Ej. Ana Patricia"></label>
-        <label>Categoría *<select id="categoria"></select></label>
-      <label class="degree-field">Grado Académico
-        <select id="gradoAcademico">
-          <option value="">Sin grado</option>
-          <option>TSU</option><option>Lic.</option><option>Ing.</option><option>Esp.</option>
-          <option>Mtra.</option><option>Mtro.</option><option>Dr.</option><option>Dra.</option><option>Posdr.</option>
+
+      <div class="calendar-toolbar">
+        <div class="calendar-period">
+          <h2 id="period"></h2>
+          <p id="summary"></p>
+        </div>
+
+        <div id="quick-filters" class="quick-filters" role="group" aria-label="Filtros rápidos">
+          <button type="button" data-view="today">Hoy</button>
+          <button type="button" data-view="mine">Mis reservaciones</button>
+          <button type="button" data-view="week" aria-pressed="true">Esta semana</button>
+        </div>
+
+        <div class="navigation">
+          <button id="previous" aria-label="Semana anterior">←</button>
+          <button id="current-week">Semana</button>
+          <button id="next" aria-label="Semana siguiente">→</button>
+        </div>
+      </div>
+
+      <div id="day-picker" class="day-picker" role="group" aria-label="Seleccionar día"></div>
+      <div id="calendar" class="calendar"></div>
+
+      <div class="calendar-footer">
+        <span id="availability-status" class="availability-status" aria-live="polite">
+          Haz clic o arrastra un horario para reservar. También puedes arrastrar una reservación para moverla de sala, día u horario.
+        </span>
+        <span id="schedule-label">Lunes a sábado · 07:00–22:00</span>
+      </div>
+    </section>
+
+    <footer class="page-footer">
+      <span>Agenda de Salas Audiovisuales DIN · División Industrial</span>
+      <span>Sitio elaborado por Iván Gutiérrez Bautista · Jefe de Unidad de Coordinación Académica · División Industrial · Turno Matutino</span>
+    </footer>
+
+    <p id="notice" role="status" aria-live="polite"></p>
+  </main>
+
+
+  <!-- RESERVACIÓN -->
+  <dialog id="booking-dialog" aria-labelledby="booking-title">
+    <form id="booking-form">
+      <div class="dialog-heading">
+        <div>
+          <p class="eyebrow">RESERVACIÓN</p>
+          <h2 id="booking-title">Nueva reservación</h2>
+        </div>
+        <button type="button" class="close" data-close aria-label="Cerrar">×</button>
+      </div>
+
+      <input type="hidden" name="id">
+
+      <label>
+        Nombre del evento
+        <textarea
+          name="activity"
+          required
+          rows="2"
+          placeholder="Ej. Toma de protesta, reunión de academia, presentación de proyecto..."></textarea>
+      </label>
+
+      <label>
+        Maestro / persona a quien se le apartará
+        <input
+          name="teacher"
+          required
+          autocomplete="name"
+          placeholder="Nombre de la persona responsable">
+      </label>
+
+      <label>
+        Grupo o área
+        <input
+          name="group"
+          required
+          placeholder="Ej. IMMI8, Dirección Industrial, Academia...">
+      </label>
+
+      <label>
+        Sala
+        <select name="roomId" required></select>
+      </label>
+
+      <label>
+        Fecha
+        <input type="date" name="date" required>
+      </label>
+
+      <div class="form-row">
+        <label>
+          Hora inicial
+          <select name="start" required></select>
+        </label>
+        <label>
+          Hora final
+          <select name="end" required></select>
+        </label>
+      </div>
+
+      <section class="color-picker-box" aria-labelledby="booking-color-title">
+        <div class="color-picker-heading">
+          <div>
+            <strong id="booking-color-title">Color de la reservación</strong>
+            <small>Se propone uno según tu usuario, pero puedes cambiarlo.</small>
+          </div>
+          <span id="selected-color-name" class="selected-color-name"></span>
+        </div>
+        <input type="hidden" name="colorKey" id="booking-color-key">
+        <div id="booking-color-palette" class="color-palette" role="radiogroup" aria-label="Elegir color pastel"></div>
+      </section>
+
+      <section id="repeat-section" class="repeat-box" aria-label="Repetición de reservación">
+        <label class="check-line">
+          <input type="checkbox" name="repeatEnabled" id="repeat-enabled">
+          <span>Repetir esta reservación en otros días</span>
+        </label>
+
+        <div id="repeat-options" class="repeat-options" hidden>
+          <p>Selecciona los días que también deseas reservar con el mismo horario y datos.</p>
+          <div id="weekday-grid" class="weekday-grid" role="group" aria-label="Días de repetición"></div>
+          <label>
+            Repetir hasta
+            <input type="date" name="repeatUntil">
+          </label>
+          <small>Si alguna repetición se empalma, no se guardará ninguna hasta corregir el conflicto.</small>
+        </div>
+      </section>
+
+      <p class="form-error" id="booking-error" role="alert"></p>
+
+      <div class="actions">
+        <button type="button" data-close>Cancelar</button>
+        <button class="primary" type="submit" data-mutation>Guardar reservación</button>
+      </div>
+    </form>
+  </dialog>
+
+
+  <!-- BLOQUEO GENERAL DE SALA -->
+  <dialog id="general-block-dialog" aria-labelledby="general-block-title">
+    <form id="general-block-form">
+      <div class="dialog-heading">
+        <div>
+          <p class="eyebrow">BLOQUEO DE SALA</p>
+          <h2 id="general-block-title">Bloquear sala</h2>
+        </div>
+        <button type="button" class="close" data-close aria-label="Cerrar">×</button>
+      </div>
+
+      <p class="dialog-help">
+        Usa esta opción cuando la sala deba quedar indisponible sin crear una reservación.
+      </p>
+
+      <label>
+        Tipo de bloqueo
+        <select name="blockMode" id="general-block-mode" required>
+          <option value="hours">Algunas horas</option>
+          <option value="day">Todo el día</option>
+          <option value="days">Varios días completos</option>
         </select>
       </label>
-      </div>
-      
-    </div>
 
+      <label>
+        Sala
+        <select name="roomId" required></select>
+      </label>
 
-    <div class="card section-card">
-      <div class="section-head">
-        <div><h2>1. Formación profesional</h2><p>La primera línea es obligatoria.</p></div>
-        <span class="required-note">1ª línea obligatoria</span>
-      </div>
-      <div id="formacion"></div>
-      <div class="profile-row-actions">
-        <button id="addFormationRowBtn" type="button" class="profile-add-row-btn" onclick="addProfileRow('formation')">＋ Agregar otro posgrado</button>
-        <small>Puede agregar hasta Posgrado 10. Todo renglón agregado deberá completarse.</small>
-      </div>
-      
-    </div>
-
-
-    <div class="card section-card">
-      <div class="section-head">
-        <div><h2>2. Experiencia docente</h2><p>Registre institución y periodo. La primera línea es obligatoria.</p></div>
-        <span class="required-note">1ª línea obligatoria</span>
-      </div>
-      <div id="docencia"></div>
-      <div class="profile-row-actions">
-        <button id="addTeachingRowBtn" type="button" class="profile-add-row-btn" onclick="addProfileRow('docencia')">＋ Agregar experiencia docente</button>
-        <small>Puede registrar hasta 10 instituciones. Todo renglón agregado deberá completarse.</small>
-      </div>
-      
-    </div>
-
-
-    <div class="card section-card">
-      <div class="section-head">
-        <div><h2>3. Experiencia laboral</h2><p>Cada organización se captura en una sola línea: organización, cargo y periodo.</p></div>
-        <span class="required-note">1ª línea obligatoria</span>
-      </div>
-      <div id="laboral"></div>
-      <div class="profile-row-actions">
-        <button id="addWorkRowBtn" type="button" class="profile-add-row-btn" onclick="addProfileRow('laboral')">＋ Agregar experiencia laboral</button>
-        <small>Puede registrar hasta 10 organizaciones. Todo renglón agregado deberá completarse.</small>
-      </div>
-      
-    </div>
-
-
-    <div id="commissionsBlock" class="card section-card commissions-section hidden">
-      <div class="section-head commissions-section-head">
-        <div>
-          <h2>4. Comisiones</h2>
-          <p>Información operativa para apoyar la planeación cuatrimestral del periodo.</p>
-        </div>
-        <span class="required-note">Obligatorio cuando está habilitado · admite No aplica</span>
-      </div>
-
-
-      <div class="commissions-reference-note">
-        <strong>Referencia para planeación.</strong>
-        Esta información no forma parte del Perfil del Profesor ni se incluye en el PDF.
-        Se utiliza únicamente como referencia para la elaboración de las planeaciones cuatrimestrales del periodo.
-      </div>
-
-
-      <div id="commissionsLockedBanner" class="capture-lock-banner hidden"></div>
-
-
-      <div class="commission-main-grid">
-  <div class="commission-left-column">
-<article id="planningCommissionsCard" class="commission-question">
-        <div class="commission-question-head">
-          <span class="planning-number">1</span>
-          <div>
-            <h3>Comisiones autorizadas por la Dirección</h3>
-            <p>Indique si es responsable de alguna comisión previamente autorizada por la Dirección.</p>
-          </div>
-        </div>
-
-
-        <div class="planning-choice-row commission-choice">
-          <label class="choice-card option-yes"><input type="radio" name="planningCommissionMode" value="yes" onchange="planningModeChanged()"> Sí</label>
-          <label class="choice-card option-no"><input type="radio" name="planningCommissionMode" value="na" onchange="planningModeChanged()"> No aplica</label>
-        </div>
-
-
-        <div id="planningCommissionsFields" class="planning-conditional hidden">
-          <div class="commissions-help">
-            Por cada comisión capture su nombre y las horas autorizadas. Si requiere un bloqueo específico para su atención, seleccione los días y horarios correspondientes.
-          </div>
-          <div id="planningCommissionList" class="commission-entry-list"></div>
-          
-        </div>
-      </article>
-  </div>
-  <div class="commission-right-column">
-<article id="planningProjectCard" class="commission-question">
-        <div class="commission-question-head">
-          <span class="planning-number">2</span>
-          <div>
-            <h3>Proyecto avalado por la Universidad en Investigación, Innovación y Desarrollo Tecnológico</h3>
-            <p>Indique si participa actualmente en algún proyecto avalado por la Universidad en Investigación, Innovación y Desarrollo Tecnológico.</p>
-          </div>
-        </div>
-
-
-        <div class="planning-choice-row commission-choice">
-          <label class="choice-card option-yes"><input type="radio" name="planningProjectMode" value="yes" onchange="planningModeChanged()"> Sí</label>
-          <label class="choice-card option-no"><input type="radio" name="planningProjectMode" value="na" onchange="planningModeChanged()"> No aplica</label>
-        </div>
-
-
-        <div id="planningProjectFields" class="planning-conditional planning-project-grid hidden">
-          <label>Nombre del proyecto
-            <input id="planningProjectName" placeholder="Nombre del proyecto">
-          </label>
-          <label>Responsabilidad que ocupa
-            <input id="planningProjectRole" placeholder="Ej. Responsable, colaborador, coordinador">
-          </label>
-          <label>Horas autorizadas
-            <input id="planningProjectHours" type="number" min="0" step="0.5" placeholder="Ej. 4">
-          </label>
-          <label>Referencia u oficio de autorización <span class="optional-inline">(si aplica)</span>
-            <input id="planningProjectReference" placeholder="Ej. oficio PIDET / número de referencia">
-          </label>
-        </div>
-        <div class="pidet-note">
-          Los proyectos de cuerpos académicos deben contar con un oficio de PIDET que solicite la descarga horaria correspondiente.
-        </div>
-      </article>
-<article id="planningCommentsCard" class="commission-question commission-observations">
-        <div class="commission-question-head">
-          <span class="planning-number optional">3</span>
-          <div>
-            <h3>Observaciones</h3>
-            <p>Espacio opcional para registrar alguna consideración académica relevante para la planeación.</p>
-          </div>
-        </div>
-        <textarea id="planningComments" class="planning-comments" rows="4" placeholder="Escribe aquí si hay alguna consideración académica que tomar en cuenta; por ejemplo, evitar asignar clase con un grupo específico por alguna situación particular entre profesor y grupo."></textarea>
-      </article>
-  </div>
-</div>
-
-
-<div id="planningErrors"></div>
-      
-    </div>
-
-
-    <div id="profileErrors"></div>
-    <div class="actions">
-      <button id="continueProfileBtn" type="button" class="primary">Guardar y continuar al perfil por programa →</button>
-    </div>
-  </section>
-
-
-  <section id="captura" class="view">
-    <div class="card profile-toolbar">
-      <div class="toolbar-left">
-        <span class="section-kicker" id="captureStepKicker">Paso 2 de 3</span>
-        <h2>Perfil por programa educativo</h2>
-        
-      </div>
-      <div class="progress">
-        <strong id="progressText"></strong>
-        <div><i id="progressBar"></i></div>
-        <small id="idealCounter">Materias favoritas: 0 · opcionales</small>
-        <small id="programCounter"></small>
-      </div>
-      <div id="deadlineCapture" class="deadline-card capture-deadline">Fecha límite no configurada.</div>
-    </div>
-
-
-    <div id="editingLockedBanner" class="capture-lock-banner hidden"></div>
-
-
-    <div class="card program-header-flow">
-      <div class="program-step-badge" id="programStep"></div>
-      <div class="program-name-flow" id="programFlowName"></div>
-      <div class="flow-buttons">
-        <button id="flowPrevBtn" class="prev-emphasis" onclick="prevProgram()">← Anterior</button>
-        <div class="flow-save-stack">
-          <button id="flowNextBtn" class="primary" onclick="saveAndNextProgram()">Guardar y continuar →</button>
-        </div>
-      </div>
-
-
-    </div>
-
-
-    <div id="programs"></div>
-    <div id="captureErrors"></div>
-  </section>
-
-
-  <section id="revision" class="view">
-    <div class="card review-head no-print">
-      <div>
-        <span class="section-kicker" id="reviewStepKicker">Paso 3 de 3</span>
-        <h2>Revisión e impresión</h2>
-        <p>La revisión solo se habilita cuando la captura está completa.</p>
-      </div>
-      <div id="validation"></div>
-    </div>
-    <div id="reviewReadiness" class="card review-readiness no-print"></div>
-    <div id="reviewFinalizeCue" class="review-finalize-cue no-print" role="status" aria-live="polite"></div>
-    <div class="actions no-print review-final-actions review-final-actions-top">
-      <button onclick="backToProgramProfile()">← Volver a Perfil por programa</button>
-      <button class="primary final-print-btn" onclick="printProfile()">Finalizar e imprimir / guardar PDF</button>
-    </div>
-    <div id="printArea"></div>
-    <div class="actions no-print review-final-actions review-final-actions-bottom">
-      <button onclick="backToProgramProfile()">← Volver a Perfil por programa</button>
-      <button class="primary final-print-btn" onclick="printProfile()">Finalizar e imprimir / guardar PDF</button>
-    </div>
-  </section>
-
-
-
-
-
-
-  <section id="admin" class="view">
-    <div class="admin-quickbar card">
-      <button onclick="document.getElementById('captureControlCard').scrollIntoView({behavior:'smooth',block:'start'})">⚙ Control de captura</button>
-      <button onclick="document.getElementById('institutionalConfig').scrollIntoView({behavior:'smooth',block:'start'})">▤ Configuración institucional</button>
-    </div>
-
-
-    <div class="admin-core-grid">
-<section id="captureControlCard" class="card admin-core-card capture-control-card">
-        <div class="admin-core-head">
-          <div>
-            <h2>Control de captura</h2>
-            <p>Edición general y fecha/hora límite.</p>
-          </div>
-          <div class="capture-control-statuses">
-            <span id="editModeStatus" class="edit-mode-status"></span>
-            <span id="deadlineAdminStatus" class="deadline-admin-status"></span>
-          </div>
-        </div>
-        <label class="admin-core-label">Fecha y hora de cierre
-          <input id="captureDeadlineAdmin" type="datetime-local">
+      <div class="form-row">
+        <label>
+          Fecha inicial
+          <input type="date" name="date" required>
         </label>
-        <div id="deadlineAdminPreview" class="deadline-admin-preview"></div>
-        <div class="mini-actions admin-core-actions">
-          <button class="primary" onclick="saveDeadline()">Guardar fecha</button>
-          <button onclick="clearDeadline()">Borrar límite</button>
-          <button id="editModeBtn" class="edit-mode-btn" onclick="toggleEditingLock()"></button>
+
+        <label id="general-block-date-to-wrap" hidden>
+          Fecha final
+          <input type="date" name="dateTo">
+        </label>
+      </div>
+
+      <div class="form-row" id="general-block-time-row">
+        <label>
+          Desde
+          <select name="start" required></select>
+        </label>
+        <label>
+          Hasta
+          <select name="end" required></select>
+        </label>
+      </div>
+
+      <label>
+        Motivo
+        <input
+          name="reason"
+          required
+          placeholder="Ej. Evento institucional, mantenimiento, capacitación...">
+      </label>
+
+      <p class="form-error" id="general-block-error" role="alert"></p>
+
+      <div class="actions">
+        <button type="button" data-close>Cancelar</button>
+        <button class="primary" type="submit" data-mutation>Bloquear sala</button>
+      </div>
+    </form>
+  </dialog>
+
+
+  <!-- DETALLE -->
+  <dialog id="detail-dialog" aria-labelledby="detail-title">
+    <div class="dialog-heading">
+      <div>
+        <p class="eyebrow">DETALLE DE RESERVACIÓN</p>
+        <h2 id="detail-title"></h2>
+      </div>
+      <button class="close" data-close aria-label="Cerrar">×</button>
+    </div>
+
+    <div id="details"></div>
+
+    <div class="actions">
+      <button id="cancel-booking" class="danger" data-mutation>Cancelar reservación</button>
+      <button id="cancel-series" class="danger" hidden data-mutation>Cancelar serie</button>
+      <button id="restore-booking" class="primary" hidden data-mutation>Restaurar</button>
+      <button data-close>Cerrar</button>
+      <button id="duplicate-booking">Duplicar</button>
+      <button id="edit-booking" class="primary" data-mutation>Editar</button>
+    </div>
+  </dialog>
+
+
+  <!-- ADMINISTRACIÓN / REPORTES -->
+  <dialog id="admin-dialog" class="admin-dialog admin-v6" aria-labelledby="admin-title">
+    <div class="dialog-heading">
+      <div>
+        <p class="eyebrow">ADMINISTRACIÓN</p>
+        <h2 id="admin-title">Panel de administración</h2>
+      </div>
+      <button class="close" data-close aria-label="Cerrar">×</button>
+    </div>
+
+    <nav id="admin-tabs" class="admin-tabs" aria-label="Secciones de administración">
+      <button type="button" data-admin-tab="summary">Resumen</button>
+      <button type="button" data-admin-tab="reservations">Reservaciones</button>
+      <button type="button" data-admin-tab="rooms">Salas</button>
+      <button type="button" data-admin-tab="users">Usuarios</button>
+      <button type="button" data-admin-tab="report">Reportes</button>
+      <button type="button" data-admin-tab="audit">Historial</button>
+      <button type="button" data-admin-tab="settings">Configuración</button>
+    </nav>
+
+    <!-- RESUMEN -->
+    <section id="panel-summary" class="admin-panel" data-admin-panel="summary">
+      <div class="section-heading">
+        <div>
+          <h3>Resumen operativo</h3>
+          <p>Indicadores del periodo actual sin modificar información de Firestore.</p>
         </div>
-      </section>
-<section id="institutionalConfig" class="card admin-core-card">
-        <div class="admin-core-head">
+      </div>
+
+      <div id="summary-cards" class="summary-cards"></div>
+
+      <div class="admin-grid-2">
+        <article class="admin-card">
+          <h4>Próximas reservaciones de hoy</h4>
+          <div id="summary-upcoming" class="compact-list"></div>
+        </article>
+
+        <article class="admin-card">
+          <h4>Utilización mensual por sala</h4>
+          <div id="summary-room-usage" class="compact-list"></div>
+        </article>
+      </div>
+    </section>
+
+    <!-- RESERVACIONES -->
+    <section id="panel-reservations" class="admin-panel" data-admin-panel="reservations" hidden>
+      <div class="section-heading">
+        <div>
+          <h3>Reservaciones</h3>
+          <p>Consulta activas, pasadas y canceladas sin descargar todo el historial.</p>
+        </div>
+      </div>
+
+      <div class="admin-filters">
+        <label>Desde<input type="date" id="admin-res-from"></label>
+        <label>Hasta<input type="date" id="admin-res-to"></label>
+        <label>Sala<select id="admin-res-room"></select></label>
+        <label>
+          Estado
+          <select id="admin-res-status">
+            <option value="active">Activas</option>
+            <option value="cancelled">Canceladas</option>
+            <option value="past">Pasadas</option>
+            <option value="all">Todas</option>
+          </select>
+        </label>
+        <label class="admin-search">Buscar<input id="admin-res-search" placeholder="Maestro, grupo o actividad"></label>
+        <button type="button" id="admin-res-load">Consultar</button>
+      </div>
+
+      <p id="admin-res-count" class="admin-result-count"></p>
+      <div id="admin-res-list" class="reservation-admin-list"></div>
+    </section>
+
+    <!-- SALAS -->
+    <section id="panel-rooms" class="admin-panel" data-admin-panel="rooms" hidden>
+      <div class="section-heading">
+        <div>
+          <h3>Salas</h3>
+          <p>Las salas se archivan; sus reservaciones históricas nunca se eliminan.</p>
+        </div>
+      </div>
+
+      <div class="admin-grid-2">
+        <article class="admin-card">
+          <h4>Salas activas</h4>
+          <div id="rooms-active-list" class="compact-list"></div>
+        </article>
+
+        <article class="admin-card">
+          <h4>Salas archivadas</h4>
+          <div id="rooms-archived-list" class="compact-list"></div>
+        </article>
+      </div>
+
+      <form id="room-form" class="admin-card admin-form">
+        <input type="hidden" name="id">
+        <h4 id="room-form-title">Agregar sala</h4>
+
+        <div class="form-row">
+          <label>Nombre<input name="name" required></label>
+          <label>Abreviatura<input name="short" maxlength="12" required></label>
+        </div>
+
+        <div class="form-row">
+          <label>Edificio<input name="building" placeholder="Ej. F"></label>
+          <label>Planta<input name="floor" placeholder="Alta / Baja"></label>
+          <label>Capacidad<input name="capacity" type="number" min="0" step="1"></label>
+        </div>
+
+        <div class="form-row">
+          <label>
+            Estado
+            <select name="status">
+              <option value="available">Disponible</option>
+              <option value="maintenance">Mantenimiento</option>
+              <option value="out_of_service">Fuera de servicio</option>
+            </select>
+          </label>
+          <label>Equipamiento<input name="equipment" placeholder="Proyector, audio, HDMI"></label>
+        </div>
+
+        <label>Observaciones<textarea name="notes" rows="2"></textarea></label>
+
+        <div class="actions">
+          <button type="button" id="room-form-reset">Limpiar</button>
+          <button class="primary" type="submit" data-mutation>Guardar sala</button>
+        </div>
+        <p class="form-error" id="room-error" role="alert"></p>
+      </form>
+
+      <article class="admin-card">
+        <div class="section-heading">
           <div>
-            <h2>Configuración institucional</h2>
-            <p>Datos de vigencia y control documental.</p>
+            <h4>Bloqueos y mantenimiento</h4>
+            <p>Impide reservaciones sin crear un evento falso de maestro.</p>
           </div>
         </div>
-        <div class="admin-core-fields">
-          <label>Jefe de Unidad<input id="jefe"></label>
-          <label>Periodo de vigencia<input id="periodoAdmin"></label>
-          <div class="admin-core-triple">
-            <label>Código<input id="codigo"></label>
-            <label>Revisión<input id="revisionCal"></label>
-            <label>Fecha de revisión<input id="fechaRevision"></label>
+
+        <form id="block-form">
+          <input type="hidden" name="id">
+
+          <label>
+            Tipo de bloqueo
+            <select name="blockMode" id="block-mode" required>
+              <option value="hours">Algunas horas</option>
+              <option value="day">Todo el día</option>
+              <option value="days">Varios días completos</option>
+            </select>
+          </label>
+
+          <label>
+            Sala
+            <select name="roomId" required></select>
+          </label>
+
+          <div class="form-row">
+            <label>
+              Fecha inicial
+              <input type="date" name="date" required>
+            </label>
+            <label id="block-date-to-wrap" hidden>
+              Fecha final
+              <input type="date" name="dateTo">
+            </label>
           </div>
-        </div>
-        <div class="period-preserve-note">Cambiar el periodo <b>no borra ni reinicia</b> lo capturado.</div>
-        <div class="mini-actions admin-core-actions">
-          <button class="primary institutional-save-btn" onclick="saveAdmin()">✓ Guardar configuración</button>
-        </div>
-      </section>
 
+          <div class="form-row" id="block-time-row">
+            <label>Desde<select name="start" required></select></label>
+            <label>Hasta<select name="end" required></select></label>
+          </div>
 
-<section id="excelExportCard" class="card admin-core-card excel-admin-card">
-  <div class="admin-core-head">
-    <div>
-      <h2>Exportación Excel</h2>
-      <p>Seleccione las hojas y cuatrimestres que desea incluir.</p>
-    </div>
-    <span class="excel-admin-badge">Excel</span>
-  </div>
-  <div class="excel-admin-group">
-    <b>Hojas del libro</b>
-    <div id="excelSheetOptions" class="excel-option-grid"></div>
-  </div>
-  <div class="excel-admin-group">
-    <b>Cuatrimestres</b>
-    <div id="excelQuarterOptions" class="excel-quarter-grid"></div>
-  </div>
-  <button class="excel-export-btn excel-export-card-btn" onclick="exportExcel()" aria-label="Exportar Excel">
-    <span class="excel-logo" aria-hidden="true">
-      <svg viewBox="0 0 24 24" width="20" height="20">
-        <rect x="3" y="3" width="12" height="18" rx="2" fill="#217346"/>
-        <path d="M15 6h6v12h-6" fill="#185C37"/>
-        <path d="M7 8.5l2 3-2.2 4h2l1.2-2.5 1.3 2.5h2l-2.3-4 2-3h-2l-1 2-1-2z" fill="#fff"/>
-      </svg>
-    </span>
-    <span class="excel-export-copy"><strong>Exportar Excel</strong><small>Generar libro seleccionado</small></span>
-  </button>
-</section>
-</div>
+          <label>
+            Motivo
+            <input name="reason" required placeholder="Ej. Mantenimiento, evento institucional, capacitación...">
+          </label>
 
+          <div class="actions">
+            <button class="primary" type="submit" data-mutation>Aplicar bloqueo</button>
+          </div>
+          <p class="form-error" id="block-error" role="alert"></p>
+        </form>
 
-</div>
+        <div id="blocks-list" class="compact-list"></div>
+      </article>
+    </section>
 
-
-    <div class="card teacher-admin-card">
-      <div class="section-head teacher-admin-head">
+    <!-- USUARIOS -->
+    <section id="panel-users" class="admin-panel" data-admin-panel="users" hidden>
+      <div class="section-heading">
         <div>
-          <h2>Profesores y cierre de perfil</h2>
-          <p>Consulte quién ya concluyó, la fecha de cierre, habilite la edición de un solo profesor o elimine un perfil que ya no deba conservarse.</p>
-        </div>
-        <div class="teacher-admin-head-tools">
-          <button id="refreshTeacherProgressBtn" type="button" class="teacher-refresh-btn" onclick="refreshTeacherAdminProgress()">↻ Actualizar avance</button>
-          <div id="teacherAdminSummary" class="teacher-admin-summary">Cargando…</div>
+          <h3>Usuarios autorizados</h3>
+          <p>Revocar acceso conserva el historial del usuario y sus reservaciones.</p>
         </div>
       </div>
-      <div class="teacher-delete-note">Eliminar perfil borra la información académica guardada en esta plataforma; no elimina la cuenta institucional del profesor.</div>
-      <div id="teacherAdminList" class="teacher-admin-list"></div>
-    </div>
 
+      <div id="users-list" class="users-list"></div>
 
-    <div class="card programs-common-card">
-      <div class="section-head">
+      <form id="user-form" class="admin-card admin-form">
+        <div class="form-row">
+          <label>Nombre<input name="name" required placeholder="Nombre completo"></label>
+          <label>Correo<input type="email" name="email" required placeholder="usuario@uteq.edu.mx"></label>
+        </div>
+        <button class="primary" type="submit" data-mutation>＋ Agregar o reactivar usuario</button>
+        <p class="form-error" id="user-error" role="alert"></p>
+      </form>
+    </section>
+
+    <!-- REPORTES -->
+    <section id="panel-report" class="admin-panel report-section" data-admin-panel="report" hidden>
+      <div class="section-heading">
         <div>
-          <h2>Programas educativos y troncos comunes</h2>
-          <p>Administre acrónimo, edición del programa, tronco común y estado de cada programa desde una sola sección.</p>
+          <h3>Reporte de reservaciones</h3>
+          <p>Excel por mes, año o periodo personalizado, ahora con hoja de estadísticas.</p>
         </div>
       </div>
-      <div class="program-admin-legend">
-        <span class="program-chip acronym-chip">Acrónimo</span>
-        <span class="program-chip edit-chip">Editar</span>
-        <span class="program-chip common-chip">Tronco común</span>
-        <span class="program-chip state-chip">Estado</span>
-      </div>
-      <div id="programAdminList" class="program-admin-list"></div>
-      <div id="commonRuleEditor" class="common-rule-editor hidden"></div>
-      <div class="common-rules-integrated">
-        <h3>Troncos comunes configurados</h3>
-        <div id="commonRules" class="common-rules-compact"></div>
-      </div>
-    </div>
 
+      <form id="report-form">
+        <div class="form-row report-main-row">
+          <label>
+            Tipo de periodo
+            <select name="periodType" id="report-period-type">
+              <option value="monthly">Mensual</option>
+              <option value="annual">Anual</option>
+              <option value="custom">Periodo personalizado</option>
+            </select>
+          </label>
 
+          <label id="report-month-field">
+            Mes
+            <input type="month" name="month" id="report-month">
+          </label>
 
+          <label id="report-year-field" hidden>
+            Año
+            <input type="number" name="year" id="report-year" min="2020" max="2100" step="1">
+          </label>
+        </div>
 
-    <details class="card academic-relations-card" id="academicRelationsCard">
-      <summary class="academic-relations-summary">
+        <div id="report-custom-fields" class="form-row" hidden>
+          <label>Desde<input type="date" name="from" id="report-from"></label>
+          <label>Hasta<input type="date" name="to" id="report-to"></label>
+        </div>
+
+        <fieldset class="report-rooms">
+          <legend>Salas incluidas</legend>
+          <label class="check-line all-room-option">
+            <input type="checkbox" id="report-all-rooms" checked>
+            <span>Todas las salas</span>
+          </label>
+          <div id="report-room-options" class="report-room-options"></div>
+        </fieldset>
+
+        <div class="report-actions">
+          <p id="report-preview" class="report-preview"></p>
+          <button type="submit" class="primary">↓ Descargar Excel</button>
+        </div>
+        <p class="form-error" id="report-error" role="alert"></p>
+      </form>
+    </section>
+
+    <!-- HISTORIAL -->
+    <section id="panel-audit" class="admin-panel" data-admin-panel="audit" hidden>
+      <div class="section-heading">
         <div>
-          <h2>Mapa de relaciones académicas</h2>
-          <p>Visualice cómo se relacionan troncos comunes, materias con el mismo nombre y vinculaciones transversales.</p>
+          <h3>Historial / Bitácora</h3>
+          <p>Registra movimientos realizados desde esta versión; no inventa historial anterior.</p>
         </div>
-        <span class="academic-relations-toggle">Desplegar ▾</span>
-      </summary>
-      <div class="academic-relations-body">
-        <div class="academic-relations-legend">
-          <span class="relation-legend common">Tronco común</span>
-          <span class="relation-legend automatic">Mismo nombre</span>
-          <span class="relation-legend explicit">Transversal 1 a 1</span>
-        </div>
-        <div id="academicRelationsTree" class="academic-relations-tree"></div>
       </div>
-    </details>
 
+      <div class="admin-filters">
+        <label>Desde<input type="date" id="audit-from"></label>
+        <label>Hasta<input type="date" id="audit-to"></label>
+        <button type="button" id="audit-load">Consultar</button>
+      </div>
 
-    <div class="card transversal-admin-card">
-      <div class="section-head transversal-admin-head">
+      <div id="audit-list" class="audit-list"></div>
+    </section>
+
+    <!-- CONFIGURACIÓN -->
+    <section id="panel-settings" class="admin-panel" data-admin-panel="settings" hidden>
+      <div class="section-heading">
         <div>
-          <h2>Asignaturas transversales</h2>
-          <p>Configure, una por una, relaciones específicas entre una materia de origen y una materia de destino.</p>
+          <h3>Configuración</h3>
+          <p>Los valores existentes siguen siendo los predeterminados si aún no existe settings/main.</p>
         </div>
-        <span class="transversal-admin-badge">↔ Vinculación 1 a 1</span>
       </div>
 
-
-      <div class="transversal-auto-note">
-        <strong>Sincronización automática por nombre.</strong>
-        Las asignaturas con el <b>mismo nombre exacto</b> comparten automáticamente competencia, área de conocimiento, coordinación y favorita.
-        Si una materia se <b>deshabilita</b>, esa decisión sólo afecta a esa materia. <b>Proyecto integrador siempre permanece autónomo.</b>
-      </div>
-
-
-      <div class="transversal-pair-grid">
-        <section class="transversal-side source">
-          <div class="transversal-side-title"><span>1</span><div><b>Materia de origen</b><small>Programa, cuatrimestre y asignatura.</small></div></div>
-          <label>Programa
-            <select id="transversalSourceProgram" onchange="renderTransversalSemesterOptions('source')"></select>
+      <form id="settings-form" class="admin-card admin-form">
+        <div class="form-row">
+          <label>Hora inicial<input type="time" name="startTime" step="1800"></label>
+          <label>Hora final<input type="time" name="endTime" step="1800"></label>
+          <label>
+            Duración de bloque
+            <select name="blockMinutes">
+              <option value="30">30 minutos</option>
+              <option value="60">60 minutos</option>
+            </select>
           </label>
-          <label>Cuatrimestre
-            <select id="transversalSourceSemester" onchange="renderTransversalCourseOptions('source')"></select>
-          </label>
-          <label>Asignatura
-            <select id="transversalSourceSubject" onchange="syncTransversalDestinationPrograms()"></select>
-          </label>
-        </section>
-
-
-        <div class="transversal-pair-arrow">→</div>
-
-
-        <section class="transversal-side target">
-          <div class="transversal-side-title"><span>2</span><div><b>Materia de destino</b><small>Programa, cuatrimestre y asignatura común.</small></div></div>
-          <label>Programa
-            <select id="transversalTargetProgram" onchange="renderTransversalSemesterOptions('target')"></select>
-          </label>
-          <label>Cuatrimestre
-            <select id="transversalTargetSemester" onchange="renderTransversalCourseOptions('target')"></select>
-          </label>
-          <label>Asignatura
-            <select id="transversalTargetSubject"></select>
-          </label>
-        </section>
-      </div>
-
-
-      <div class="transversal-actions">
-        <button type="button" class="transversal-save-btn" onclick="saveTransversalRule()">＋ Agregar relación transversal</button>
-      </div>
-
-
-      <div class="transversal-configured">
-        <h3>Relaciones transversales configuradas</h3>
-        <div id="transversalRulesList"></div>
-      </div>
-    </div>
-
-
-    <div id="programEditorCard" class="card program-editor-card">
-      <div class="section-head">
-        <div>
-          <h2 id="programEditorTitle">Agregar programa educativo</h2>
-          <p id="programEditorHelp">Capture nombre y salida lateral. Después agregue las materias y sus horas de forma independiente en cada cuatrimestre.</p>
         </div>
-        <span id="programEditorMode" class="editor-mode-badge">Nuevo</span>
-      </div>
+
+        <fieldset>
+          <legend>Días habilitados</legend>
+          <div class="weekday-grid settings-weekdays">
+            <label><input type="checkbox" name="enabledDays" value="1"> Lun</label>
+            <label><input type="checkbox" name="enabledDays" value="2"> Mar</label>
+            <label><input type="checkbox" name="enabledDays" value="3"> Mié</label>
+            <label><input type="checkbox" name="enabledDays" value="4"> Jue</label>
+            <label><input type="checkbox" name="enabledDays" value="5"> Vie</label>
+            <label><input type="checkbox" name="enabledDays" value="6"> Sáb</label>
+          </div>
+        </fieldset>
+
+        <label>
+          Límite máximo de repetición
+          <select name="repeatLimitDays">
+            <option value="90">90 días</option>
+            <option value="180">180 días</option>
+            <option value="365">1 año</option>
+            <option value="730">2 años</option>
+          </select>
+        </label>
+
+        <div class="actions">
+          <button class="primary" type="submit" data-mutation>Guardar configuración</button>
+        </div>
+        <p class="form-error" id="settings-error" role="alert"></p>
+      </form>
+
+      <article class="admin-card backup-card">
+        <h4>Seguridad / Respaldo</h4>
+        <p>Descarga una copia JSON. Esta función no modifica ni restaura Firestore.</p>
+        <button type="button" id="download-backup">↓ Descargar respaldo</button>
+        <p id="backup-status" class="report-preview"></p>
+      </article>
+    </section>
+  </dialog>
 
 
-      <div class="admin-grid">
-        <label>Nombre del programa educativo<input id="newProgramName"></label>
-        <label>Salida lateral<input id="newProgramExit"></label>
-      </div>
-      <div id="newProgramSemesters"></div>
-      <div class="admin-actions">
-        <button onclick="addSemesterEditor()">+ Agregar cuatrimestre</button>
-        <button id="cancelProgramEditBtn" class="hidden" onclick="cancelProgramEdit()">Cancelar edición</button>
-        <button id="saveProgramEditorBtn" class="primary" onclick="saveProgramEditor()">Guardar nuevo programa educativo</button>
-      </div>
-      <div id="customProgramsList"></div>
+  <!-- CONFIRMACIÓN -->
+  <dialog id="confirm-dialog" aria-labelledby="confirm-title">
+    <h2 id="confirm-title"></h2>
+    <p id="confirm-text"></p>
+    <div class="actions">
+      <button id="cancel-confirm">Volver</button>
+      <button id="confirm-action" class="danger solid" data-mutation>Confirmar</button>
     </div>
+    <p id="confirm-error" class="form-error" role="alert"></p>
+  </dialog>
 
-
-  </section>
-</main>
-
-
-<footer class="site-footer">
-  <div class="creator-credit">Sitio diseñado, creado y administrado por <b>Iván Gutiérrez Bautista</b>.</div>
-  <div>La información vertida en esta plataforma se administra bajo los mismos criterios señalados en el
-    <a href="https://www.uteq.edu.mx/ConoceLaUTEQ/Default.aspx?gXr=217" target="_blank" rel="noopener">Aviso de Privacidad de la UTEQ</a>.
-  </div>
-</footer>
-
-
-<div id="toast" class="toast"></div>
-
-
-<div id="captureOrientationModal" class="capture-orientation-modal hidden" role="dialog" aria-modal="true" aria-labelledby="captureOrientationTitle">
-  <div class="capture-orientation-card">
-    <div class="capture-orientation-head">
-      <div class="capture-orientation-symbol">✓</div>
-      <div>
-        <h2 id="captureOrientationTitle">Antes de iniciar el Perfil por programa</h2>
-        <p>Lea estas indicaciones breves antes de revisar las asignaturas.</p>
-      </div>
-    </div>
-
-
-    <div class="capture-orientation-principle">
-      <strong>Mensaje para el llenado</strong>
-      <span>El llenado de la información parte de un ejercicio de <b>autorreflexión y objetividad</b>. Seleccione únicamente las asignaturas que sean congruentes con su formación académica, experiencia docente y experiencia profesional.</span>
-    </div>
-
-
-    <div class="capture-orientation-grid">
-      <div class="orientation-step"><b>1</b><span><strong>Todas las asignaturas aparecen habilitadas por defecto.</strong> Su tarea principal es deshabilitar aquellas que no sean acordes con su perfil.</span></div>
-      <div class="orientation-step"><b>2</b><span>En cada asignatura que sí puede impartir, indique su nivel: <strong>X = competencia media</strong> o <strong>XX = competencia alta</strong>.</span></div>
-      <div class="orientation-step"><b>3</b><span>Señale de dónde proviene ese conocimiento: <strong>1 Formación académica · 2 Experiencia docente · 3 Experiencia laboral</strong>, o una combinación: 12, 13, 23 o 123.</span></div>
-      <div class="orientation-step"><b>4</b><span>De forma <strong>opcional</strong>, marque <strong>✓ Coordinador</strong> únicamente si previamente ha coordinado esa asignatura.</span></div>
-      <div class="orientation-step"><b>5</b><span>La <strong>★ Favorita</strong> es opcional y sirve para identificar las asignaturas que considera especialmente adecuadas para impartir según su perfil.</span></div>
-    </div>
-
-
-    <div class="capture-orientation-reference">
-      <div><strong>Coordinador y Favorita</strong><span>Son referencias para apoyar el diseño de la planeación cuatrimestral; no aparecen en el formato impreso del Perfil del Profesor.</span></div>
-      <div><strong>Comisiones y horarios</strong><span>Los horarios registrados para alguna comisión son una referencia para la planeación. <b>La prioridad es la atención de la clase frente a grupo</b> y cualquier descarga deberá sujetarse a la autorización correspondiente.</span></div>
-    </div>
-
-
-    <div class="capture-orientation-footer">
-      <span>Los programas con <strong>tronco común</strong> mostrarán un aviso específico cuando existan asignaturas sincronizadas entre programas.</span>
-      <button type="button" class="capture-orientation-accept" onclick="acceptCaptureOrientation()">Aceptar y comenzar</button>
-    </div>
-  </div>
-</div>
-
-
-
-
-<div id="finalizeProfileModal" class="finalize-modal hidden" role="dialog" aria-modal="true" aria-labelledby="finalizeModalTitle">
-  <div class="finalize-modal-card">
-    <div class="finalize-modal-head">
-      <div class="finalize-modal-icon">✓</div>
-      <div>
-        <h2 id="finalizeModalTitle">Finalizar perfil e imprimir</h2>
-        <p>Antes de continuar, verifique lo siguiente:</p>
-      </div>
-    </div>
-    <div class="finalize-lock-warning">
-      <strong>Importante: al finalizar ya no se permitirá editar el perfil.</strong>
-      <span>La información quedará bloqueada para el periodo actual. Si posteriormente necesita realizar cualquier corrección, deberá solicitar al <strong>JUCA</strong> la habilitación temporal de edición.</span>
-    </div>
-    <ul class="finalize-checklist">
-      <li><span class="finalize-bullet">🔒</span><span>Después de confirmar podrá <strong>consultar e imprimir</strong> su información, pero no modificarla. Para editar nuevamente, consulte a su <strong>JUCA</strong>.</span></li>
-      <li><span class="finalize-bullet">🖨</span><span>Imprima o guarde el Perfil del Profesor siempre en <strong>orientación horizontal</strong>.</span></li>
-      <li><span class="finalize-bullet">👁</span><span>Antes de imprimir o guardar el PDF, revise que <strong>todas las hojas</strong> se visualicen correctamente.</span></li>
-      <li><span class="finalize-bullet">✍</span><span>Después de imprimir, el documento deberá pasar a <strong>firma del profesor, firma del JUCA y sello correspondiente</strong>.</span></li>
-    </ul>
-    <div class="finalize-question">¿Desea finalizar su perfil e imprimir / guardar el PDF?</div>
-    <div class="finalize-modal-actions">
-      <button type="button" class="finalize-back-btn" onclick="resolveFinalizeDialog(false)">Volver y revisar</button>
-      <button type="button" class="finalize-confirm-btn" onclick="resolveFinalizeDialog(true)">Finalizar e imprimir / guardar PDF</button>
-    </div>
-  </div>
-</div>
-
-
-
-
-<script src="firebase-config.js?v=20260928-1"></script>
-<script src="catalog.js?v=20260929-80"></script>
-<script src="https://accounts.google.com/gsi/client" async defer></script>
-
-<script type="module" src="app.js?v=20260930-92"></script>
 </body>
 </html>
