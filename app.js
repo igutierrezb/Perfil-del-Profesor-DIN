@@ -3848,7 +3848,7 @@ function printHeader(){
   <h2>PERFIL DEL PROFESOR</h2>
   <b>DIVISIÓN: INDUSTRIAL</b>
   ${closedAt?`<span style="display:block;text-align:center;font-size:10px;font-weight:400;margin-top:2px;">Finalización: ${closedAt}</span>`:''}
-  <span>PERIODO DE VIGENCIA: ${cfg.periodo}</span>
+  <span style="font-size:12px;font-weight:700;">PERIODO DE VIGENCIA: ${cfg.periodo}</span>
 </div>
 <div class="quality-plain"><span>${cfg.codigo}</span><span>${cfg.revision}</span><span>Fecha ${cfg.fechaRevision}</span></div>
   </div>`;
