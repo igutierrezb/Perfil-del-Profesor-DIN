@@ -1,0 +1,12 @@
+PERFIL DIN V96 — CORRECCIÓN MARCA DE AGUA
+
+Sustituya en GitHub:
+1. app.js
+2. index.html
+
+firestore.rules se incluye para conservar el paquete completo, pero NO cambió respecto de V95 y NO necesita republicarse en Firebase por esta corrección.
+
+NO actualice .github/workflows/deploy-pages.yml.
+
+Corrección principal:
+La impresión administrativa usa ahora las revisiones y banderas de finalización del profesor que se está imprimiendo. Un perfil correctamente finalizado ya no debe recibir por error la marca de agua DOCUMENTO NO FINALIZADO / BORRADOR.

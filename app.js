@@ -127,7 +127,7 @@ async function releaseSessionIfOwned(){
 
 
 const allowedDomain=(window.PAD_ALLOWED_DOMAIN||'uteq.edu.mx').toLowerCase();
-const PAD_BUILD_VERSION='V95-2026-10-01';
+const PAD_BUILD_VERSION='V96-2026-10-01';
 window.PAD_BUILD_VERSION=PAD_BUILD_VERSION;
 const adminEmail=(window.PAD_ADMIN_EMAIL||'ivan.gutierrez@uteq.edu.mx').toLowerCase();
 const googleClientId=String(window.PAD_GOOGLE_CLIENT_ID||'').trim();
@@ -4482,6 +4482,10 @@ window.printTeacherProfile=async function(uid){
     const previousProgramMeta=programMeta;
     const previousFinalizedAtMs=store.finalizedAtMs;
     const previousSubmittedPeriod=store.submittedPeriod;
+    const previousFinalizedDataRevision=store.finalizedDataRevision;
+    const previousDataRevision=store.dataRevision;
+    const previousIndividualEditEnabled=store.individualEditEnabled;
+    const previousIndividualEditDisabled=store.individualEditDisabled;
 
 
 
@@ -4492,6 +4496,12 @@ window.printTeacherProfile=async function(uid){
       programMeta=JSON.parse(JSON.stringify(d.programMeta||{}));
       store.finalizedAtMs=Number(d.finalizedAtMs)||null;
       store.submittedPeriod=d.submittedPeriod||null;
+      // V96: la impresión administrativa debe evaluar el estado de finalización
+      // del profesor seleccionado, no las revisiones del perfil del administrador.
+      store.finalizedDataRevision=Number(d.finalizedDataRevision)||0;
+      store.dataRevision=Number(d.dataRevision)||0;
+      store.individualEditEnabled=!!d.individualEditEnabled;
+      store.individualEditDisabled=!!d.individualEditDisabled;
 
 
 
@@ -4504,6 +4514,10 @@ window.printTeacherProfile=async function(uid){
       programMeta=previousProgramMeta;
       store.finalizedAtMs=previousFinalizedAtMs;
       store.submittedPeriod=previousSubmittedPeriod;
+      store.finalizedDataRevision=previousFinalizedDataRevision;
+      store.dataRevision=previousDataRevision;
+      store.individualEditEnabled=previousIndividualEditEnabled;
+      store.individualEditDisabled=previousIndividualEditDisabled;
     }
   }catch(e){
     console.error('No fue posible imprimir el perfil del profesor',e);
