@@ -1,6 +1,6 @@
 import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.13.2/firebase-app.js';
 import { getAuth, GoogleAuthProvider, signInWithCredential, signOut, onAuthStateChanged, setPersistence, browserLocalPersistence } from 'https://www.gstatic.com/firebasejs/10.13.2/firebase-auth.js';
-import { getFirestore, doc, getDoc, getDocFromServer, setDoc, updateDoc, collection, getDocs, onSnapshot, serverTimestamp, addDoc, runTransaction } from 'https://www.gstatic.com/firebasejs/10.13.2/firebase-firestore.js';
+import { getFirestore, doc, getDoc, collection, getDocs, writeBatch as liteWriteBatch, doc as liteDoc, setDoc as liteSetDoc, updateDoc as liteUpdateDoc, collection as liteCollection, addDoc as liteAddDoc, serverTimestamp as liteServerTimestamp } from 'https://www.gstatic.com/firebasejs/10.13.2/firebase-firestore-lite.js';
 
 
 const $=id=>document.getElementById(id);
@@ -32,7 +32,7 @@ const workflowState={
   expectedProgramIndex:0,
   reviewUnlocked:false
 };
-let newSemesterCount=5,programEditorSemesters=[],auth=null,currentUser=null,authReady=false,db=null,cloudSettingsUnsub=null,cloudProfileMetaUnsub=null,remoteProfileLoaded=false,cloudAvailable=false,cloudSaveTimer=null,cloudRetryTimer=null,countdownTimer=null,lastSavedAt=store.lastSavedAt||null,editingCommonRuleId=null,editingProgramId=null,teacherAdminCache={},previousTeacherAdminCache={};
+let newSemesterCount=5,programEditorSemesters=[],auth=null,currentUser=null,authReady=false,db=null,dbLite=null,cloudSettingsUnsub=null,cloudProfileMetaUnsub=null,remoteProfileLoaded=false,cloudAvailable=false,cloudSaveTimer=null,cloudRetryTimer=null,countdownTimer=null,lastSavedAt=store.lastSavedAt||null,editingCommonRuleId=null,editingProgramId=null,teacherAdminCache={},previousTeacherAdminCache={};
 let planningCommissionEditorIndex=null;
 let planningCommissionEditorOpen=false;
 let planningCommissionDraft=emptyCommission();
@@ -47,37 +47,12 @@ let sessionConflictKnown=false;
 let teacherAdminCacheLoaded=false;
 
 /* =========================================================
-   V91 · SESIÓN RESILIENTE, CONTROL ADMINISTRATIVO Y BAJO CONSUMO
-   - El perfil se muestra desde la copia local sin esperar a Firestore.
-   - No existen heartbeats periódicos: la sesión se renueva al reclamarla
-     y después de guardados manuales confirmados.
-   - Una sesión vencida o del mismo dispositivo se recupera automáticamente.
-   - Si otro dispositivo está realmente activo, el usuario puede continuar aquí
-     con una sola acción; el dispositivo anterior queda en solo lectura.
-   - El candado administrativo y el control de dispositivo son estados separados.
+   V93 · GUARDADO MANUAL Y BAJO CONSUMO
+   - Sin sesiones exclusivas por dispositivo.
+   - Sin heartbeats, leases, transferencias ni profileSessions.
+   - Firestore se usa sólo para lecturas puntuales y acciones manuales.
    ========================================================= */
 const CLOUD_READ_TIMEOUT_MS=6000;
-const CLOUD_WRITE_UI_TIMEOUT_MS=1400;
-const ADMIN_PERMISSION_WRITE_TIMEOUT_MS=10000;
-const ADMIN_PERMISSION_VERIFY_TIMEOUT_MS=7000;
-const SESSION_STATUS_READ_TIMEOUT_MS=3500;
-const SESSION_LEASE_MS=8*60*1000;
-const SESSION_LEASE_TOUCH_MIN_MS=3*60*1000;
-let activeSessionId='';
-let sessionHasControl=false;
-let sessionDocUnsub=null;
-let sessionHeartbeatTimer=null;
-let sessionActivationBusy=false;
-let sessionConflictDevice='';
-let sessionTransferModalDismissed=false;
-let sessionSnapshotCache=null;
-let sessionWriteSeq=Number(store.sessionWriteSeq)||0;
-let sessionLastLeaseTouchMs=0;
-let sessionClaimInFlight=false;
-// Compatibilidad con limpieza de estado heredada; V91 ya no programa estos temporizadores.
-let sessionControlRetryTimer=null;
-let sessionHandoffRetryTimer=null;
-let sessionTransferRequested=false;
 
 function withTimeout(promise,ms,fallbackValue=null){
   let timer=null;
@@ -134,271 +109,17 @@ async function ensurePdfLibraries(){
   return loadExternalScriptOnce('https://cdn.jsdelivr.net/npm/jspdf@2.5.1/dist/jspdf.umd.min.js',()=>!!window.jspdf?.jsPDF);
 }
 
-function sessionStorageKey(){
-  return currentUser?.uid?`PAD_UTEQ_SESSION_${currentUser.uid}`:'PAD_UTEQ_SESSION';
-}
-function getOrCreateSessionId(){
-  const key=sessionStorageKey();
-  try{
-    const existing=sessionStorage.getItem(key);
-    if(existing)return existing;
-    const id=(crypto?.randomUUID?.()||`${Date.now()}-${Math.random().toString(36).slice(2)}`);
-    sessionStorage.setItem(key,id);
-    return id;
-  }catch(_){
-    return `${Date.now()}-${Math.random().toString(36).slice(2)}`;
-  }
-}
-function getOrCreateDeviceId(){
-  const key='PAD_UTEQ_DEVICE_ID';
-  try{
-    const existing=localStorage.getItem(key);
-    if(existing)return existing;
-    const id=(crypto?.randomUUID?.()||`device-${Date.now()}-${Math.random().toString(36).slice(2)}`);
-    localStorage.setItem(key,id);
-    return id;
-  }catch(_){
-    return `device-${navigator.platform||'unknown'}`;
-  }
-}
-function deviceLabel(){
-  const ua=navigator.userAgent||'';
-  if(/Android/i.test(ua))return 'Teléfono o tableta Android';
-  if(/iPhone/i.test(ua))return 'iPhone';
-  if(/iPad/i.test(ua))return 'iPad';
-  if(/Windows/i.test(ua)||/Win32|Win64/i.test(navigator.platform||''))return 'Computadora Windows';
-  if(/Macintosh|Mac OS/i.test(ua))return 'Computadora Mac';
-  if(/Linux/i.test(ua))return 'Computadora Linux';
-  return /Mobile/i.test(ua)?'Dispositivo móvil':'Computadora';
-}
-function updateSessionStatus(text,kind='neutral'){
-  const el=$('sessionStatus');
-  if(!el)return;
-  el.textContent=text;
-  el.className=`session-status ${kind}`;
-}
 function sessionCanWrite(){
-  // V92: no existe candado por dispositivo. El guardado manual confirmado más reciente
-  // es la referencia en nube. El control real de escritura es administrativo.
+  // V93: no existe candado por dispositivo.
   return !!currentUser;
 }
-function nextSessionWriteSeq(){
-  sessionWriteSeq=Math.max(sessionWriteSeq,Number(store.sessionWriteSeq)||0)+1;
-  store.sessionWriteSeq=sessionWriteSeq;
-  return sessionWriteSeq;
-}
-async function refreshSessionWriteSeqFromCloud(){
-  if(!db||!currentUser)return;
-  if(remoteProfileLoaded)return;
-  try{
-    const snap=await withTimeout(getDoc(doc(db,'profiles',currentUser.uid)),2500,null);
-    if(!snap||!snap.exists())return;
-    const d=snap.data()||{};
-    sessionWriteSeq=Math.max(sessionWriteSeq,Number(d.sessionWriteSeq)||0);
-    store.sessionWriteSeq=sessionWriteSeq;
-    try{localStorage.setItem('PAD_UTEQ',JSON.stringify(store))}catch(_){}
-  }catch(e){
-    console.warn('No fue posible refrescar el contador de sesión',e);
-  }
-}
-function sessionIsStale(active,heartbeat,sessionData={}){
-  const leaseMs=Number(sessionData?.leaseVersion)>=2?SESSION_LEASE_MS:120000;
-  return !active || !Number(heartbeat) || (Date.now()-Number(heartbeat))>leaseMs;
-}
-function sessionBelongsToThisDevice(d={}){
-  const remoteDeviceId=String(d.activeDeviceId||'');
-  return !!remoteDeviceId && remoteDeviceId===getOrCreateDeviceId();
-}
-function stopSessionHeartbeat(){
-  clearInterval(sessionHeartbeatTimer);
-  sessionHeartbeatTimer=null;
-}
-async function renewSessionLease(){
-  // V92: compatibilidad con llamadas heredadas. No escribe profileSessions.
-  return true;
-}
-async function heartbeatSession(){return true}
-function startSessionHeartbeat(){stopSessionHeartbeat()}
-function captureVisibleStateBeforeHandoff(){
-  try{
-    if($('apPat'))store.profile=profileFromInputs();
-    if(planningEnabled()&&$('commissionsBlock')){
-      try{collectPlanning()}catch(_){}
-    }
-    persist({schedule:false});
-  }catch(e){
-    console.warn('No fue posible conservar el borrador local antes del cambio de dispositivo',e);
-  }
-}
-async function activateSessionControl({preferRemote=false}={}){
-  if(sessionActivationBusy)return false;
-  sessionActivationBusy=true;
-  sessionHasControl=true;
-  updateSessionStatus(preferRemote?'Recuperando la última versión guardada…':'Preparando edición…','warn');
-  applyEditState();
-  updateNavState();
-  try{
-    if(preferRemote)await loadRemoteProfile({preferRemote:true});
-    await refreshSessionWriteSeqFromCloud();
-  }catch(e){
-    console.warn('No fue posible refrescar completamente la sesión antes de editar',e);
-  }finally{
-    sessionActivationBusy=false;
-  }
-  sessionLastLeaseTouchMs=Date.now();
-  updateSessionStatus('Editando en este dispositivo','ok');
-  applyEditState();
-  updateNavState();
-  if(store.syncPending)updateCloudStatus('Cambios locales pendientes · pulse Guardar y continuar','warn');
-  return true;
-}
-async function forceClaimSession({preferRemote=false}={}){
-  if(!currentUser)return false;
-  sessionHasControl=true;
-  sessionConflictKnown=false;
-  sessionActivationBusy=false;
-  if(preferRemote)await loadRemoteProfile({preferRemote:true});
-  hideSessionTransferModal();
-  applyEditState();
-  updateNavState();
-  return true;
-}
-function hideSessionTransferModal(){
-  const modal=$('sessionTransferModal');
-  if(modal)modal.classList.add('hidden');
-  document.body.classList.remove('session-transfer-open');
-}
-function setSessionActionBusy(busy,label='Procesando…'){
-  const continueBtn=$('sessionContinueHereBtn');
-  if(continueBtn){
-    continueBtn.disabled=!!busy;
-    continueBtn.classList.toggle('is-busy',!!busy);
-    continueBtn.textContent=busy?label:'Continuar edición aquí';
-  }
-}
-function showSessionTransferModal({device='otro dispositivo'}={}){
-  const modal=$('sessionTransferModal');
-  if(!modal||sessionTransferModalDismissed)return;
-  sessionConflictDevice=device;
-  const text=$('sessionTransferText'),state=$('sessionTransferState');
-  if(text)text.textContent=`Existe una sesión reciente de edición en ${device}.`;
-  if(state){
-    state.className='session-transfer-state warn';
-    state.innerHTML='<strong>Puede continuar en este dispositivo.</strong> La sesión anterior quedará en solo lectura. Solo se conservarán en ambos equipos los datos que ya hayan sido guardados en la nube.';
-  }
-  const continueBtn=$('sessionContinueHereBtn');
-  if(continueBtn){
-    continueBtn.disabled=false;
-    continueBtn.classList.remove('is-busy');
-    continueBtn.textContent='Continuar edición aquí';
-  }
-  modal.classList.remove('hidden');
-  document.body.classList.add('session-transfer-open');
-}
-window.closeSessionTransferModal=function(){
-  sessionTransferModalDismissed=true;
-  hideSessionTransferModal();
-  updateSessionStatus(`Solo lectura · edición activa en ${sessionConflictDevice||'otro dispositivo'}`,'readonly');
-  applyEditState();
-  updateNavState();
-}
-window.continueEditingHere=async function(){
-  sessionTransferModalDismissed=false;
-  if(!db||!currentUser||isAdmin())return;
-  activeSessionId=activeSessionId||getOrCreateSessionId();
-  setSessionActionBusy(true,'Activando edición…');
-  updateSessionStatus('Activando la edición en este dispositivo…','warn');
-  try{
-    const claimed=await forceClaimSession({force:true,preferRemote:true});
-    if(claimed){
-      hideSessionTransferModal();
-      toast('La edición ya está activa en este dispositivo.');
-    }else{
-      showSessionTransferModal({device:sessionConflictDevice||'otro dispositivo'});
-      updateSessionStatus('No fue posible activar la edición. Intente nuevamente.','warn');
-      toast('No fue posible activar la edición en este dispositivo.');
-    }
-  }catch(e){
-    console.error('No fue posible continuar la edición aquí',e);
-    showSessionTransferModal({device:sessionConflictDevice||'otro dispositivo'});
-    updateSessionStatus('No fue posible activar la edición. Intente nuevamente.','warn');
-  }finally{
-    setSessionActionBusy(false);
-  }
-}
-window.recoverEditingHere=window.continueEditingHere;
-function watchSessionDocument(ref){
-  if(sessionDocUnsub)sessionDocUnsub();
-  sessionDocUnsub=onSnapshot(ref,snap=>{
-    const d=snap.exists()?snap.data():{};
-    sessionSnapshotCache=d;
-    const active=String(d.activeSessionId||'');
-    const activeDevice=String(d.activeDevice||'otro dispositivo');
-    const heartbeat=Number(d.heartbeatMs)||0;
-
-    if(active===activeSessionId&&active){
-      sessionConflictKnown=false;
-      sessionTransferModalDismissed=false;
-      hideSessionTransferModal();
-      sessionLastLeaseTouchMs=Math.max(sessionLastLeaseTouchMs,heartbeat||Date.now());
-      if(!sessionHasControl&&!sessionActivationBusy&&!sessionClaimInFlight){
-        activateSessionControl({preferRemote:false}).catch(e=>{
-          console.warn('Activación de sesión pendiente',e);
-          sessionHasControl=false;
-          updateSessionStatus('No fue posible activar la edición. Intente nuevamente.','warn');
-        });
-      }
-      return;
-    }
-
-    if(!active || sessionBelongsToThisDevice(d) || sessionIsStale(active,heartbeat,d)){
-      sessionConflictKnown=false;
-      hideSessionTransferModal();
-      if(!sessionClaimInFlight){
-        forceClaimSession({force:false,preferRemote:false}).catch(e=>console.warn('Recuperación automática de sesión pendiente',e));
-      }
-      return;
-    }
-
-    if(sessionHasControl)captureVisibleStateBeforeHandoff();
-    sessionHasControl=false;
-    sessionConflictKnown=true;
-    sessionConflictDevice=activeDevice;
-    stopSessionHeartbeat();
-    applyEditState();
-    updateNavState();
-    showSessionTransferModal({device:activeDevice});
-    updateSessionStatus(`Solo lectura temporal · edición activa en ${activeDevice}`,'readonly');
-  },e=>{
-    console.warn('No fue posible vigilar la sesión activa',e);
-    sessionConflictKnown=false;
-    updateSessionStatus('Modo local · control remoto de sesión no disponible','warn');
-    applyEditState();
-  });
-}
-async function requestSingleDeviceControl(){
-  if(!currentUser)return false;
-  sessionHasControl=true;
-  sessionConflictKnown=false;
-  sessionActivationBusy=false;
-  sessionTransferModalDismissed=true;
-  hideSessionTransferModal();
-  updateSessionStatus('Guardado manual activo','ok');
-  applyEditState();
-  updateNavState();
-  return true;
-}
-function scheduleSessionControlRetry(){/* V92: sin control remoto de dispositivo */}
-async function retrySessionControl(){return !!currentUser}
 async function releaseSessionIfOwned(){
-  // V92: no hay una sesión exclusiva que liberar en Firestore.
-  sessionHasControl=false;
-  sessionConflictKnown=false;
-  stopSessionHeartbeat();
+  // Compatibilidad con el cierre de sesión: no hay nada remoto que liberar.
+  return true;
 }
 
 const allowedDomain=(window.PAD_ALLOWED_DOMAIN||'uteq.edu.mx').toLowerCase();
-const PAD_BUILD_VERSION='V92-2026-09-30';
+const PAD_BUILD_VERSION='V94-2026-10-01';
 window.PAD_BUILD_VERSION=PAD_BUILD_VERSION;
 const adminEmail=(window.PAD_ADMIN_EMAIL||'ivan.gutierrez@uteq.edu.mx').toLowerCase();
 const googleClientId=String(window.PAD_GOOGLE_CLIENT_ID||'').trim();
@@ -617,11 +338,11 @@ function editingLockReason(){
     if(cfg.editingLocked)return 'global-admin';
     if(submissionLockedForCurrentPeriod())return 'finalized';
   }
-  if(currentUser&&(!bootstrapComplete||sessionActivationBusy))return 'initializing';
+  if(currentUser&&!bootstrapComplete)return 'initializing';
   return '';
 }
 function editingAllowed(){
-  if(currentUser&&(!bootstrapComplete||sessionActivationBusy))return false;
+  if(currentUser&&!bootstrapComplete)return false;
   if(!administrativeEditingAllowed())return false;
   return true;
 }
@@ -685,7 +406,7 @@ function updateCountdownUI(){
       :'<b>Cargando configuración</b><span>La fecha límite se confirmará al iniciar sesión.</span>');
   const editSignature=[
     editingAllowed(),planningEditingAllowed(),deadlinePassed(),submissionLockedForCurrentPeriod(),
-    !!cfg.editingLocked,!!store.individualEditEnabled,!!store.individualEditDisabled,!!sessionHasControl
+    !!cfg.editingLocked,!!store.individualEditEnabled,!!store.individualEditDisabled
   ].join('|');
   if(updateCountdownUI.lastEditSignature!==editSignature){
     updateCountdownUI.lastEditSignature=editSignature;
@@ -871,6 +592,7 @@ function profileBackupSnapshot(){
     planningByPeriod:JSON.parse(JSON.stringify(planningByPeriod||{})),
     submittedPeriod:store.submittedPeriod||null,
     finalizedAtMs:Number(store.finalizedAtMs)||null,
+    finalizedDataRevision:Number(store.finalizedDataRevision)||0,
     profileResetToken:store.profileResetToken||null,
     profileDeletionToken:store.profileDeletionToken||null,
     currentProgramIndex:0,
@@ -949,7 +671,8 @@ function teacherComparableState(data={}){
     programMeta:cloneTeacherData(data.programMeta||{}),
     planningByPeriod:cloneTeacherData(data.planningByPeriod||{}),
     submittedPeriod:data.submittedPeriod||null,
-    finalizedAtMs:Number(data.finalizedAtMs)||null
+    finalizedAtMs:Number(data.finalizedAtMs)||null,
+    finalizedDataRevision:Number(data.finalizedDataRevision)||0
   };
 }
 function currentTeacherComparableState(){
@@ -959,7 +682,8 @@ function currentTeacherComparableState(){
     programMeta,
     planningByPeriod,
     submittedPeriod:store.submittedPeriod||null,
-    finalizedAtMs:Number(store.finalizedAtMs)||null
+    finalizedAtMs:Number(store.finalizedAtMs)||null,
+    finalizedDataRevision:Number(store.finalizedDataRevision)||0
   });
 }
 function teacherFingerprint(data={}){
@@ -995,6 +719,31 @@ function refreshManualSaveStatus(){
   }
   return pending;
 }
+let lastCloudErrorCode='';
+function normalizedCloudErrorCode(error){
+  return String(error?.code||'').replace(/^firestore\//,'');
+}
+function cloudErrorText(error,prefix='No fue posible completar la operación'){
+  const code=normalizedCloudErrorCode(error);
+  if(code==='resource-exhausted')return `${prefix} · cuota diaria de Firestore agotada`;
+  if(code==='permission-denied')return `${prefix} · permiso rechazado por Firestore`;
+  if(code==='unavailable')return `${prefix} · servicio de Firestore no disponible`;
+  if(code==='unauthenticated')return `${prefix} · sesión de Firebase no válida`;
+  return prefix;
+}
+function showCloudWriteFailure(error,action='guardar'){
+  const code=normalizedCloudErrorCode(error);
+  if(code==='resource-exhausted'){
+    alert(`No fue posible ${action}.\n\nFirestore agotó la cuota disponible del proyecto. No se perdió la información capturada en este dispositivo y no se realizó ningún borrado.\n\nVuelva a intentarlo cuando la cuota se haya restablecido.`);
+    return;
+  }
+  if(code==='permission-denied'){
+    alert(`No fue posible ${action}.\n\nFirestore rechazó la operación por permisos. No se eliminó información académica.`);
+    return;
+  }
+  alert(`No fue posible ${action}.\n\nCódigo: ${code||'sin código'}.\n\nLa información capturada permanece conservada localmente.`);
+}
+
 async function saveTeacherChangesNow(reason='guardado manual'){
   if(manualSaveInFlight){
     toast('Ya hay un guardado en curso.');
@@ -1026,9 +775,11 @@ async function saveTeacherChangesNow(reason='guardado manual'){
   updateCloudStatus('Guardando cambios…','warn');
   try{
     const before=currentTeacherFingerprint();
+    lastCloudErrorCode='';
     const ok=await forceProfileCheckpointToCloud(reason);
     if(!ok){
-      toast('No se pudo confirmar el guardado en nube. Tus cambios siguen en este dispositivo.');
+      if(lastCloudErrorCode==='resource-exhausted')toast('Cuota de Firestore agotada. Tus cambios siguen en este dispositivo.');
+      else toast('No se pudo confirmar el guardado en nube. Tus cambios siguen en este dispositivo.');
       return {ok:false,wrote:false};
     }
     // Si algo cambió durante la escritura, no avanzamos con cambios todavía pendientes.
@@ -1145,7 +896,7 @@ async function saveGlobalSettings(action='Configuración global actualizada'){
   if(!db||!isAdmin())return;
   cacheGlobalSettings();
   try{
-    await setDoc(doc(db,'settings','app'),{...globalSettingsPayload(),updatedAt:serverTimestamp(),updatedBy:currentUser.email},{merge:true});
+    await liteSetDoc(liteDoc(dbLite,'settings','app'),{...globalSettingsPayload(),updatedAt:liteServerTimestamp(),updatedBy:currentUser.email},{merge:true});
     updateCloudStatus('Configuración global sincronizada','ok');
     await writeAudit(action);
   }catch(e){
@@ -1156,7 +907,7 @@ async function saveGlobalSettings(action='Configuración global actualizada'){
 async function writeAudit(action){
   if(!db||!currentUser)return;
   try{
-    await addDoc(collection(db,'audit'),{action,email:currentUser.email||'',uid:currentUser.uid,at:serverTimestamp(),period:cfg.periodo});
+    await liteAddDoc(liteCollection(dbLite,'audit'),{action,email:currentUser.email||'',uid:currentUser.uid,at:liteServerTimestamp(),period:cfg.periodo});
   }catch(e){console.warn('Auditoría no disponible',e)}
 }
 function resetLocalTeacherData({keepProfile=false}={}){
@@ -1168,6 +919,7 @@ function resetLocalTeacherData({keepProfile=false}={}){
   store.programMeta=programMeta;
   store.submittedPeriod=null;
   store.finalizedAtMs=null;
+  store.finalizedDataRevision=0;
   store.individualEditEnabled=false;
   store.profileResetToken=null;
   planningByPeriod={};
@@ -1209,7 +961,8 @@ function updateRemoteProfileShadow(data){
     programMeta:cloneTeacherData(data.programMeta||remoteProfileShadow?.programMeta||{}),
     planningByPeriod:cloneTeacherData(data.planningByPeriod||remoteProfileShadow?.planningByPeriod||{}),
     submittedPeriod:Object.prototype.hasOwnProperty.call(data,'submittedPeriod')?(data.submittedPeriod||null):(remoteProfileShadow?.submittedPeriod||null),
-    finalizedAtMs:Object.prototype.hasOwnProperty.call(data,'finalizedAtMs')?(Number(data.finalizedAtMs)||null):(Number(remoteProfileShadow?.finalizedAtMs)||null)
+    finalizedAtMs:Object.prototype.hasOwnProperty.call(data,'finalizedAtMs')?(Number(data.finalizedAtMs)||null):(Number(remoteProfileShadow?.finalizedAtMs)||null),
+    finalizedDataRevision:Object.prototype.hasOwnProperty.call(data,'finalizedDataRevision')?(Number(data.finalizedDataRevision)||0):(Number(remoteProfileShadow?.finalizedDataRevision)||0)
   };
   setCloudTeacherFingerprint(remoteProfileShadow);
 }
@@ -1230,11 +983,11 @@ async function archiveTeacherProfileBeforeChange(uid,reason){
   if(!snap.exists())throw new Error('El perfil seleccionado no existe.');
   const data=snap.data()||{};
   const archiveId=String(Date.now());
-  await setDoc(doc(db,'profileArchives',uid,'snapshots',archiveId),{
+  await liteSetDoc(liteDoc(dbLite,'profileArchives',uid,'snapshots',archiveId),{
     ...data,
     archivedUid:uid,
     archiveReason:reason,
-    archivedAt:serverTimestamp(),
+    archivedAt:liteServerTimestamp(),
     archivedAtMs:Date.now(),
     archivedBy:currentUser?.email||''
   });
@@ -1253,10 +1006,11 @@ function profileCloudPayload({releaseEditOverride=false}={}){
     period:cfg.periodo,
     submittedPeriod:store.submittedPeriod||null,
     finalizedAtMs:store.finalizedAtMs||null,
+    finalizedDataRevision:Number(store.finalizedDataRevision)||0,
     planningByPeriod:mergeRecordPreservingRemote(remote.planningByPeriod||{},planningByPeriod),
     clientUpdatedAt:Number(store.localUpdatedAt)||Date.now(),
     dataRevision:Number(store.dataRevision)||0,
-    updatedAt:serverTimestamp()
+    updatedAt:liteServerTimestamp()
   };
   // Los controles administrativos nunca viajan en el guardado manual del profesor.
   // La única excepción es cerrar una reapertura individual al finalizar de nuevo.
@@ -1298,7 +1052,7 @@ async function syncProfileToCloud({reason='guardado manual',releaseEditOverride=
   const version=Number(store.localUpdatedAt)||Date.now();
   try{
     const safePayload=profileCloudPayload({releaseEditOverride});
-    await setDoc(doc(db,'profiles',currentUser.uid),safePayload,{merge:true});
+    await liteSetDoc(liteDoc(dbLite,'profiles',currentUser.uid),safePayload,{merge:true});
     updateRemoteProfileShadow(safePayload);
     lastCloudTeacherFingerprint=fingerprintBefore;
     cloudTeacherFingerprintKnown=true;
@@ -1313,6 +1067,7 @@ async function syncProfileToCloud({reason='guardado manual',releaseEditOverride=
     );
     return true;
   }catch(e){
+    lastCloudErrorCode=normalizedCloudErrorCode(e);
     console.warn(`Guardado en nube no disponible (${reason})`,e);
     store.syncPending=true;
     persistStoreSnapshot();
@@ -1331,6 +1086,7 @@ function scheduleCloudProfileSave(){
 }
 async function forceProfileCheckpointToCloud(reason='guardado manual',options={}){
   const force=!!options.force;
+  const releaseEditOverride=!!options.releaseEditOverride;
   if(!db||!currentUser)return false;
   if(!isAdmin()&&individualEditBlocked()){
     updateCloudStatus('Edición bloqueada por Administración · datos conservados','readonly');
@@ -1351,8 +1107,8 @@ async function forceProfileCheckpointToCloud(reason='guardado manual',options={}
   }
 
   try{
-    const safePayload=profileCloudPayload();
-    await setDoc(doc(db,'profiles',currentUser.uid),safePayload,{merge:true});
+    const safePayload=profileCloudPayload({releaseEditOverride});
+    await liteSetDoc(liteDoc(dbLite,'profiles',currentUser.uid),safePayload,{merge:true});
     updateRemoteProfileShadow(safePayload);
     lastCloudTeacherFingerprint=fingerprintBefore;
     cloudTeacherFingerprintKnown=true;
@@ -1367,6 +1123,7 @@ async function forceProfileCheckpointToCloud(reason='guardado manual',options={}
     );
     return true;
   }catch(e){
+    lastCloudErrorCode=normalizedCloudErrorCode(e);
     console.warn(`No fue posible confirmar ${reason}`,e);
     store.syncPending=true;
     persistStoreSnapshot();
@@ -1412,6 +1169,7 @@ function restoreUserBackupBeforeCloud(){
   applyProfileContent(backup);
   if('submittedPeriod' in backup)store.submittedPeriod=backup.submittedPeriod||null;
   if('finalizedAtMs' in backup)store.finalizedAtMs=Number(backup.finalizedAtMs)||null;
+  if('finalizedDataRevision' in backup)store.finalizedDataRevision=Number(backup.finalizedDataRevision)||0;
   if('profileResetToken' in backup)store.profileResetToken=backup.profileResetToken||null;
   if('profileDeletionToken' in backup)store.profileDeletionToken=backup.profileDeletionToken||null;
   store.localUpdatedAt=Number(backup.localUpdatedAt)||Number(store.localUpdatedAt)||Date.now();
@@ -1435,24 +1193,33 @@ async function loadRemoteProfile({preferRemote=false}={}){
     if(snap.exists()){
       const d=snap.data()||{};
       updateRemoteProfileShadow(d);
-      sessionWriteSeq=Math.max(sessionWriteSeq,Number(d.sessionWriteSeq)||0);
-      store.sessionWriteSeq=sessionWriteSeq;
       const backup=readUserBackup();
 
 
-      // Una eliminación administrativa explícita prevalece sobre cualquier respaldo local antiguo.
+      // V94 · RESGUARDO NO DESTRUCTIVO.
+      // Un perfil resguardado conserva íntegramente sus datos y queda en solo lectura.
       if(d.deletedByAdmin===true){
-        preserveUserBackupForRecovery('Perfil marcado como eliminado por Administración');
-        clearUserBackup(currentUser.uid);
-        resetLocalTeacherData({keepProfile:false});
+        updateRemoteProfileShadow(d);
+        applyProfileContent(d);
+        if('submittedPeriod' in d)store.submittedPeriod=d.submittedPeriod||null;
+        if('finalizedAtMs' in d)store.finalizedAtMs=Number(d.finalizedAtMs)||null;
+        store.finalizedDataRevision=Number(d.finalizedDataRevision)||0;
+        store.individualEditEnabled=false;
+        store.individualEditDisabled=true;
         store.profileDeletionToken=d.profileDeletionToken||null;
-        store.localUpdatedAt=timestampToMs(d.deletedAt)||Date.now();
+        store.localUpdatedAt=Number(d.clientUpdatedAt)||timestampToMs(d.updatedAt)||timestampToMs(d.deletedAt)||Date.now();
         store.cloudUpdatedAt=store.localUpdatedAt;
         store.syncPending=false;
-        localStorage.setItem('PAD_UTEQ',JSON.stringify(store));
+        currentProgramIndex=0;
+        store.currentProgramIndex=0;
+        localStorage.setItem('PAD_UTEQ',JSON.stringify({...store,cfg,answers,programMeta,customPrograms,programOverrides,disabledPrograms,programAcronyms,commonRules,transversalRules,planningByPeriod,currentProgramIndex:0,lastSavedAt}));
+        saveUserBackup();
+        renderLoadedProfile();
         remoteProfileLoaded=true;
-        updateCloudStatus('Perfil eliminado por Administración · nueva captura disponible','warn');
-        toast('Administración eliminó este perfil. Puede iniciar una nueva captura desde cero.');
+        applyEditState();
+        updateNavState();
+        updateCloudStatus('Perfil resguardado por Administración · solo lectura','readonly');
+        toast('Este perfil está resguardado por Administración. La información permanece conservada y no puede modificarse hasta que sea restaurado.');
         return;
       }
 
@@ -1512,6 +1279,7 @@ async function loadRemoteProfile({preferRemote=false}={}){
           store.submittedPeriod=d.submittedPeriod||null;
           store.finalizedAtMs=remoteFinal||null;
         }
+        store.finalizedDataRevision=Number(d.finalizedDataRevision)||((store.submittedPeriod===cfg.periodo&&store.finalizedAtMs&&!d.individualEditEnabled)?remoteRevision:0);
         store.localUpdatedAt=localUpdatedAt;
         store.dataRevision=localRevision||Number(store.dataRevision)||0;
         store.syncPending=true;
@@ -1523,6 +1291,7 @@ async function loadRemoteProfile({preferRemote=false}={}){
         applyProfileContent(d);
         if('submittedPeriod' in d)store.submittedPeriod=d.submittedPeriod||null;
         if('finalizedAtMs' in d)store.finalizedAtMs=Number(d.finalizedAtMs)||null;
+        store.finalizedDataRevision=Number(d.finalizedDataRevision)||((store.submittedPeriod===cfg.periodo&&store.finalizedAtMs&&!d.individualEditEnabled)?remoteRevision:0);
         store.localUpdatedAt=remoteUpdatedAt||Date.now();
         store.cloudUpdatedAt=remoteUpdatedAt||store.localUpdatedAt;
         store.dataRevision=remoteRevision||Number(store.dataRevision)||0;
@@ -1546,6 +1315,7 @@ async function loadRemoteProfile({preferRemote=false}={}){
         currentProgramIndex=0;
         store.submittedPeriod=backup.submittedPeriod||null;
         store.finalizedAtMs=Number(backup.finalizedAtMs)||null;
+        store.finalizedDataRevision=Number(backup.finalizedDataRevision)||0;
         store.profileResetToken=backup.profileResetToken||null;
         store.profileDeletionToken=backup.profileDeletionToken||null;
         store.localUpdatedAt=Number(backup.localUpdatedAt)||Date.now();
@@ -1571,6 +1341,7 @@ async function loadRemoteProfile({preferRemote=false}={}){
       applyProfileContent(backup);
       store.submittedPeriod=backup.submittedPeriod||store.submittedPeriod||null;
       store.finalizedAtMs=Number(backup.finalizedAtMs)||store.finalizedAtMs||null;
+      store.finalizedDataRevision=Number(backup.finalizedDataRevision)||Number(store.finalizedDataRevision)||0;
       store.localUpdatedAt=Number(backup.localUpdatedAt)||Number(store.localUpdatedAt)||Date.now();
       store.dataRevision=Number(backup.dataRevision)||Number(store.dataRevision)||0;
       store.syncPending=true;
@@ -1583,134 +1354,30 @@ async function loadRemoteProfile({preferRemote=false}={}){
 async function initCloud(){
   if(!db||!currentUser)return;
   cloudAvailable=true;
+
+  // V93: una sola lectura de configuración al iniciar. No hay listener permanente.
   try{
     const ref=doc(db,'settings','app');
     const first=await withTimeout(getDoc(ref),CLOUD_READ_TIMEOUT_MS,null);
     if(first?.exists()){
       applyGlobalSettings(first.data());
-    }else if(first&&isAdmin()){
-      // Solo inicializar si Firestore respondió y confirmó que el documento no existe.
-      await withTimeout(setDoc(ref,{...globalSettingsPayload(),updatedAt:serverTimestamp(),updatedBy:currentUser.email},{merge:true}),3000,false);
+    }else if(first&&isAdmin()&&dbLite){
+      await liteSetDoc(
+        liteDoc(dbLite,'settings','app'),
+        {...globalSettingsPayload(),updatedAt:liteServerTimestamp(),updatedBy:currentUser.email},
+        {merge:true}
+      );
     }else if(!first){
-      updateCloudStatus('Configuración local disponible · nube verificándose','warn');
+      updateCloudStatus('Configuración local disponible · nube no respondió','warn');
     }
-    if(cloudSettingsUnsub)cloudSettingsUnsub();
-    cloudSettingsUnsub=onSnapshot(ref,s=>{if(s.exists())applyGlobalSettings(s.data())},e=>{console.warn(e);updateCloudStatus('Configuración global no disponible','warn')});
   }catch(e){
-    console.warn('Firestore settings no disponible',e);
-    updateCloudStatus('Configuración local disponible · nube pendiente','warn');
+    console.warn('Configuración remota no disponible',e);
+    updateCloudStatus(cloudErrorText(e,'Configuración local disponible'),'warn');
   }
 
-  // V84: recuperar perfil antes de negociar el control de edición.
-  // La UI ya está visible desde la copia local y esta lectura tiene tiempo máximo.
+  // V93: una sola lectura del perfil al iniciar. No existe onSnapshot permanente.
+  // Los cambios de permiso hechos por Administración se aplican al recargar la página.
   await loadRemoteProfile();
-
-  if(cloudProfileMetaUnsub)cloudProfileMetaUnsub();
-  cloudProfileMetaUnsub=onSnapshot(doc(db,'profiles',currentUser.uid),s=>{
-    if(!s.exists()){
-      // IMPORTANTE:
-      // Un snapshot inexistente puede ser temporal (caché vacía, reconexión, latencia o
-      // documento todavía no creado). NO debe borrar información local.
-      // La única eliminación válida se identifica mediante deletedByAdmin=true.
-      if(remoteProfileLoaded&&!isAdmin()){
-        const backup=readUserBackup();
-        if(backupHasTeacherData(backup)){
-          updateCloudStatus('Respaldo local conservado · guardado manual pendiente','warn');
-          store.syncPending=true;
-        }
-      }
-      return;
-    }
-    const d=s.data()||{};
-    updateRemoteProfileShadow(d);
-    sessionWriteSeq=Math.max(sessionWriteSeq,Number(d.sessionWriteSeq)||0);
-    store.sessionWriteSeq=sessionWriteSeq;
-
-
-    if(d.deletedByAdmin===true){
-      if(!isAdmin()){
-        preserveUserBackupForRecovery('Perfil marcado como eliminado por Administración');
-        clearUserBackup(currentUser?.uid);
-        resetLocalTeacherData({keepProfile:false});
-        store.profileDeletionToken=d.profileDeletionToken||null;
-        localStorage.setItem('PAD_UTEQ',JSON.stringify(store));
-        toast('Administración eliminó este perfil. La siguiente captura iniciará desde cero.');
-      }
-      return;
-    }
-
-
-    const priorPeriod=store.submittedPeriod||null;
-    const priorOverride=!!store.individualEditEnabled;
-    const priorDisabled=!!store.individualEditDisabled;
-    const priorResetToken=store.profileResetToken||null;
-    store.submittedPeriod=d.submittedPeriod||null;
-    store.finalizedAtMs=Number(d.finalizedAtMs)||null;
-    store.individualEditEnabled=!!d.individualEditEnabled;
-    store.individualEditDisabled=!!d.individualEditDisabled;
-    store.profileResetToken=d.profileResetToken||null;
-
-
-    const snapshotAnswers=d.answers&&typeof d.answers==='object'?d.answers:{};
-    const snapshotProgramMeta=d.programMeta&&typeof d.programMeta==='object'?d.programMeta:{};
-    const explicitProgramReset=
-      !!store.profileResetToken &&
-      priorResetToken!==store.profileResetToken &&
-      Object.keys(snapshotAnswers).length===0 &&
-      Object.keys(snapshotProgramMeta).length===0;
-
-
-    if(explicitProgramReset&&!isAdmin()){
-      preserveUserBackupForRecovery('Reinicio administrativo de asignaturas');
-      answers={};
-      programMeta={};
-      store.answers=answers;
-      store.programMeta=programMeta;
-      currentProgramIndex=0;
-      if(d.profile)store.profile=d.profile;
-      localStorage.setItem('PAD_UTEQ',JSON.stringify({
-        ...store,cfg,answers,programMeta,customPrograms,programOverrides,
-        disabledPrograms,programAcronyms,commonRules,transversalRules,currentProgramIndex:0,lastSavedAt
-      }));
-      saveUserBackup();
-      buildProfileRows();
-      loadProfileValuesOnly();
-      renderCurrentProgram();
-      updateProgress();
-      applyEditState();
-      updateNavState();
-      toast('Administración eliminó las asignaturas capturadas. El Perfil por programa iniciará desde cero.');
-      return;
-    }
-
-
-    if(priorPeriod!==store.submittedPeriod || priorOverride!==store.individualEditEnabled || priorDisabled!==store.individualEditDisabled){
-      localStorage.setItem('PAD_UTEQ',JSON.stringify({...store,cfg,answers,programMeta,customPrograms,programOverrides,disabledPrograms,programAcronyms,commonRules,transversalRules,currentProgramIndex:0,lastSavedAt}));
-      const reopenedNow=!priorOverride&&store.individualEditEnabled&&!isAdmin();
-      if(reopenedNow){
-        resetWorkflowState();
-        loadProfileValuesOnly();
-        renderCurrentProgram();
-        activateViewDirect('perfil');
-      }
-      if(store.individualEditDisabled&&!isAdmin()){
-        clearTimeout(cloudSaveTimer);
-        clearTimeout(cloudRetryTimer);
-        updateCloudStatus('Edición bloqueada por Administración · datos conservados','readonly');
-      }else if(priorDisabled&&!store.individualEditDisabled&&store.syncPending&&sessionCanWrite()){
-        updateCloudStatus('Edición habilitada · cambios locales pendientes de guardado manual','warn');
-      }
-      applyEditState();updateNavState();
-      toast(store.individualEditDisabled
-        ?'Administración deshabilitó temporalmente la edición de su perfil.'
-        :store.individualEditEnabled
-          ?'Administración habilitó la edición únicamente para su perfil.'
-          :(store.submittedPeriod===cfg.periodo?'Perfil finalizado. Edición bloqueada.':'El perfil vuelve a respetar los controles generales.'));
-    }
-  },e=>console.warn('No fue posible escuchar el estado del perfil',e));
-
-  // V92: no existe arbitraje entre dispositivos. El último guardado manual confirmado prevalece.
-  requestSingleDeviceControl().catch(e=>console.warn('No fue posible inicializar el estado local de edición',e));
 }
 async function loadTeachersForExport(){
   if(!db||!isAdmin()){
@@ -1945,6 +1612,7 @@ function initAuth(){
   const fbApp=initializeApp(window.FIREBASE_CONFIG);
   auth=getAuth(fbApp);
   db=getFirestore(fbApp);
+  dbLite=db;
 
 
   // Se configura al iniciar la aplicación. Así el clic de acceso queda
@@ -1962,14 +1630,6 @@ function initAuth(){
     lastCloudTeacherFingerprint='';
     bootstrapComplete=false;
     authReady=false;
-    sessionHasControl=false;
-    sessionActivationBusy=false;
-    sessionTransferRequested=false;
-    sessionTransferModalDismissed=false;
-    stopSessionHeartbeat();
-    clearTimeout(sessionControlRetryTimer);
-    clearTimeout(sessionHandoffRetryTimer);
-    if(sessionDocUnsub){try{sessionDocUnsub()}catch(_){} sessionDocUnsub=null;}
 
     if(user&&!isInstitutional(user.email||'')){
       await signOut(auth);
@@ -2423,8 +2083,6 @@ window.savePlanning=async function(show=false){
   if($('planningErrors'))$('planningErrors').innerHTML='<div class="status-box ok"><b>Comisiones guardadas.</b><br>La información queda disponible para consulta y para el concentrado administrativo.</div>';
   updateNavState();
   if(show)toast(saved.wrote?'Comisiones guardadas en nube.':'Sin cambios nuevos; no fue necesaria otra escritura.');
-  Promise.resolve(writeAudit('Comisiones y consideraciones académicas guardadas'))
-    .catch(e=>console.warn('Auditoría de Comisiones pendiente',e));
   return true;
 }
 
@@ -2890,7 +2548,6 @@ window.saveSection=async function(){
   collectProfile();
   const saved=await saveTeacherChangesNow('guardado manual de Datos del profesor');
   if(!saved.ok)return false;
-  writeAudit('Sección de perfil guardada');
   toast(saved.wrote?'Datos guardados en nube.':'Sin cambios nuevos; no fue necesaria otra escritura.');
   return true;
 }
@@ -2986,11 +2643,7 @@ window.continueToCapture=async function(){
   requestAnimationFrame(()=>{
     try{sessionStorage.removeItem(captureOrientationSessionKey())}catch(_){}
     showCaptureOrientationIfNeeded(true);
-  });
-
-  withTimeout(writeAudit('Datos del profesor y Comisiones confirmados al continuar'),1200,false)
-    .catch(e=>console.warn('Auditoría pendiente',e));
-  toast(saved.wrote?'Cambios guardados. Continúe con Programa 1.':'Sin cambios nuevos. Continúe con Programa 1.');
+  });  toast(saved.wrote?'Cambios guardados. Continúe con Programa 1.':'Sin cambios nuevos. Continúe con Programa 1.');
   return true;
 }
 
@@ -3743,7 +3396,6 @@ window.saveCurrentProgramProgress=async function(show=true){
   if(!saved.ok)return false;
   updateProgress();
   lockRevisionNav();
-  writeAudit('Avance de Perfil por programa guardado manualmente');
   if(show)toast(saved.wrote?'Avances guardados en nube.':'Sin cambios nuevos; no fue necesaria otra escritura.');
   return true;
 }
@@ -3823,8 +3475,16 @@ function reviewAvailable(completeOverride=null){
   return complete || cfg.editingLocked || deadlinePassed() || individualEditBlocked() || submissionLockedForCurrentPeriod();
 }
 
+function profileFormallyFinalized(){
+  if(store.submittedPeriod!==cfg.periodo || !Number(store.finalizedAtMs))return false;
+  const finalizedRevision=Number(store.finalizedDataRevision)||0;
+  const currentRevision=Number(store.dataRevision)||0;
+  if(finalizedRevision>0)return finalizedRevision===currentRevision;
+  // Compatibilidad con perfiles finalizados antes de V93.
+  return !individualEditOverride();
+}
 function profileFinalizedReadOnly(){
-  return submissionLockedForCurrentPeriod()&&!individualEditOverride();
+  return profileFormallyFinalized()&&!individualEditOverride();
 }
 function reviewActionMode(){
   if(profileFinalizedReadOnly())return 'finalized';
@@ -3930,7 +3590,7 @@ function lockRevisionNav(){
   btn.classList.toggle('locked',locked);
 }
 
-window.saveAll=function(show=false){if(!requireEditing())return;collectProfile();persist();updateProgress();lockRevisionNav();writeAudit('Perfil guardado manualmente');if(show)toast('Perfil guardado.')}
+window.saveAll=function(show=false){if(!requireEditing())return;collectProfile();persist({schedule:false});updateProgress();lockRevisionNav();if(show)toast('Borrador conservado localmente.')}
 
 
 function formatLocalProfileDateTime(ms){
@@ -3992,7 +3652,7 @@ function buildPrint(collectCurrent=true){
     html+=`<div class="${sheetClass}" data-program-count="${remaining}">${printHeader()}${metaCentered()}${printProgram(ps[i],i)}${ps[i+1]?printProgram(ps[i+1],i+1):''}${ps[i+2]?printProgram(ps[i+2],i+2):''}${signatures()}</div>`
   }
   $('printArea').innerHTML=html;
-  const draft=!profileFinalizedReadOnly();
+  const draft=!profileFormallyFinalized();
   document.querySelectorAll('#printArea .sheet').forEach(sheet=>{
     sheet.classList.toggle('draft-document',draft);
     sheet.querySelector('.draft-watermark')?.remove();
@@ -4007,58 +3667,65 @@ function buildPrint(collectCurrent=true){
 }
 async function finalizeCurrentProfile(){
   collectProfile();
-  const releaseEditOverride=individualEditOverride();
 
   const finalCheck=validateAll();
-  if(!finalCheck.ok){
-    throw new Error('No se puede finalizar un perfil con información pendiente.');
-  }
-
+  if(!finalCheck.ok)throw new Error('No se puede finalizar un perfil con información pendiente.');
   if(sequentialProfessorMode()&&!workflowState.reviewUnlocked){
     throw new Error('No se puede finalizar sin concluir el recorrido secuencial.');
   }
 
-  // V90: finalizar es una acción manual crítica. Primero debe existir una copia confirmada en nube.
+  // V93: guardar + finalizar ocurre en UNA sola escritura del documento del profesor.
   persist({schedule:false});
-  const preSyncOk=await syncProfileToCloud({reason:'guardado previo a finalización'});
-  if(!preSyncOk){
-    updateCloudStatus('No se pudo confirmar la nube · el perfil NO fue finalizado','warn');
-    return {preSyncOk:false,finalSyncOk:false,finalized:false};
-  }
-
   const previousFinalState={
     submittedPeriod:store.submittedPeriod||null,
     finalizedAtMs:Number(store.finalizedAtMs)||null,
+    finalizedDataRevision:Number(store.finalizedDataRevision)||0,
     individualEditEnabled:!!store.individualEditEnabled,
     individualEditDisabled:!!store.individualEditDisabled
   };
 
+  const releaseEditOverride=individualEditOverride();
   store.submittedPeriod=cfg.periodo;
   store.finalizedAtMs=Date.now();
+  store.finalizedDataRevision=Number(store.dataRevision)||0;
   store.individualEditEnabled=false;
   store.individualEditDisabled=false;
-  persist({schedule:false});
+  persist({touch:false,schedule:false});
 
-  const finalSyncOk=await syncProfileToCloud({reason:'confirmación manual de finalización',releaseEditOverride,force:true});
+  lastCloudErrorCode='';
+  const finalSyncOk=await forceProfileCheckpointToCloud(
+    'finalización formal del perfil',
+    {force:true,releaseEditOverride}
+  );
+
   if(!finalSyncOk){
-    // Si la confirmación falla, el cliente no se bloquea como finalizado.
     store.submittedPeriod=previousFinalState.submittedPeriod;
     store.finalizedAtMs=previousFinalState.finalizedAtMs;
+    store.finalizedDataRevision=previousFinalState.finalizedDataRevision;
     store.individualEditEnabled=previousFinalState.individualEditEnabled;
     store.individualEditDisabled=previousFinalState.individualEditDisabled;
     store.finalizationCloudConfirmed=false;
     store.syncPending=true;
-    persist({schedule:false});
-    updateCloudStatus('No se confirmó la finalización en nube · vuelva a intentarlo','warn');
+    persist({touch:false,schedule:false});
+    updateCloudStatus(
+      lastCloudErrorCode==='resource-exhausted'
+        ?'Cuota de Firestore agotada · el perfil NO fue finalizado'
+        :'No se confirmó la finalización en nube · vuelva a intentarlo',
+      'warn'
+    );
     applyEditState();updateNavState();
-    return {preSyncOk:true,finalSyncOk:false,finalized:false};
+    return {preSyncOk:false,finalSyncOk:false,finalized:false};
   }
 
   store.finalizationCloudConfirmed=true;
   store.syncPending=false;
   persistStoreSnapshot();
   updateCloudStatus('Perfil finalizado y sincronizado','ok');
-  await writeAudit('Perfil finalizado y sincronizado para impresión/guardado PDF');
+
+  // Sólo se conserva auditoría para el evento formal.
+  Promise.resolve(writeAudit('Perfil finalizado y sincronizado para impresión/guardado PDF'))
+    .catch(e=>console.warn('Auditoría de finalización no disponible',e));
+
   applyEditState();updateNavState();
   return {preSyncOk:true,finalSyncOk:true,finalized:true};
 }
@@ -4392,7 +4059,6 @@ async function renderTeacherAdminList(){
     teacherAdminCache={};
     snap.forEach(ds=>{
       const d=ds.data()||{};
-      if(d.deletedByAdmin===true)return;
       if(!cloudHasTeacherData(d)&&!d.email&&!d.displayName)return;
       const p=d.profile||{};
       const cached=previousTeacherAdminCache[ds.id]||{};
@@ -4407,6 +4073,9 @@ async function renderTeacherAdminList(){
         finalizedAtMs:Number(d.finalizedAtMs)||0,
         individualEditEnabled:!!d.individualEditEnabled,
         individualEditDisabled:!!d.individualEditDisabled,
+        deletedByAdmin:d.deletedByAdmin===true,
+        deletedAt:d.deletedAt||null,
+        deletedBy:d.deletedBy||'',
         updatedAt:d.updatedAt,
         profileResetToken:d.profileResetToken||null,
         captureProgress
@@ -4426,25 +4095,30 @@ async function renderTeacherAdminList(){
     </div>`;
     root.innerHTML=tableHeader+rows.map(r=>{
       const doneNow=r.submittedPeriod===cfg.periodo;
+      const retired=!!r.deletedByAdmin;
       const override=!!r.individualEditEnabled;
       const individuallyDisabled=!!r.individualEditDisabled;
-      const statusTitle=individuallyDisabled
-        ?'Edición individual deshabilitada'
-        :override
-          ?'Edición individual habilitada'
-          :(doneNow?'Concluido':'En captura / sin concluir');
+      const statusTitle=retired
+        ?'Perfil resguardado'
+        :individuallyDisabled
+          ?'Edición individual deshabilitada'
+          :override
+            ?'Edición individual habilitada'
+            :(doneNow?'Concluido':'En captura / sin concluir');
       const lastCompletion=doneNow?formatTeacherCompletion(r):'';
       const lastEdit=formatTeacherUpdatedAt(r.updatedAt);
-      const statusText=individuallyDisabled
-        ?`Última edición: ${lastEdit} · Edición deshabilitada por Administración`
-        :override
-          ?(doneNow
-            ?`Última edición: ${lastEdit} · Última finalización: ${lastCompletion} · Edición individual habilitada`
-            :`Última edición: ${lastEdit} · Edición individual habilitada`)
-          :(doneNow
-            ?`Última edición: ${lastEdit} · Finalizó y envió: ${lastCompletion}`
-            :`Última edición: ${lastEdit}`);
-      return `<div class="teacher-admin-row ${individuallyDisabled?'individual-disabled':override?'individual-open':doneNow?'finished':'open'}" data-teacher-uid="${escapeHtml(r.uid)}">
+      const statusText=retired
+        ?`Última edición: ${lastEdit} · Resguardado por Administración · datos conservados`
+        :individuallyDisabled
+          ?`Última edición: ${lastEdit} · Edición deshabilitada por Administración`
+          :override
+            ?(doneNow
+              ?`Última edición: ${lastEdit} · Última finalización: ${lastCompletion} · Edición individual habilitada`
+              :`Última edición: ${lastEdit} · Edición individual habilitada`)
+            :(doneNow
+              ?`Última edición: ${lastEdit} · Finalizó y envió: ${lastCompletion}`
+              :`Última edición: ${lastEdit}`);
+      return `<div class="teacher-admin-row ${retired?'individual-disabled':individuallyDisabled?'individual-disabled':override?'individual-open':doneNow?'finished':'open'}" data-teacher-uid="${escapeHtml(r.uid)}">
         <div class="teacher-admin-main">
           <b>${escapeHtml(r.name)}</b>
           <span>${escapeHtml(r.email||'Sin correo registrado')}${r.categoria?` · ${escapeHtml(r.categoria)}`:''}</span>
@@ -4457,19 +4131,21 @@ async function renderTeacherAdminList(){
           <div class="teacher-progress-track"><i style="width:${r.captureProgress.pct}%"></i></div>
           <small>${r.captureProgress.completedPrograms}/${r.captureProgress.totalPrograms} programas completos</small>
         </div>
-        <div class="teacher-admin-status ${individuallyDisabled?'individual-disabled':override?'individual-open':doneNow?'finished':'open'}">
+        <div class="teacher-admin-status ${retired?'individual-disabled':individuallyDisabled?'individual-disabled':override?'individual-open':doneNow?'finished':'open'}">
           <strong>${escapeHtml(statusTitle)}</strong>
           <span>${escapeHtml(statusText)}</span>
         </div>
         <div class="teacher-admin-actions">
-          ${(()=>{
-            const enableNext=individuallyDisabled || (doneNow && !override);
-            const label=enableNext?'Habilitar edición':'Deshabilitar edición';
-            return `<button class="teacher-reopen-btn ${enableNext?'':'active'}" onclick="setTeacherEditAccess('${r.uid}',${enableNext?'true':'false'})">${label}</button>`;
-          })()}
+          ${retired
+            ? `<button class="teacher-reopen-btn" onclick="restoreTeacherProfile('${r.uid}')">Restaurar perfil</button>`
+            : (()=>{
+                const enableNext=individuallyDisabled || (doneNow && !override);
+                const label=enableNext?'Habilitar edición':'Deshabilitar edición';
+                return `<button class="teacher-reopen-btn ${enableNext?'':'active'}" onclick="setTeacherEditAccess('${r.uid}',${enableNext?'true':'false'})">${label}</button>`;
+              })()}
           <button class="teacher-print-profile-btn" onclick="printTeacherProfile('${r.uid}')">Imprimir perfil</button>
-          <button class="teacher-reset-program-btn" onclick="resetTeacherProgramProfile('${r.uid}')">🔒 Eliminar asignaturas capturadas</button>
-          <button class="teacher-delete-btn" onclick="deleteTeacherProfile('${r.uid}')">🔒 Eliminar perfil completo</button>
+          ${retired?'':`<button class="teacher-reset-program-btn" onclick="resetTeacherProgramProfile('${r.uid}')">🔒 Eliminar asignaturas capturadas</button>
+          <button class="teacher-delete-btn" onclick="deleteTeacherProfile('${r.uid}')">🔒 Resguardar perfil</button>`}
         </div>
       </div>`;
     }).join('');
@@ -4513,7 +4189,6 @@ window.printTeacherProfile=async function(uid){
 
       buildPrint(false);
       await openProfilePrintDialog();
-      await writeAudit(`Perfil impreso por Administración: ${d.email||cached.email||uid}`);
     }finally{
       store.profile=previousProfile;
       answers=previousAnswers;
@@ -4534,48 +4209,59 @@ function updateTeacherAdminRowVisual(uid){
   const row=document.querySelector(`[data-teacher-uid="${CSS.escape(uid)}"]`);
   if(!row)return;
   const doneNow=r.submittedPeriod===cfg.periodo;
+  const retired=!!r.deletedByAdmin;
   const override=!!r.individualEditEnabled;
   const individuallyDisabled=!!r.individualEditDisabled;
   row.classList.remove('individual-disabled','individual-open','finished','open');
-  row.classList.add(individuallyDisabled?'individual-disabled':override?'individual-open':doneNow?'finished':'open');
+  row.classList.add(retired?'individual-disabled':individuallyDisabled?'individual-disabled':override?'individual-open':doneNow?'finished':'open');
 
   const status=row.querySelector('.teacher-admin-status');
   if(status){
-    status.className=`teacher-admin-status ${individuallyDisabled?'individual-disabled':override?'individual-open':doneNow?'finished':'open'}`;
+    status.className=`teacher-admin-status ${retired?'individual-disabled':individuallyDisabled?'individual-disabled':override?'individual-open':doneNow?'finished':'open'}`;
     const strong=status.querySelector('strong');
     const span=status.querySelector('span');
-    if(strong)strong.textContent=individuallyDisabled?'Edición individual deshabilitada':override?'Edición individual habilitada':doneNow?'Concluido':'En captura / sin concluir';
+    if(strong)strong.textContent=retired?'Perfil resguardado':individuallyDisabled?'Edición individual deshabilitada':override?'Edición individual habilitada':doneNow?'Concluido':'En captura / sin concluir';
     if(span){
       const lastEdit=formatTeacherUpdatedAt(r.updatedAt);
-      span.textContent=individuallyDisabled
-        ?`Última edición: ${lastEdit} · Edición deshabilitada por Administración`
-        :override
-          ?`Última edición: ${lastEdit} · Edición individual habilitada`
-          :doneNow?`Última edición: ${lastEdit} · Perfil concluido`:`Última edición: ${lastEdit}`;
+      span.textContent=retired
+        ?`Última edición: ${lastEdit} · Resguardado por Administración · datos conservados`
+        :individuallyDisabled
+          ?`Última edición: ${lastEdit} · Edición deshabilitada por Administración`
+          :override
+            ?`Última edición: ${lastEdit} · Edición individual habilitada`
+            :doneNow?`Última edición: ${lastEdit} · Perfil concluido`:`Última edición: ${lastEdit}`;
     }
   }
 
   const btn=row.querySelector('.teacher-reopen-btn');
   if(btn){
-    const enableNext=individuallyDisabled || (doneNow && !override);
-    btn.textContent=enableNext?'Habilitar edición':'Deshabilitar edición';
-    btn.classList.toggle('active',!enableNext);
-    btn.disabled=false;
-    btn.classList.remove('is-busy');
-    btn.onclick=()=>window.setTeacherEditAccess(uid,enableNext);
+    if(retired){
+      btn.textContent='Restaurar perfil';
+      btn.classList.remove('active');
+      btn.disabled=false;
+      btn.classList.remove('is-busy');
+      btn.onclick=()=>window.restoreTeacherProfile(uid);
+    }else{
+      const enableNext=individuallyDisabled || (doneNow && !override);
+      btn.textContent=enableNext?'Habilitar edición':'Deshabilitar edición';
+      btn.classList.toggle('active',!enableNext);
+      btn.disabled=false;
+      btn.classList.remove('is-busy');
+      btn.onclick=()=>window.setTeacherEditAccess(uid,enableNext);
+    }
   }
 }
 
 window.setTeacherEditAccess=async function(uid,enable){
-  if(!isAdmin()||!db)return;
+  if(!isAdmin()||!dbLite)return;
   const r=teacherAdminCache[uid]||{};
   const who=r.name||r.email||'este profesor';
   const question=enable
-    ?`¿Habilitar la edición para ${who}?\n\nNo se modificará ni eliminará ningún dato del perfil. Únicamente se permitirá que el profesor vuelva a editar su información.`
-    :`¿Deshabilitar la edición para ${who}?\n\nNo se modificará ni eliminará ningún dato. El profesor podrá consultar e imprimir su perfil, pero no podrá cambiar registros hasta que Administración lo habilite nuevamente.`;
+    ?`¿Habilitar la edición para ${who}?\n\nNo se modificará ni eliminará ningún dato académico.`
+    :`¿Deshabilitar la edición para ${who}?\n\nNo se modificará ni eliminará ningún dato académico. El profesor conservará su perfil para consulta e impresión.`;
   if(!confirm(question))return;
   if(navigator.onLine===false){
-    alert('No hay conexión a Internet. El permiso no se modificó. Conéctese y vuelva a intentarlo.');
+    alert('No hay conexión a Internet. El permiso no se modificó.');
     return;
   }
 
@@ -4587,53 +4273,24 @@ window.setTeacherEditAccess=async function(uid,enable){
     btn.textContent=enable?'Habilitando…':'Deshabilitando…';
   }
 
-  const ref=doc(db,'profiles',uid);
-  const timeoutToken='__PAD_ADMIN_WRITE_TIMEOUT__';
   try{
-    // V92: setDoc+merge es tolerante a documentos parcialmente creados y no toca información académica.
-    const writeResult=await withTimeout(setDoc(ref,{
+    await liteSetDoc(liteDoc(dbLite,'profiles',uid),{
       individualEditEnabled:!!enable,
       individualEditDisabled:!enable,
-      reopenedAt:enable?serverTimestamp():null,
+      reopenedAt:enable?liteServerTimestamp():null,
       reopenedBy:enable?(currentUser.email||''):null,
-      individualEditUpdatedAt:serverTimestamp()
-    },{merge:true}),ADMIN_PERMISSION_WRITE_TIMEOUT_MS,timeoutToken);
+      individualEditUpdatedAt:liteServerTimestamp()
+    },{merge:true});
 
-    if(writeResult===timeoutToken){
-      const err=new Error('Firestore no confirmó la operación dentro de 10 segundos.');
-      err.code='deadline-exceeded';
-      throw err;
-    }
-
-    // Confirmación contra servidor: el botón sólo informa éxito cuando el permiso realmente quedó aplicado.
-    const verified=await withTimeout(getDocFromServer(ref),ADMIN_PERMISSION_VERIFY_TIMEOUT_MS,null);
-    if(!verified||!verified.exists()){
-      const err=new Error('No fue posible verificar el permiso directamente en Firestore.');
-      err.code='verification-failed';
-      throw err;
-    }
-    const fresh=verified.data()||{};
-    if(!!fresh.individualEditEnabled!==!!enable || !!fresh.individualEditDisabled===!!enable){
-      const err=new Error('Firestore respondió, pero el estado de edición no coincide con la operación solicitada.');
-      err.code='verification-mismatch';
-      throw err;
-    }
-
-    r.individualEditEnabled=!!fresh.individualEditEnabled;
-    r.individualEditDisabled=!!fresh.individualEditDisabled;
-    r.updatedAt=fresh.updatedAt||r.updatedAt||new Date();
+    r.individualEditEnabled=!!enable;
+    r.individualEditDisabled=!enable;
+    r.updatedAt=new Date();
     teacherAdminCache[uid]=r;
     updateTeacherAdminRowVisual(uid);
-    toast(enable?'Edición habilitada y confirmada en Firestore.':'Edición deshabilitada y confirmada en Firestore.');
+    toast(enable?'Edición habilitada. El profesor debe recargar la página si ya la tenía abierta.':'Edición deshabilitada. El profesor debe recargar la página si ya la tenía abierta.');
   }catch(e){
     console.error('Error de edición individual',e);
-    const code=e?.code||'sin código';
-    const extra=code==='permission-denied'
-      ?'\n\nLa cuenta administrativa fue reconocida por la página, pero Firestore rechazó la operación. Publique las reglas V92 incluidas en el paquete.'
-      :code==='deadline-exceeded'
-        ?'\n\nLa operación tardó demasiado y el botón fue liberado para evitar que quede procesando indefinidamente. Revise conexión y reglas de Firestore.'
-        :'';
-    alert(`No fue posible ${enable?'habilitar':'deshabilitar'} la edición individual.\n\nCódigo: ${code}${extra}\n\nNo se eliminó ni modificó información académica.`);
+    showCloudWriteFailure(e,enable?'habilitar la edición individual':'deshabilitar la edición individual');
   }finally{
     if(btn){
       btn.disabled=false;
@@ -4642,6 +4299,59 @@ window.setTeacherEditAccess=async function(uid,enable){
     updateTeacherAdminRowVisual(uid);
   }
 }
+window.restoreTeacherProfile=async function(uid){
+  if(!isAdmin()||!dbLite)return false;
+  const r=teacherAdminCache[uid]||{};
+  const who=r.name||r.email||'este profesor';
+  const ok=confirm(
+    `¿Restaurar el perfil de ${who}?\n\n`+
+    `Toda la información académica resguardada se conservará.\n\n`+
+    `Esta operación únicamente retirará el estado administrativo de resguardo y volverá a habilitar el perfil.\n\n`+
+    `No se borrará ni sustituirá información.`
+  );
+  if(!ok)return false;
+  if(navigator.onLine===false){
+    alert('No hay conexión a Internet. El perfil no se modificó.');
+    return false;
+  }
+  try{
+    await liteSetDoc(liteDoc(dbLite,'profiles',uid),{
+      deletedByAdmin:false,
+      individualEditDisabled:false,
+      individualEditEnabled:true,
+      reopenedAt:liteServerTimestamp(),
+      reopenedBy:currentUser?.email||'',
+      individualEditUpdatedAt:liteServerTimestamp(),
+      updatedAt:liteServerTimestamp()
+    },{merge:true});
+    await writeAudit(`Perfil restaurado por Administración: ${r.email||uid}`);
+    r.deletedByAdmin=false;
+    r.individualEditDisabled=false;
+    r.individualEditEnabled=true;
+    r.updatedAt=new Date();
+    teacherAdminCache[uid]=r;
+    toast('Perfil restaurado. Todos los datos anteriores permanecen conservados.');
+    const row=document.querySelector(`[data-teacher-uid="${CSS.escape(uid)}"]`);
+    if(row){
+      const actions=row.querySelector('.teacher-admin-actions');
+      if(actions){
+        const doneNow=r.submittedPeriod===cfg.periodo;
+        const enableNext=!!r.individualEditDisabled || (doneNow && !r.individualEditEnabled);
+        actions.innerHTML=`<button class="teacher-reopen-btn ${enableNext?'':'active'}" onclick="setTeacherEditAccess('${r.uid}',${enableNext?'true':'false'})">${enableNext?'Habilitar edición':'Deshabilitar edición'}</button>`+
+          `<button class="teacher-print-profile-btn" onclick="printTeacherProfile('${r.uid}')">Imprimir perfil</button>`+
+          `<button class="teacher-reset-program-btn" onclick="resetTeacherProgramProfile('${r.uid}')">🔒 Eliminar asignaturas capturadas</button>`+
+          `<button class="teacher-delete-btn" onclick="deleteTeacherProfile('${r.uid}')">🔒 Resguardar perfil</button>`;
+      }
+      updateTeacherAdminRowVisual(uid);
+    }
+    return true;
+  }catch(e){
+    console.error('No fue posible restaurar el perfil',e);
+    alert('No fue posible restaurar el perfil. No se eliminó ni sustituyó información académica.');
+    return false;
+  }
+}
+
 window.toggleTeacherEditOverride=function(uid,enable){return window.setTeacherEditAccess(uid,enable)}
 
 
@@ -4680,7 +4390,7 @@ window.resetTeacherProgramProfile=async function(uid){
   try{
     await archiveTeacherProfileBeforeChange(uid,'Antes de reiniciar asignaturas capturadas');
     const resetToken=`${Date.now()}-${uid}`;
-    await updateDoc(doc(db,'profiles',uid),{
+    await liteUpdateDoc(liteDoc(dbLite,'profiles',uid),{
       answers:{},
       programMeta:{},
       submittedPeriod:null,
@@ -4688,9 +4398,9 @@ window.resetTeacherProgramProfile=async function(uid){
       individualEditEnabled:true,
       individualEditDisabled:false,
       profileResetToken:resetToken,
-      programProfileResetAt:serverTimestamp(),
+      programProfileResetAt:liteServerTimestamp(),
       programProfileResetBy:currentUser?.email||'',
-      updatedAt:serverTimestamp()
+      updatedAt:liteServerTimestamp()
     });
     await writeAudit(`Asignaturas capturadas eliminadas por Administración: ${r.email||uid}`);
     toast('Asignaturas eliminadas. El profesor iniciará nuevamente el Perfil por programa.');
@@ -4703,36 +4413,92 @@ window.resetTeacherProgramProfile=async function(uid){
 
 
 window.deleteTeacherProfile=async function(uid){
-  if(!isAdmin()||!db)return;
+  if(!isAdmin()||!db||!dbLite)return;
   const r=teacherAdminCache[uid]||{};
   const who=r.name||r.email||'este profesor';
 
-  const ok=confirmAdministrativeDeletion(
-    `¿CONFIRMAR retiro del perfil activo de ${who}?\n\n`+
-    `REGLA DE ORO V88: la información capturada NO se borrará. Antes del retiro se creará una copia íntegra en profileArchives y el documento original conservará sus datos académicos.\n\n`+
-    `El profesor dejará de aparecer como perfil activo hasta que se restaure administrativamente.`,
-    'el retiro del perfil activo'
+  const first=confirm(
+    `¿RESGUARDAR el perfil de ${who}?\n\n`+
+    `La información académica NO se borrará ni se vaciará. Se conservará íntegramente y el perfil quedará en solo lectura hasta que Administración lo restaure.\n\n`+
+    `Antes del cambio se guardará una copia íntegra en profileArchives.`
   );
-  if(!ok)return;
+  if(!first)return;
+  const typed=prompt(
+    `SEGUNDO CANDADO DE SEGURIDAD\n\nPara confirmar el resguardo, escriba exactamente:\n\nRESGUARDAR`
+  );
+  if(String(typed||'').trim().toUpperCase()!=='RESGUARDAR'){
+    if(typed!==null)toast('Resguardo cancelado: no se escribió RESGUARDAR.');
+    return;
+  }
+  if(navigator.onLine===false){
+    alert('No hay conexión a Internet. El perfil no se modificó.');
+    return;
+  }
 
   try{
-    await archiveTeacherProfileBeforeChange(uid,'Antes de retirar perfil activo');
-    const deletionToken=`DEL-${Date.now()}-${uid}`;
-    await updateDoc(doc(db,'profiles',uid),{
+    // Una sola lectura puntual del perfil afectado.
+    const profileRef=liteDoc(dbLite,'profiles',uid);
+    const snap=await getDoc(doc(db,'profiles',uid));
+    if(!snap.exists())throw new Error('El perfil seleccionado no existe.');
+    const data=snap.data()||{};
+    if(data.deletedByAdmin===true){
+      toast('El perfil ya se encuentra resguardado.');
+      return;
+    }
+
+    const now=Date.now();
+    const archiveId=String(now);
+    const archiveRef=liteDoc(dbLite,'profileArchives',uid,'snapshots',archiveId);
+    const auditRef=liteDoc(liteCollection(dbLite,'audit'));
+    const deletionToken=`SAFE-${now}-${uid}`;
+    const batch=liteWriteBatch(dbLite);
+
+    batch.set(archiveRef,{
+      ...data,
+      archivedUid:uid,
+      archiveReason:'Antes de resguardar perfil',
+      archivedAt:liteServerTimestamp(),
+      archivedAtMs:now,
+      archivedBy:currentUser?.email||''
+    });
+    batch.update(profileRef,{
       deletedByAdmin:true,
       profileDeletionToken:deletionToken,
-      deletedAt:serverTimestamp(),
+      deletedAt:liteServerTimestamp(),
       deletedBy:currentUser?.email||'',
       individualEditEnabled:false,
       individualEditDisabled:true,
-      updatedAt:serverTimestamp()
+      updatedAt:liteServerTimestamp()
     });
-    await writeAudit(`Perfil retirado sin borrar datos: ${r.email||uid}`);
-    toast('Perfil retirado. Los datos académicos permanecen conservados y existe una copia de archivo.');
-    await renderTeacherAdminList();
+    batch.set(auditRef,{
+      action:`Perfil resguardado sin borrar datos: ${r.email||uid}`,
+      email:currentUser?.email||'',
+      uid:currentUser?.uid||'',
+      targetUid:uid,
+      at:liteServerTimestamp(),
+      period:cfg.periodo
+    });
+    await batch.commit();
+
+    // Actualización visual local: no vuelve a leer toda la colección de perfiles.
+    r.deletedByAdmin=true;
+    r.individualEditEnabled=false;
+    r.individualEditDisabled=true;
+    r.updatedAt=new Date();
+    teacherAdminCache[uid]=r;
+    const row=document.querySelector(`[data-teacher-uid="${CSS.escape(uid)}"]`);
+    if(row){
+      const actions=row.querySelector('.teacher-admin-actions');
+      if(actions){
+        actions.innerHTML=`<button class="teacher-reopen-btn" onclick="restoreTeacherProfile('${r.uid}')">Restaurar perfil</button>`+
+          `<button class="teacher-print-profile-btn" onclick="printTeacherProfile('${r.uid}')">Imprimir perfil</button>`;
+      }
+      updateTeacherAdminRowVisual(uid);
+    }
+    toast('Perfil resguardado. Todos los datos permanecen conservados y existe una copia administrativa.');
   }catch(e){
     console.error(e);
-    alert('No fue posible retirar el perfil. No se modificó ningún dato porque la copia de seguridad no pudo confirmarse.');
+    alert('No fue posible resguardar el perfil. La operación se canceló y no se vació información académica.');
   }
 }
 

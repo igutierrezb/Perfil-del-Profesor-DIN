@@ -63,11 +63,10 @@ service cloud.firestore {
       allow write: if admin();
     }
 
-    // V92: los documentos de sesión heredados dejan de decidir quién puede escribir.
-    // Se conservan temporalmente por compatibilidad, pero profiles ya no depende de ellos.
+    // V93: profileSessions queda definitivamente fuera de uso.
+    // Los documentos históricos se conservan, pero ningún cliente puede leerlos o escribirlos.
     match /profileSessions/{uid} {
-      allow read, create, update: if admin() || own(uid);
-      allow delete: if admin();
+      allow read, write: if false;
     }
 
     match /profiles/{uid} {
@@ -81,7 +80,7 @@ service cloud.firestore {
           && !request.resource.data.keys().hasAny(['individualEditEnabled'])
         );
 
-      // V92: el único candado duro individual es individualEditDisabled.
+      // V93: el único candado duro individual es individualEditDisabled.
       // No existe requisito de sesión/dispositivo. El último guardado manual confirmado prevalece.
       allow update: if admin()
         || (

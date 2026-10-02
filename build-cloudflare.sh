@@ -10,7 +10,7 @@ test -n "${GOOGLE_CLIENT_ID:-}"
 rm -rf dist
 mkdir -p dist
 
-# V92: control administrativo definitivo + guardado manual + uso exclusivo en computadora.
+# V93: bajo consumo Firestore + Firestore Lite + guardado manual + impresión final controlada.
 for f in \
   index.html \
   styles.css \
@@ -54,7 +54,7 @@ EOF
 
 cat > dist/build-info.json <<EOF
 {
-  "version": "V92-2026-09-30",
+  "version": "V93-2026-09-30",
   "runtime": "consolidated",
   "legacyBackupModulePublished": false
 }
