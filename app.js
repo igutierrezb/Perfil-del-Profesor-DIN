@@ -3845,7 +3845,7 @@ function printHeader(){
       <div class="printBrandText">UNIVERSIDAD TECNOLÓGICA<br>DE QUERÉTARO</div>
     </div>
     <div class="sheetTitle"><h2>PERFIL DEL PROFESOR</h2><b>DIVISIÓN: INDUSTRIAL</b><br><span>PERIODO DE VIGENCIA: ${cfg.periodo}</span></div>
-    <div class="quality-plain"><span>${cfg.codigo}</span><span>${cfg.revision}</span><span>Fecha ${cfg.fechaRevision}</span>${closedAt?`<span class="quality-finalized">Cierre ${closedAt}</span>`:''}</div>
+    <div class="quality-plain"><span>${cfg.codigo}</span><span>${cfg.revision}</span><span>Fecha ${cfg.fechaRevision}</span>${closedAt?`<span class="quality-finalized" style="display:block;width:100%;text-align:center;font-size:15px;font-weight:700;">Cierre ${closedAt}</span>`:''}</div>
   </div>`;
 }
 function metaCentered(){return `<div class="meta center compactline"><span><b>Nombre:</b> ${printedProfessorName()}</span><span><b>Categoría:</b> ${store.profile?.categoria||''}</span><span><b>Competencia:</b> X = Medio · XX = Alto</span><span><b>Área de conocimiento:</b> 1 Formación · 2 Docencia · 3 Laboral</span></div>`}
