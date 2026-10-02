@@ -2,224 +2,107 @@ rules_version = '2';
 
 service cloud.firestore {
   match /databases/{database}/documents {
-
     function signedIn() {
-      return request.auth != null
-        && request.auth.token.email != null
-        && request.auth.token.email_verified == true;
+      return request.auth != null;
     }
 
-    function email() {
-      return request.auth.token.email;
-    }
-
-    function isOwner() {
+    function institutional() {
       return signedIn()
-        && email() == "ivan.gutierrez@uteq.edu.mx";
+        && request.auth.token.email is string
+        && request.auth.token.email.matches('.*@uteq\\.edu\\.mx$');
     }
 
-    function userPath() {
-      return /databases/$(database)/documents/authorizedUsers/$(email());
+    function admin() {
+      return signedIn()
+        && request.auth.token.email == 'ivan.gutierrez@uteq.edu.mx';
     }
 
-    function userActive() {
-      return !get(userPath()).data.keys().hasAny(['active'])
-        || get(userPath()).data.active == true;
+    function own(uid) {
+      return institutional() && request.auth.uid == uid;
     }
 
-    function isAuthorized() {
-      return isOwner()
+    function adminOnlyFields() {
+      return [
+        'individualEditDisabled',
+        'profileResetToken',
+        'profileDeletionToken',
+        'deletedByAdmin',
+        'deletedAt',
+        'deletedBy',
+        'programProfileResetAt',
+        'programProfileResetBy',
+        'reopenedAt',
+        'reopenedBy',
+        'individualEditUpdatedAt'
+      ];
+    }
+
+    function ownerDoesNotChangeAdminFields() {
+      return !request.resource.data.diff(resource.data).affectedKeys().hasAny(adminOnlyFields());
+    }
+
+    function ownerMayCloseOwnReopen() {
+      return !request.resource.data.diff(resource.data).affectedKeys().hasAny(['individualEditEnabled'])
         || (
-          signedIn()
-          && exists(userPath())
-          && userActive()
-        );
-    }
-
-    function statusOf(data) {
-      return data.keys().hasAny(['status'])
-        ? data.status
-        : 'active';
-    }
-
-    function creatorPreservedOrLegacy() {
-      return resource.data.keys().hasAny(['createdByEmail'])
-        ? (
-            request.resource.data.keys().hasAny(['createdByEmail'])
-            && request.resource.data.createdByEmail == resource.data.createdByEmail
-          )
-        : (
-            !request.resource.data.keys().hasAny(['createdByEmail'])
-            || request.resource.data.createdByEmail == email()
-          );
-    }
-
-    // --------------------------------------------------
-    // USUARIOS AUTORIZADOS
-    // --------------------------------------------------
-    match /authorizedUsers/{userEmail} {
-      // Cada persona puede consultar su propio documento incluso
-      // si el acceso fue revocado, para que la app pueda informarlo.
-      allow get: if isOwner()
-        || (
-          signedIn()
-          && email() == userEmail
-        );
-
-      allow list: if isOwner();
-      allow create, update: if isOwner();
-
-      // Ya no se eliminan usuarios: se revoca con active=false.
-      allow delete: if false;
-    }
-
-    // --------------------------------------------------
-    // PRESENCIA LIGERA V6.4
-    // --------------------------------------------------
-    match /presence/{userEmail} {
-      // La presencia solo sirve para detectar si hay más de un usuario activo.
-      // No contiene datos de agenda y no usa heartbeat periódico.
-      allow read: if isAuthorized();
-      allow create, update: if isAuthorized()
-        && userEmail == email()
-        && request.resource.data.email == email();
-      allow delete: if false;
-    }
-
-    // --------------------------------------------------
-    // SALAS
-    // --------------------------------------------------
-    match /rooms/{roomId} {
-      allow read: if isAuthorized();
-      allow create, update: if isOwner();
-
-      // Ya no se eliminan salas: se archivan con active=false.
-      allow delete: if false;
-    }
-
-    // --------------------------------------------------
-    // RESERVACIONES
-    // --------------------------------------------------
-    match /bookings/{bookingId} {
-      allow read: if isAuthorized();
-
-      allow create: if isAuthorized()
-        && request.resource.data.createdByEmail == email()
-        && request.resource.data.updatedByEmail == email()
-        && statusOf(request.resource.data) == 'active';
-
-      allow update: if isAuthorized()
-        && creatorPreservedOrLegacy()
-        && request.resource.data.updatedByEmail
-           == email()
-        && (
-          isOwner()
-          ||
-          (
-            statusOf(resource.data) == 'active'
-            && (
-              statusOf(request.resource.data) == 'active'
-              || statusOf(request.resource.data) == 'cancelled'
-            )
-          )
-        );
-
-      // Protección del historial.
-      allow delete: if false;
-    }
-
-    // --------------------------------------------------
-    // CANDADOS LEGACY DE 30 MINUTOS · COMPATIBILIDAD SEGURA
-    // --------------------------------------------------
-    match /locks/{lockId} {
-      allow read: if isAuthorized();
-
-      // V6.4.1 usa hourLocks para las operaciones nuevas, pero conserva
-      // compatibilidad de escritura con clientes V6.1/V6.3 durante la transición.
-      // Esto evita bloquear una agenda todavía abierta en otra computadora.
-      allow create, update: if isOwner()
-        || (
-          isAuthorized()
+          request.resource.data.individualEditEnabled == false
+          && request.resource.data.submittedPeriod is string
           && (
-            !request.resource.data.keys().hasAny(['type'])
-            || request.resource.data.type == 'booking'
-            || request.resource.data.type == 'roomBlock'
+            !resource.data.keys().hasAll(['individualEditEnabled'])
+            || resource.data.individualEditEnabled == true
           )
         );
+    }
 
-      allow delete: if isOwner()
+    function profileNotIndividuallyBlocked() {
+      return !resource.data.keys().hasAll(['individualEditDisabled'])
+        || resource.data.individualEditDisabled != true;
+    }
+
+    match /settings/{document=**} {
+      allow read: if institutional();
+      allow write: if admin();
+    }
+
+    // V92: los documentos de sesión heredados dejan de decidir quién puede escribir.
+    // Se conservan temporalmente por compatibilidad, pero profiles ya no depende de ellos.
+    match /profileSessions/{uid} {
+      allow read, create, update: if admin() || own(uid);
+      allow delete: if admin();
+    }
+
+    match /profiles/{uid} {
+      allow read: if admin() || own(uid);
+
+      // El profesor crea únicamente su propio perfil y nunca controles administrativos.
+      allow create: if admin()
         || (
-          isAuthorized()
-          && (
-            !resource.data.keys().hasAny(['type'])
-            || resource.data.type == 'booking'
-            || resource.data.type == 'roomBlock'
-          )
+          own(uid)
+          && !request.resource.data.keys().hasAny(adminOnlyFields())
+          && !request.resource.data.keys().hasAny(['individualEditEnabled'])
         );
+
+      // V92: el único candado duro individual es individualEditDisabled.
+      // No existe requisito de sesión/dispositivo. El último guardado manual confirmado prevalece.
+      allow update: if admin()
+        || (
+          own(uid)
+          && profileNotIndividuallyBlocked()
+          && ownerDoesNotChangeAdminFields()
+          && ownerMayCloseOwnReopen()
+        );
+
+      allow delete: if admin();
     }
 
-    // --------------------------------------------------
-    // CANDADOS V6.4 AGRUPADOS POR HORA
-    // --------------------------------------------------
-    match /hourLocks/{lockId} {
-      allow read: if isAuthorized();
-      allow create, update: if isAuthorized();
-      allow delete: if false;
+    // Respaldo administrativo previo a operaciones destructivas.
+    match /profileArchives/{uid}/snapshots/{snapshotId} {
+      allow read, create, update, delete: if admin();
     }
 
-    // --------------------------------------------------
-    // BLOQUEOS ADMINISTRATIVOS / MANTENIMIENTO
-    // --------------------------------------------------
-    match /roomBlocks/{blockId} {
-      allow read: if isAuthorized();
-
-      // El bloqueo de sala es una función general para cualquier
-      // usuario autorizado de la agenda.
-      allow create: if isAuthorized()
-        && request.resource.data.createdByEmail == email()
-        && request.resource.data.updatedByEmail == email();
-
-      // La administración de bloqueos existentes permanece protegida.
-      // V6.4 los retira de forma lógica (active=false) para conservar historial.
-      allow update: if isOwner();
-      allow delete: if false;
-    }
-
-    // --------------------------------------------------
-    // BITÁCORA
-    // --------------------------------------------------
-    match /auditLogs/{logId} {
-      allow create: if isAuthorized()
-        && request.resource.data.actorEmail == email();
-
-      allow read: if isOwner();
-
-      // La bitácora es inmutable desde el cliente.
+    match /audit/{entry} {
+      allow read: if admin();
+      allow create: if institutional();
       allow update, delete: if false;
-    }
-
-    // --------------------------------------------------
-    // CONFIGURACIÓN
-    // --------------------------------------------------
-    match /settings/{settingId} {
-      allow read: if isAuthorized();
-      allow create, update: if isOwner();
-      allow delete: if false;
-    }
-
-    // --------------------------------------------------
-    // MARCADOR DE INSTALACIÓN
-    // --------------------------------------------------
-    match /system/{documentId} {
-      allow read, create, update: if isOwner();
-      allow delete: if false;
-    }
-
-    // --------------------------------------------------
-    // TODO LO DEMÁS
-    // --------------------------------------------------
-    match /{document=**} {
-      allow read, write: if false;
     }
   }
 }

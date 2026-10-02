@@ -1,9 +1,0 @@
-{
-  "name": "agenda-audiovisuales",
-  "version": "6.5.0",
-  "private": true,
-  "type": "module",
-  "scripts": {
-    "test": "node --test core.test.js"
-  }
-}

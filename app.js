@@ -1,4281 +1,5961 @@
-import { DEFAULT_SETTINGS, normalizeSettings, minutes, timeLabel, dateKey, parseDate, monday, addDays } from './core.js?v=6.5.1';
-import { repository } from './storage.js?v=6.5.1';
-import { authService, OWNER_EMAIL } from './firebase.js?v=6.5.1';
-import { collaboration } from './realtime.js?v=6.5.1';
+import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.13.2/firebase-app.js';
+import { getAuth, GoogleAuthProvider, signInWithCredential, signOut, onAuthStateChanged, setPersistence, browserLocalPersistence } from 'https://www.gstatic.com/firebasejs/10.13.2/firebase-auth.js';
+import { getFirestore, doc, getDoc, getDocFromServer, setDoc, updateDoc, collection, getDocs, onSnapshot, serverTimestamp, addDoc, runTransaction } from 'https://www.gstatic.com/firebasejs/10.13.2/firebase-firestore.js';
 
-// V6.5 · Firestore como fuente de verdad + presencia/señales efímeras en Realtime Database.
 
-// Densidad visual del calendario: cada bloque representa 30 minutos.
-const SLOT_HEIGHT = 48;
-const HOUR_HEIGHT = SLOT_HEIGHT * 2;
+const $=id=>document.getElementById(id);
 
-const $ = selector => document.querySelector(selector);
-const $$ = selector => Array.from(document.querySelectorAll(selector));
-const escape = value => String(value).replace(/[&<>"']/g, c => ({
-  '&': '&amp;',
-  '<': '&lt;',
-  '>': '&gt;',
-  '"': '&quot;',
-  "'": '&#39;'
-}[c]));
-const fullDate = date => date.toLocaleDateString('es-MX', {
-  weekday: 'long',
-  day: 'numeric',
-  month: 'long',
-  year: 'numeric'
-});
 
-const PASTEL_PALETTES = {
-  lavender: {
-    label: 'Morado',
-    bg: 'rgba(220, 209, 247, .68)',
-    hover: 'rgba(211, 196, 243, .82)',
-    border: '#9a80c7',
-    accent: '#7b5eae',
-    ink: '#34244f'
-  },
-  mint: {
-    label: 'Menta',
-    bg: 'rgba(205, 239, 229, .68)',
-    hover: 'rgba(190, 232, 220, .82)',
-    border: '#69a895',
-    accent: '#448d79',
-    ink: '#1f5044'
-  },
-  sky: {
-    label: 'Azul',
-    bg: 'rgba(210, 229, 249, .68)',
-    hover: 'rgba(196, 218, 244, .82)',
-    border: '#729dc9',
-    accent: '#4d7fb2',
-    ink: '#233f61'
-  },
-  rose: {
-    label: 'Rosa',
-    bg: 'rgba(246, 216, 229, .68)',
-    hover: 'rgba(239, 202, 219, .82)',
-    border: '#c07c99',
-    accent: '#a85b7b',
-    ink: '#5d2f44'
-  },
-  peach: {
-    label: 'Durazno',
-    bg: 'rgba(249, 222, 202, .68)',
-    hover: 'rgba(244, 209, 184, .82)',
-    border: '#c98d68',
-    accent: '#ad6f49',
-    ink: '#5a3622'
-  },
-  butter: {
-    label: 'Amarillo',
-    bg: 'rgba(249, 237, 187, .70)',
-    hover: 'rgba(245, 229, 163, .84)',
-    border: '#c6a84e',
-    accent: '#a6872c',
-    ink: '#55430f'
-  },
-  aqua: {
-    label: 'Agua',
-    bg: 'rgba(204, 237, 241, .68)',
-    hover: 'rgba(188, 229, 234, .82)',
-    border: '#68a8b1',
-    accent: '#468c96',
-    ink: '#204d54'
-  },
-  sage: {
-    label: 'Salvia',
-    bg: 'rgba(222, 235, 208, .70)',
-    hover: 'rgba(211, 228, 195, .84)',
-    border: '#8ea56f',
-    accent: '#718b51',
-    ink: '#384a27'
-  }
+const GLOBAL_SETTINGS_CACHE_KEY='PAD_UTEQ_GLOBAL_SETTINGS';
+function readGlobalSettingsCache(){
+  try{
+    const raw=localStorage.getItem(GLOBAL_SETTINGS_CACHE_KEY);
+    return raw?JSON.parse(raw):{};
+  }catch(_){return {}}
+}
+const cachedGlobalSettings=readGlobalSettingsCache();
+const store=JSON.parse(localStorage.getItem('PAD_UTEQ')||'{}');
+const cfg=Object.assign(
+  {jefe:'Iván Gutiérrez Bautista',codigo:'EA-F-87',revision:'Rev.01',fechaRevision:'21-sep-2018',periodo:'SEP 2026 - AGO 2027',editingLocked:false,captureDeadline:null,planningEnabled:true},
+  cachedGlobalSettings.cfg||{},
+  store.cfg||{}
+);
+let globalSettingsKnown=!!cachedGlobalSettings.cfg;
+const DEFAULT_COMMON_RULES=[
+  {id:'TC_IND',name:'Tronco común Industrial',programIds:['ind_plasticos','ind_procesos'],semesters:[0,1,2]},
+  {id:'TC_MEC',name:'Tronco común Mecánica',programIds:['mec_ind','mec_moldes','mec_auto'],semesters:[0,1,2]}
+];
+let answers=store.answers||{},programMeta=store.programMeta||{},customPrograms=store.customPrograms||[],programOverrides=store.programOverrides||{},disabledPrograms=store.disabledPrograms||[],programAcronyms=store.programAcronyms||{},commonRules=Array.isArray(store.commonRules)?store.commonRules:JSON.parse(JSON.stringify(DEFAULT_COMMON_RULES)),transversalRules=Array.isArray(store.transversalRules)?store.transversalRules:[],planningByPeriod=(store.planningByPeriod&&typeof store.planningByPeriod==='object')?store.planningByPeriod:{};
+let currentProgramIndex=0;
+const workflowState={
+  profileConfirmed:false,
+  expectedProgramIndex:0,
+  reviewUnlocked:false
 };
-
-const USER_DEFAULT_COLORS = {
-  'ivan.gutierrez@uteq.edu.mx': 'lavender',
-  'monica.arellano@uteq.edu.mx': 'mint',
-  'jorge.cervantes@uteq.edu.mx': 'sky',
-  'aurora.osornio@uteq.edu.mx': 'rose',
-  'karina.garcia@uteq.edu.mx': 'peach'
-};
-
-function defaultColorKey(email) {
-  email = String(email || '').trim().toLowerCase();
-  if (USER_DEFAULT_COLORS[email]) return USER_DEFAULT_COLORS[email];
-
-  const keys = Object.keys(PASTEL_PALETTES);
-  let hash = 0;
-  for (const char of email) hash = ((hash << 5) - hash + char.charCodeAt(0)) | 0;
-  return keys[Math.abs(hash) % keys.length];
-}
-
-function paletteForKey(key, fallbackEmail = '') {
-  const resolved = PASTEL_PALETTES[key]
-    ? key
-    : defaultColorKey(fallbackEmail);
-
-  return {
-    key: resolved,
-    ...PASTEL_PALETTES[resolved]
-  };
-}
-
-function renderBookingColorPalette(selectedKey) {
-  const palette = $('#booking-color-palette');
-  const hidden = $('#booking-color-key');
-  const label = $('#selected-color-name');
-  if (!palette || !hidden) return;
-
-  const selected = paletteForKey(selectedKey, currentUser?.email);
-  hidden.value = selected.key;
-  if (label) label.textContent = selected.label;
-
-  palette.innerHTML = Object.entries(PASTEL_PALETTES).map(([key, item]) => `
-    <button
-      type="button"
-      class="color-swatch"
-      data-color-key="${escape(key)}"
-      role="radio"
-      aria-checked="${key === selected.key}"
-      aria-label="${escape(item.label)}"
-      title="${escape(item.label)}"
-      style="--swatch-bg:${item.bg};--swatch-border:${item.border};--swatch-ink:${item.ink}">
-      <span></span>
-      <small>${escape(item.label)}</small>
-    </button>
-  `).join('');
-}
-
-function selectBookingColor(key) {
-  const selected = paletteForKey(key, currentUser?.email);
-  $('#booking-color-key').value = selected.key;
-  $('#selected-color-name').textContent = selected.label;
-
-  for (const button of $$('#booking-color-palette [data-color-key]')) {
-    button.setAttribute('aria-checked', String(button.dataset.colorKey === selected.key));
-  }
-}
-
-function bookingActor(booking) {
-  const createdEmail = String(booking?.createdByEmail || '').toLowerCase();
-  const updatedEmail = String(booking?.updatedByEmail || createdEmail).toLowerCase();
-
-  const createdLabel = booking?.createdByLabel
-    || (createdEmail.includes('@') ? createdEmail.split('@')[0] : '');
-
-  const updatedLabel = booking?.updatedByLabel
-    || (updatedEmail.includes('@') ? updatedEmail.split('@')[0] : createdLabel);
-
-  return {
-    createdEmail,
-    updatedEmail,
-    createdLabel,
-    updatedLabel,
-    editedByAnother: Boolean(updatedEmail && createdEmail && updatedEmail !== createdEmail)
-  };
-}
-
-function bookingColorStyle(booking) {
-  const actor = bookingActor(booking);
-  const palette = paletteForKey(booking?.colorKey, actor.createdEmail || actor.updatedEmail);
-  const creatorPalette = paletteForKey(defaultColorKey(actor.createdEmail), actor.createdEmail);
-
-  return [
-    `--booking-bg:${palette.bg}`,
-    `--booking-hover:${palette.hover}`,
-    `--booking-border:${palette.border}`,
-    `--booking-accent:${palette.accent}`,
-    `--booking-ink:${palette.ink}`,
-    `--creator-accent:${creatorPalette.accent}`
-  ].join(';');
-}
-
-function bookingAuditHtml(booking) {
-  const actor = bookingActor(booking);
-  if (!actor.createdLabel && !actor.updatedLabel) return '';
-
-  const created = actor.createdLabel
-    ? `<small class="booked-by"><span class="user-dot"></span>por ${escape(actor.createdLabel)}</small>`
-    : '';
-
-  const edited = actor.editedByAnother
-    ? `<small class="edited-by">editó ${escape(actor.updatedLabel)}</small>`
-    : '';
-
-  return `${created}${edited}`;
-}
-
-function defaultRoomShort(room) {
-  const existing = String(room?.short || '').trim();
-  if (existing) return existing.toUpperCase();
-  if (room?.id === 'alta-f') return 'PA F';
-  if (room?.id === 'baja-f') return 'PB F';
-
-  const name = String(room?.name || '').trim();
-  const lower = name.toLocaleLowerCase('es-MX');
-  const building = name.match(/(?:edificio\s+)?([A-ZÁÉÍÓÚÑ0-9]{1,4})\s*$/i)?.[1]?.toUpperCase() || '';
-  if (lower.includes('planta alta')) return `PA${building ? ` ${building}` : ''}`;
-  if (lower.includes('planta baja')) return `PB${building ? ` ${building}` : ''}`;
-
-  const ignored = new Set(['sala', 'salas', 'audiovisual', 'audiovisuales', 'edificio', 'de', 'del', 'la', 'el']);
-  const initials = name
-    .split(/\s+/)
-    .filter(word => word && !ignored.has(word.toLocaleLowerCase('es-MX')))
-    .map(word => word[0])
-    .join('')
-    .slice(0, 5)
-    .toUpperCase();
-
-  return initials || 'SALA';
-}
-
-function roomPlantClass(room) {
-  const text = `${room?.id || ''} ${room?.name || ''} ${defaultRoomShort(room)}`
-    .toLocaleLowerCase('es-MX');
-
-  if (text.includes('planta alta') || text.includes('alta-f') || /\bpa\b/.test(text)) {
-    return 'plant-high';
-  }
-
-  if (text.includes('planta baja') || text.includes('baja-f') || /\bpb\b/.test(text)) {
-    return 'plant-low';
-  }
-
-  return 'plant-neutral';
-}
-
-
-let state = {
-  rooms: [],
-  bookings: [],
-  blocks: [],
-  settings: normalizeSettings(DEFAULT_SETTINGS)
-};
-
-let week = monday(new Date());
-let selectedDay = 0;
-let selectedRoom = 'all';
-let currentBooking = null;
-let confirmAction = null;
-let noticeTimer = null;
-let currentUser = null;
-let localPresenceActive = false;
-let activePeerCount = 0;
-let collaborationAvailable = true;
-let dragState = null;
-let bookingDragState = null;
-let suppressBookingClick = false;
-let quickView = 'week';
-let isOnline = navigator.onLine;
-let activeAdminTab = 'summary';
-let adminBookings = [];
-let adminRooms = [];
-let adminUsers = [];
-let currentAdminBooking = null;
-
-const DAY_LABELS = {
-  1: 'Lun',
-  2: 'Mar',
-  3: 'Mié',
-  4: 'Jue',
-  5: 'Vie',
-  6: 'Sáb'
-};
-
-function notice(message) {
-  $('#notice').textContent = message;
-  clearTimeout(noticeTimer);
-  noticeTimer = setTimeout(() => {
-    $('#notice').textContent = '';
-  }, 6500);
-}
-
-function roomById(id) {
-  return state.rooms.find(room => room.id === id);
-}
-
-function roomName(id) {
-  return roomById(id)?.name || 'Sala';
-}
-
-function roomShort(id) {
-  const room = roomById(id);
-  return room ? defaultRoomShort(room) : 'SALA';
-}
-
-function activeRooms() {
-  return state.rooms.filter(room => room.active !== false);
-}
-
-function reservableRooms() {
-  return activeRooms().filter(room =>
-    room.status !== 'maintenance' &&
-    room.status !== 'out_of_service'
-  );
-}
-
-function settings() {
-  return normalizeSettings(state.settings || DEFAULT_SETTINGS);
-}
-
-function enabledDates() {
-  const enabled = settings().enabledDays;
-  return Array.from({ length: 6 }, (_, i) => addDays(week, i))
-    .filter(date => enabled.includes(date.getDay()));
-}
-
-function visibleRange() {
-  const days = enabledDates();
-  const from = dateKey(days[0] || week);
-  const to = dateKey(days[days.length - 1] || addDays(week, 5));
-  return { from, to };
-}
-
-function dayStartMinutes() {
-  return minutes(settings().startTime);
-}
-
-function dayEndMinutes() {
-  return minutes(settings().endTime);
-}
-
-function slotMinutesValue() {
-  return Number(settings().blockMinutes) || 30;
-}
-
-function slotCount() {
-  return Math.max(
-    1,
-    Math.round((dayEndMinutes() - dayStartMinutes()) / slotMinutesValue())
-  );
-}
-
-function hourHeight() {
-  return SLOT_HEIGHT * (60 / slotMinutesValue());
-}
-
-function bookingStatus(booking) {
-  return booking?.status === 'cancelled' ? 'cancelled' : 'active';
-}
-
-function conflictFor(roomId, date, start, end, excludeBookingId = '') {
-  const startM = minutes(start);
-  const endM = minutes(end);
-
-  const booking = state.bookings.find(item =>
-    bookingStatus(item) === 'active' &&
-    item.id !== excludeBookingId &&
-    item.roomId === roomId &&
-    item.date === date &&
-    startM < minutes(item.end) &&
-    endM > minutes(item.start)
-  );
-
-  if (booking) {
-    return {
-      type: 'booking',
-      label: booking.teacher,
-      start: booking.start,
-      end: booking.end,
-      item: booking
-    };
-  }
-
-  const block = state.blocks.find(item =>
-    item.active !== false &&
-    item.roomId === roomId &&
-    item.date === date &&
-    startM < minutes(item.end) &&
-    endM > minutes(item.start)
-  );
-
-  if (block) {
-    return {
-      type: 'block',
-      label: block.reason || 'Mantenimiento',
-      start: block.start,
-      end: block.end,
-      item: block
-    };
-  }
-
-  return null;
-}
-
-function updateAvailabilityStatus(roomId, date, start, end, excludeBookingId = '') {
-  const status = $('#availability-status');
-  const calendar = $('#calendar');
-  if (!status || !roomId || !date || !start || !end) return null;
-
-  const room = roomById(roomId);
-
-  if (!room || room.active === false ||
-      room.status === 'maintenance' ||
-      room.status === 'out_of_service') {
-    status.className = 'availability-status busy';
-    status.textContent = 'Sala no disponible para nuevas reservaciones.';
-    calendar.classList.add('selection-busy');
-    calendar.classList.remove('selection-free');
-    return { type: 'room', label: 'Sala no disponible' };
-  }
-
-  const conflict = conflictFor(roomId, date, start, end, excludeBookingId);
-
-  calendar.classList.toggle('selection-busy', Boolean(conflict));
-  calendar.classList.toggle('selection-free', !conflict);
-
-  if (conflict) {
-    status.className = 'availability-status busy';
-    status.textContent = conflict.type === 'block'
-      ? `Bloqueado: ${conflict.label} · ${conflict.start}–${conflict.end}`
-      : `Ocupado: ${conflict.label} · ${conflict.start}–${conflict.end}`;
-  } else {
-    status.className = 'availability-status available';
-    status.textContent = `Disponible · ${roomShort(roomId)} · ${start}–${end}`;
-  }
-
-  return conflict;
-}
-
-function updateQuickFilterButtons() {
-  for (const button of $$('#quick-filters [data-view]')) {
-    button.setAttribute(
-      'aria-pressed',
-      String(button.dataset.view === quickView)
-    );
-  }
-}
-
-function setOnlineState(value, message = '') {
-  isOnline = Boolean(value);
-  const sync = $('#sync-status');
-
-  if (!isOnline) {
-    sync.textContent = '● Sin conexión · modo consulta';
-    sync.classList.remove('online');
-  } else if (message) {
-    sync.textContent = message;
-  }
-
-  updateMutationAvailability();
-}
-
-function updateMutationAvailability() {
-  const mutationDisabled = !isOnline;
-
-  for (const element of $$('[data-mutation]')) {
-    element.disabled = mutationDisabled;
-    element.title = mutationDisabled
-      ? 'Sin conexión: las modificaciones están temporalmente deshabilitadas.'
-      : '';
-  }
-
-  $('#new').disabled = mutationDisabled || !reservableRooms().length;
-}
-
-function ensureOnline() {
-  if (!isOnline) {
-    throw new Error('Sin conexión: espera a recuperar Internet antes de modificar la agenda.');
-  }
-}
-
-function renderWeekdayGrid() {
-  const enabled = settings().enabledDays;
-  $('#weekday-grid').innerHTML = enabled.map(day => `
-    <label>
-      <input type="checkbox" name="repeatWeekdays" value="${day}">
-      ${DAY_LABELS[day] || day}
-    </label>
-  `).join('');
-}
-
-function renderTimeOptions(form) {
-  const startM = dayStartMinutes();
-  const endM = dayEndMinutes();
-  const step = slotMinutesValue();
-
-  for (const field of ['start', 'end']) {
-    const options = [];
-    for (
-      let value = startM + (field === 'end' ? step : 0);
-      value <= endM;
-      value += step
-    ) {
-      options.push(`<option value="${timeLabel(value)}">${timeLabel(value)}</option>`);
-    }
-    form.elements[field].innerHTML = options.join('');
-  }
-}
-
-function render() {
-  const roomsAll = activeRooms();
-  const roomsAvailable = reservableRooms();
-  const days = enabledDates();
-
-  if (selectedRoom !== 'all' &&
-      !roomsAll.some(room => room.id === selectedRoom)) {
-    selectedRoom = 'all';
-  }
-
-  $('#new').disabled = !isOnline || !roomsAvailable.length;
-
-  $('#room-tabs').innerHTML = [
-    `<button data-room="all" aria-pressed="${selectedRoom === 'all'}">Todas las salas</button>`,
-    ...roomsAll.map(room => `
-      <button
-        data-room="${escape(room.id)}"
-        aria-pressed="${selectedRoom === room.id}">
-        ${escape(room.name)}
-      </button>
-    `)
-  ].join('');
-
-  updateQuickFilterButtons();
-
-  const first = days[0] || week;
-  const last = days[days.length - 1] || addDays(week, 5);
-  const now = new Date();
-  const todayKey = dateKey(now);
-  const currentMinutes = now.getHours() * 60 + now.getMinutes();
-
-  $('#period').textContent =
-    first.getMonth() === last.getMonth()
-      ? `${first.getDate()}–${last.getDate()} de ${last.toLocaleDateString('es-MX', { month: 'long', year: 'numeric' })}`
-      : `${first.toLocaleDateString('es-MX', { day: 'numeric', month: 'short', year: 'numeric' })} – ${last.toLocaleDateString('es-MX', { day: 'numeric', month: 'short', year: 'numeric' })}`;
-
-  $('#schedule-label').textContent =
-    `${days.map(day => DAY_LABELS[day.getDay()]).join(', ')} · ${settings().startTime}–${settings().endTime}`;
-
-  let visibleBookings = state.bookings.filter(booking =>
-    bookingStatus(booking) === 'active' &&
-    (selectedRoom === 'all' || booking.roomId === selectedRoom)
-  );
-
-  if (quickView === 'mine') {
-    const email = String(currentUser?.email || '').toLowerCase();
-    visibleBookings = visibleBookings.filter(booking =>
-      String(booking.createdByEmail || '').toLowerCase() === email
-    );
-  }
-
-  if (quickView === 'today') {
-    visibleBookings = visibleBookings.filter(booking =>
-      booking.date === todayKey
-    );
-  }
-
-  const summaryLabel = quickView === 'today'
-    ? 'hoy'
-    : quickView === 'mine'
-      ? 'tuyas en el periodo visible'
-      : 'en el periodo visible';
-
-  $('#summary').textContent =
-    `${visibleBookings.length} ${visibleBookings.length === 1 ? 'reservación' : 'reservaciones'} ${summaryLabel}`;
-
-  selectedDay = Math.max(0, Math.min(selectedDay, Math.max(days.length - 1, 0)));
-
-  $('#day-picker').innerHTML = days.map((date, index) => `
-    <button
-      data-day="${index}"
-      aria-pressed="${selectedDay === index}"
-      aria-label="${escape(fullDate(date))}">
-      ${escape(date.toLocaleDateString('es-MX', { weekday: 'short' }))}
-      <strong>${date.getDate()}</strong>
-    </button>
-  `).join('');
-
-  const calendar = $('#calendar');
-  const scrollTop = calendar.scrollTop;
-  calendar.classList.toggle('all-rooms', selectedRoom === 'all');
-  calendar.classList.toggle('single-day', quickView === 'today');
-
-  if (!roomsAll.length || !days.length) {
-    calendar.innerHTML = '<div class="empty">No hay salas o días habilitados para mostrar.</div>';
-    return;
-  }
-
-  const rooms = selectedRoom === 'all'
-    ? roomsAll
-    : roomsAll.filter(room => room.id === selectedRoom);
-
-  const roomHeaders = rooms.map(room => `
-    <span class="${roomPlantClass(room)}" title="${escape(room.name)}">
-      ${escape(defaultRoomShort(room))}
-    </span>
-  `).join('');
-
-  const mobileWidth = Math.max(rooms.length * 125, 280);
-  const startM = dayStartMinutes();
-  const endM = dayEndMinutes();
-  const step = slotMinutesValue();
-  const slots = slotCount();
-  const hourLabels = Math.floor((endM - startM) / 60) + 1;
-
-  calendar.innerHTML = `
-    <div
-      class="week"
-      style="--room-count:${rooms.length};--day-mobile-width:${mobileWidth}px;--slot-count:${slots}">
-      <div class="time-head">HORA</div>
-
-      ${days.map((date, index) => {
-        const key = dateKey(date);
-        const current = key === todayKey;
-        const saturday = date.getDay() === 6;
-
-        return `
-          <div
-            class="day-head ${index === selectedDay ? 'selected' : ''} ${current ? 'current' : ''} ${saturday ? 'saturday' : ''}"
-            style="--room-count:${rooms.length}">
-            <div class="day-title">
-              ${escape(date.toLocaleDateString('es-MX', { weekday: 'short' }))}
-              <strong>${date.getDate()}</strong>
-            </div>
-            <div class="room-heads" aria-label="Salas para ${escape(fullDate(date))}">
-              ${roomHeaders}
-            </div>
-          </div>
-        `;
-      }).join('')}
-
-      <div class="time-axis">
-        ${Array.from({ length: hourLabels }, (_, index) => `
-          <span
-            class="time-label"
-            style="top:${index * hourHeight()}px">
-            ${timeLabel(startM + index * 60)}
-          </span>
-        `).join('')}
-      </div>
-
-      ${days.map((date, index) => {
-        const key = dateKey(date);
-        const isToday = key === todayKey;
-        const isSaturday = date.getDay() === 6;
-        const nowLineVisible =
-          isToday &&
-          currentMinutes >= startM &&
-          currentMinutes <= endM;
-
-        const nowLineTop =
-          ((currentMinutes - startM) / step) * SLOT_HEIGHT;
-
-        const shiftDividerMinutes = 15 * 60;
-        const shiftDividerVisible =
-          shiftDividerMinutes > startM &&
-          shiftDividerMinutes < endM;
-        const shiftDividerTop =
-          ((shiftDividerMinutes - startM) / step) * SLOT_HEIGHT;
-
-        return `
-          <div
-            class="day-column ${index === selectedDay ? 'selected' : ''} ${isToday ? 'current-day' : ''} ${isSaturday ? 'saturday' : ''}">
-
-            ${rooms.map(room => {
-              const roomUnavailable =
-                room.status === 'maintenance' ||
-                room.status === 'out_of_service';
-
-              return `
-                <div
-                  class="lane ${roomPlantClass(room)} ${roomUnavailable ? 'room-unavailable' : ''}"
-                  data-room="${escape(room.id)}"
-                  data-date="${key}"
-                  aria-label="${escape(room.name)} · ${escape(fullDate(date))}">
-
-                  ${Array.from({ length: slots }, (_, n) => `
-                    <button
-                      class="slot"
-                      ${roomUnavailable ? 'disabled' : ''}
-                      data-date="${key}"
-                      data-room="${escape(room.id)}"
-                      data-start="${timeLabel(startM + n * step)}"
-                      aria-label="Reservar ${escape(room.name)}, ${escape(fullDate(date))}, ${timeLabel(startM + n * step)}">
-                    </button>
-                  `).join('')}
-
-                  ${state.blocks
-                    .filter(block =>
-                      block.active !== false &&
-                      block.date === key &&
-                      block.roomId === room.id
-                    )
-                    .map(block => `
-                      <button
-                        type="button"
-                        class="room-block"
-                        style="
-                          top:${((minutes(block.start) - startM) / step) * SLOT_HEIGHT + 2}px;
-                          height:${Math.max(((minutes(block.end) - minutes(block.start)) / step) * SLOT_HEIGHT - 4, 24)}px">
-                        <span>${escape(block.start)}–${escape(block.end)}</span>
-                        <strong>BLOQUEO</strong>
-                        <small>${escape(block.reason || 'Bloqueo administrativo')}</small>
-                      </button>
-                    `).join('')}
-
-                  ${visibleBookings
-                    .filter(booking =>
-                      booking.date === key &&
-                      booking.roomId === room.id
-                    )
-                    .map(booking => {
-                      const duration = minutes(booking.end) - minutes(booking.start);
-                      const audit = bookingAuditHtml(booking);
-                      const cardHeight = Math.max((duration / step) * SLOT_HEIGHT - 4, 24);
-
-                      return `
-                        <button
-                          class="booking ${duration <= step ? 'compact-booking' : ''}"
-                          style="
-                            top:${((minutes(booking.start) - startM) / step) * SLOT_HEIGHT + 2}px;
-                            --booking-height:${cardHeight}px;
-                            height:var(--booking-height);
-                            ${bookingColorStyle(booking)}"
-                          data-booking="${escape(booking.id)}"
-                          aria-label="${escape(`${booking.activity}, ${booking.teacher}, ${booking.group}, ${booking.start} a ${booking.end}, ${room.name}`)}"
-                          title="${escape(`${booking.activity}\n${booking.teacher} · ${booking.group}\n${room.name}\n${booking.start}–${booking.end}`)}">
-                          <strong class="booking-title">${escape(booking.activity || 'Reservación')}</strong>
-                          <span class="booking-person">${escape(booking.teacher)}</span>
-                          <span class="booking-meta"><b>${escape(booking.group)}</b></span>
-                          <span class="time">${escape(booking.start)}–${escape(booking.end)}</span>
-                          ${audit}
-                        </button>
-                      `;
-                    }).join('')}
-                </div>
-              `;
-            }).join('')}
-
-            ${shiftDividerVisible ? `
-              <div
-                class="shift-divider"
-                style="top:${shiftDividerTop}px"
-                aria-hidden="true"></div>
-            ` : ''}
-
-            ${nowLineVisible ? `
-              <div
-                class="now-line"
-                style="top:${nowLineTop}px"
-                aria-hidden="true">
-                <span>${timeLabel(currentMinutes)}</span>
-              </div>
-            ` : ''}
-          </div>
-        `;
-      }).join('')}
-    </div>
-  `;
-
-  calendar.scrollTop = scrollTop;
-  updateMutationAvailability();
-}
-
-function setDefaultRepeatUntil(dateValue) {
-  const input = $('#booking-form').elements.repeatUntil;
-  if (!dateValue) return;
-
-  const suggestedDays = Math.min(28, settings().repeatLimitDays);
-  const suggested = dateKey(addDays(parseDate(dateValue), suggestedDays));
-
-  if (!input.value || input.value < dateValue) {
-    input.value = suggested;
-  }
-
-  input.min = dateValue;
-  input.max = dateKey(addDays(parseDate(dateValue), settings().repeatLimitDays));
-}
-
-function ensureRepeatWeekday() {
-  const form = $('#booking-form');
-  const checked = Array.from(
-    form.querySelectorAll('[name="repeatWeekdays"]:checked')
-  );
-
-  if (checked.length || !form.elements.date.value) return;
-
-  const day = parseDate(form.elements.date.value).getDay();
-  const input = form.querySelector(
-    `[name="repeatWeekdays"][value="${day}"]`
-  );
-
-  if (input) input.checked = true;
-}
-
-function toggleRepeatOptions() {
-  const form = $('#booking-form');
-  const enabled = form.elements.repeatEnabled.checked;
-  $('#repeat-options').hidden = !enabled;
-
-  if (enabled) {
-    setDefaultRepeatUntil(form.elements.date.value);
-    ensureRepeatWeekday();
-  }
-}
-
-function openBooking(values = {}) {
-  const form = $('#booking-form');
-  form.reset();
-  $('#booking-error').textContent = '';
-
-  const available = reservableRooms();
-  let optionsRooms = available;
-
-  if (values.roomId && !available.some(room => room.id === values.roomId)) {
-    const existingRoom = roomById(values.roomId);
-    if (existingRoom) optionsRooms = [existingRoom, ...available];
-  }
-
-  form.elements.roomId.innerHTML = optionsRooms.map(room => `
-    <option value="${escape(room.id)}">
-      ${escape(room.name)} (${escape(defaultRoomShort(room))})
-    </option>
-  `).join('');
-
-  renderTimeOptions(form);
-  renderWeekdayGrid();
-
-  const days = enabledDates();
-  const defaultDate = dateKey(days[selectedDay] || days[0] || new Date());
-  const defaultStart = settings().startTime;
-  const defaultEnd = timeLabel(
-    Math.min(
-      dayEndMinutes(),
-      minutes(defaultStart) + Math.max(60, slotMinutesValue())
-    )
-  );
-
-  const defaults = {
-    id: '',
-    roomId: selectedRoom === 'all'
-      ? available[0]?.id
-      : selectedRoom,
-    date: defaultDate,
-    start: defaultStart,
-    end: defaultEnd,
-    teacher: '',
-    group: '',
-    activity: '',
-    colorKey: defaultColorKey(currentUser?.email)
-  };
-
-  const merged = {
-    ...defaults,
-    ...values,
-    colorKey:
-      values.colorKey ||
-      defaultColorKey(values.createdByEmail || currentUser?.email)
-  };
-
-  for (const [key, value] of Object.entries(merged)) {
-    if (form.elements[key]) {
-      form.elements[key].value = value ?? '';
-    }
-  }
-
-  renderBookingColorPalette(merged.colorKey);
-
-  const editing = Boolean(values.id);
-  $('#booking-title').textContent =
-    editing ? 'Editar reservación' : 'Nueva reservación';
-
-  $('#repeat-section').hidden = editing;
-  form.elements.repeatEnabled.checked = false;
-  $('#repeat-options').hidden = true;
-
-  for (const checkbox of form.querySelectorAll('[name="repeatWeekdays"]')) {
-    checkbox.checked = false;
-  }
-
-  if (!editing) setDefaultRepeatUntil(merged.date);
-
-  $('#booking-dialog').showModal();
-}
-
-function showBookingDetails(booking) {
-  if (!booking) return;
-
-  currentBooking = booking;
-  const status = bookingStatus(booking);
-
-  $('#detail-title').textContent =
-    booking.activity || 'Reservación';
-
-  $('#details').innerHTML = [
-    ['Maestro / persona a quien se le apartó', booking.teacher],
-    ['Grupo o área', booking.group],
-    ['Sala', `${roomShort(booking.roomId)} · ${roomName(booking.roomId)}`],
-    ['Fecha', fullDate(parseDate(booking.date))],
-    ['Horario', `${booking.start}–${booking.end}`],
-    ['Estado', status === 'cancelled' ? 'Cancelada' : 'Activa'],
-    [
-      'Apartado por',
-      booking.createdByLabel ||
-      (booking.createdByEmail
-        ? booking.createdByEmail.split('@')[0]
-        : '—')
-    ],
-    [
-      'Última edición por',
-      booking.updatedByLabel ||
-      (booking.updatedByEmail
-        ? booking.updatedByEmail.split('@')[0]
-        : (
-          booking.createdByLabel ||
-          (booking.createdByEmail
-            ? booking.createdByEmail.split('@')[0]
-            : '—')
-        ))
-    ]
-  ].map(([label, value]) => `
-    <div class="detail-row">
-      <span>${escape(label)}</span>
-      <strong>${escape(value)}</strong>
-    </div>
-  `).join('');
-
-  const cancelled = status === 'cancelled';
-  $('#cancel-booking').hidden = cancelled;
-  $('#cancel-series').hidden = cancelled || !booking.seriesId;
-  $('#restore-booking').hidden =
-    !cancelled || !authService.isOwner(currentUser);
-
-  $('#edit-booking').hidden = cancelled;
-  $('#duplicate-booking').hidden = false;
-
-  $('#detail-dialog').showModal();
-}
-
-function details(id) {
-  const booking = state.bookings.find(item => item.id === id);
-  if (booking) showBookingDetails(booking);
-}
-
-function confirmActionDialog(title, description, action, label = 'Confirmar') {
-  $('#confirm-title').textContent = title;
-  $('#confirm-text').textContent = description;
-  $('#confirm-error').textContent = '';
-  $('#confirm-action').textContent = label;
-  confirmAction = action;
-  $('#confirm-dialog').showModal();
-}
-
-function createBookingSeries(form) {
-  const data = new FormData(form);
-
-  const booking = {
-    id: String(data.get('id') || ''),
-    roomId: String(data.get('roomId') || ''),
-    date: String(data.get('date') || ''),
-    start: String(data.get('start') || ''),
-    end: String(data.get('end') || ''),
-    teacher: String(data.get('teacher') || '').trim(),
-    group: String(data.get('group') || '').trim(),
-    activity: String(data.get('activity') || '').trim(),
-    colorKey: String(
-      data.get('colorKey') ||
-      defaultColorKey(currentUser?.email)
-    ).trim()
-  };
-
-  if (booking.id || !form.elements.repeatEnabled.checked) {
-    return [booking];
-  }
-
-  const until = String(data.get('repeatUntil') || '');
-  const weekdays = new Set(
-    data.getAll('repeatWeekdays').map(Number)
-  );
-
-  if (!until) {
-    throw new Error('Selecciona la fecha hasta la cual se repetirá la reservación.');
-  }
-
-  if (until < booking.date) {
-    throw new Error('La fecha final de repetición no puede ser anterior a la fecha principal.');
-  }
-
-  const maxDate = dateKey(
-    addDays(parseDate(booking.date), settings().repeatLimitDays)
-  );
-
-  if (until > maxDate) {
-    throw new Error(`El periodo de repetición excede el límite configurado de ${settings().repeatLimitDays} días.`);
-  }
-
-  if (!weekdays.size) {
-    throw new Error('Selecciona al menos un día de repetición.');
-  }
-
-  const bookings = [{ ...booking }];
-  let cursor = addDays(parseDate(booking.date), 1);
-
-  while (dateKey(cursor) <= until) {
-    if (weekdays.has(cursor.getDay())) {
-      bookings.push({
-        ...booking,
-        id: '',
-        date: dateKey(cursor)
-      });
-    }
-    cursor = addDays(cursor, 1);
-  }
-
-  return bookings;
-}
-
-function setupReportDefaults() {
-  const now = new Date();
-  const month =
-    `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
-
-  const first = `${month}-01`;
-  const last = dateKey(
-    new Date(
-      now.getFullYear(),
-      now.getMonth() + 1,
-      0,
-      12
-    )
-  );
-
-  if (!$('#report-month').value) $('#report-month').value = month;
-  if (!$('#report-year').value) {
-    $('#report-year').value = String(now.getFullYear());
-  }
-  if (!$('#report-from').value) $('#report-from').value = first;
-  if (!$('#report-to').value) $('#report-to').value = last;
-}
-
-function toggleReportPeriodFields() {
-  const type = $('#report-period-type').value;
-
-  $('#report-month-field').hidden = type !== 'monthly';
-  $('#report-year-field').hidden = type !== 'annual';
-  $('#report-custom-fields').hidden = type !== 'custom';
-
-  updateReportPreview();
-}
-
-function reportRange() {
-  const type = $('#report-period-type').value;
-
-  if (type === 'monthly') {
-    const month = $('#report-month').value;
-
-    if (!/^\d{4}-\d{2}$/.test(month)) {
-      throw new Error('Selecciona el mes del reporte.');
-    }
-
-    const [year, monthNumber] = month.split('-').map(Number);
-
-    return {
-      from: `${month}-01`,
-      to: dateKey(new Date(year, monthNumber, 0, 12)),
-      label: new Date(
-        year,
-        monthNumber - 1,
-        1,
-        12
-      ).toLocaleDateString(
-        'es-MX',
-        { month: 'long', year: 'numeric' }
-      ),
-      file: month
-    };
-  }
-
-  if (type === 'annual') {
-    const year = Number($('#report-year').value);
-
-    if (!Number.isInteger(year) || year < 2020 || year > 2100) {
-      throw new Error('Escribe un año válido.');
-    }
-
-    return {
-      from: `${year}-01-01`,
-      to: `${year}-12-31`,
-      label: `Año ${year}`,
-      file: String(year)
-    };
-  }
-
-  const from = $('#report-from').value;
-  const to = $('#report-to').value;
-
-  if (!from || !to) {
-    throw new Error('Selecciona las fechas inicial y final del reporte.');
-  }
-
-  if (to < from) {
-    throw new Error('La fecha final del reporte no puede ser anterior a la fecha inicial.');
-  }
-
-  return {
-    from,
-    to,
-    label: `${from} a ${to}`,
-    file: `${from}_a_${to}`
-  };
-}
-
-function renderReportRoomOptions() {
-  const all = $('#report-all-rooms');
-  all.checked = true;
-
-  $('#report-room-options').innerHTML = state.rooms.map(room => `
-    <label class="disabled">
-      <input
-        type="checkbox"
-        name="reportRoom"
-        value="${escape(room.id)}"
-        checked
-        disabled>
-      <span>
-        <strong>${escape(defaultRoomShort(room))}</strong>
-        · ${escape(room.name)}
-      </span>
-    </label>
-  `).join('');
-
-  updateReportPreview();
-}
-
-function syncReportRoomInputs() {
-  const allChecked = $('#report-all-rooms').checked;
-
-  for (const input of $$('#report-room-options input[name="reportRoom"]')) {
-    input.disabled = allChecked;
-    if (allChecked) input.checked = true;
-    input.closest('label')?.classList.toggle('disabled', allChecked);
-  }
-
-  updateReportPreview();
-}
-
-function selectedReportRoomIds() {
-  if ($('#report-all-rooms').checked) {
-    return state.rooms.map(room => room.id);
-  }
-
-  const ids = $$('#report-room-options input[name="reportRoom"]:checked')
-    .map(input => input.value);
-
-  if (!ids.length) {
-    throw new Error('Selecciona al menos una sala para el reporte.');
-  }
-
-  return ids;
-}
-
-function updateReportPreview() {
-  const preview = $('#report-preview');
-  if (!preview) return;
-
-  try {
-    const range = reportRange();
-    const roomIds = selectedReportRoomIds();
-
-    preview.textContent =
-      `${roomIds.length} ${roomIds.length === 1 ? 'sala' : 'salas'} · ${range.label}`;
-    $('#report-error').textContent = '';
-  } catch {
-    preview.textContent = '';
-  }
-}
-
-function excelRows(bookings) {
-  return bookings.map(booking => {
-    const room =
-      state.rooms.find(item => item.id === booking.roomId) ||
-      { name: 'Sala archivada o eliminada', short: '—' };
-
-    const day = parseDate(booking.date)
-      .toLocaleDateString('es-MX', { weekday: 'long' });
-
-    const status = bookingStatus(booking);
-
-    return {
-      'Fecha': booking.date,
-      'Día': day,
-      'Sala': room.name,
-      'Abreviatura': defaultRoomShort(room),
-      'Hora inicial': booking.start,
-      'Hora final': booking.end,
-      'Duración (min)': minutes(booking.end) - minutes(booking.start),
-      'Maestro': booking.teacher,
-      'Grupo': booking.group,
-      'Actividad': booking.activity,
-      'Registrado por':
-        booking.createdByLabel ||
-        (booking.createdByEmail
-          ? booking.createdByEmail.split('@')[0]
-          : ''),
-      'Última edición por':
-        booking.updatedByLabel ||
-        (booking.updatedByEmail
-          ? booking.updatedByEmail.split('@')[0]
-          : ''),
-      'Estado': status === 'cancelled' ? 'Cancelada' : 'Activa',
-      'Cancelado por':
-        booking.cancelledByLabel ||
-        (booking.cancelledByEmail
-          ? booking.cancelledByEmail.split('@')[0]
-          : ''),
-      'Fecha de cancelación':
-        booking.cancelledAt?.toDate?.()?.toLocaleString('es-MX') || ''
-    };
-  });
-}
-
-function reportStatistics(bookings, roomIds) {
-  const active = bookings.filter(booking =>
-    bookingStatus(booking) === 'active'
-  );
-
-  const cancelled = bookings.filter(booking =>
-    bookingStatus(booking) === 'cancelled'
-  );
-
-  const roomStats = new Map();
-  const userStats = new Map();
-  const hourStats = new Map();
-
-  for (const booking of bookings) {
-    const duration =
-      (minutes(booking.end) - minutes(booking.start)) / 60;
-
-    const room = roomById(booking.roomId);
-    const roomLabel = room
-      ? defaultRoomShort(room)
-      : booking.roomId;
-
-    const roomEntry =
-      roomStats.get(roomLabel) ||
-      { reservations: 0, hours: 0 };
-
-    roomEntry.reservations += 1;
-    roomEntry.hours += duration;
-    roomStats.set(roomLabel, roomEntry);
-
-    const user =
-      booking.createdByLabel ||
-      booking.createdByEmail ||
-      'Sin identificar';
-
-    userStats.set(
-      user,
-      (userStats.get(user) || 0) + 1
-    );
-
-    const hourKey = `${booking.start}–${booking.end}`;
-    hourStats.set(
-      hourKey,
-      (hourStats.get(hourKey) || 0) + 1
-    );
-  }
-
-  const sortedRooms = [...roomStats.entries()]
-    .sort((a, b) => b[1].reservations - a[1].reservations);
-
-  const sortedUsers = [...userStats.entries()]
-    .sort((a, b) => b[1] - a[1]);
-
-  const sortedHours = [...hourStats.entries()]
-    .sort((a, b) => b[1] - a[1]);
-
-  return {
-    total: bookings.length,
-    totalHours: bookings.reduce(
-      (sum, booking) =>
-        sum + (minutes(booking.end) - minutes(booking.start)) / 60,
-      0
+let newSemesterCount=5,programEditorSemesters=[],auth=null,currentUser=null,authReady=false,db=null,cloudSettingsUnsub=null,cloudProfileMetaUnsub=null,remoteProfileLoaded=false,cloudAvailable=false,cloudSaveTimer=null,cloudRetryTimer=null,countdownTimer=null,lastSavedAt=store.lastSavedAt||null,editingCommonRuleId=null,editingProgramId=null,teacherAdminCache={},previousTeacherAdminCache={};
+let planningCommissionEditorIndex=null;
+let planningCommissionEditorOpen=false;
+let planningCommissionDraft=emptyCommission();
+let cloudSyncInFlight=false;
+let manualSaveInFlight=false;
+let cloudTeacherFingerprintKnown=false;
+let lastCloudTeacherFingerprint='';
+let bootstrapComplete=false;
+let authPersistenceReady=Promise.resolve();
+let remoteProfileShadow=null;
+let sessionConflictKnown=false;
+let teacherAdminCacheLoaded=false;
+
+/* =========================================================
+   V91 · SESIÓN RESILIENTE, CONTROL ADMINISTRATIVO Y BAJO CONSUMO
+   - El perfil se muestra desde la copia local sin esperar a Firestore.
+   - No existen heartbeats periódicos: la sesión se renueva al reclamarla
+     y después de guardados manuales confirmados.
+   - Una sesión vencida o del mismo dispositivo se recupera automáticamente.
+   - Si otro dispositivo está realmente activo, el usuario puede continuar aquí
+     con una sola acción; el dispositivo anterior queda en solo lectura.
+   - El candado administrativo y el control de dispositivo son estados separados.
+   ========================================================= */
+const CLOUD_READ_TIMEOUT_MS=6000;
+const CLOUD_WRITE_UI_TIMEOUT_MS=1400;
+const ADMIN_PERMISSION_WRITE_TIMEOUT_MS=10000;
+const ADMIN_PERMISSION_VERIFY_TIMEOUT_MS=7000;
+const SESSION_STATUS_READ_TIMEOUT_MS=3500;
+const SESSION_LEASE_MS=8*60*1000;
+const SESSION_LEASE_TOUCH_MIN_MS=3*60*1000;
+let activeSessionId='';
+let sessionHasControl=false;
+let sessionDocUnsub=null;
+let sessionHeartbeatTimer=null;
+let sessionActivationBusy=false;
+let sessionConflictDevice='';
+let sessionTransferModalDismissed=false;
+let sessionSnapshotCache=null;
+let sessionWriteSeq=Number(store.sessionWriteSeq)||0;
+let sessionLastLeaseTouchMs=0;
+let sessionClaimInFlight=false;
+// Compatibilidad con limpieza de estado heredada; V91 ya no programa estos temporizadores.
+let sessionControlRetryTimer=null;
+let sessionHandoffRetryTimer=null;
+let sessionTransferRequested=false;
+
+function withTimeout(promise,ms,fallbackValue=null){
+  let timer=null;
+  return Promise.race([
+    Promise.resolve(promise).then(
+      value=>({kind:'value',value}),
+      error=>({kind:'error',error})
     ),
-    active: active.length,
-    cancelled: cancelled.length,
-    topRoom: sortedRooms[0]?.[0] || '—',
-    roomStats: sortedRooms,
-    userStats: sortedUsers,
-    hourStats: sortedHours,
-    roomIds
-  };
+    new Promise(resolve=>{
+      timer=setTimeout(()=>resolve({kind:'timeout'}),Math.max(0,Number(ms)||0));
+    })
+  ]).then(result=>{
+    if(timer)clearTimeout(timer);
+    if(result.kind==='error')throw result.error;
+    return result.kind==='timeout'?fallbackValue:result.value;
+  });
+}
+const externalScriptPromises=new Map();
+function loadExternalScriptOnce(src,test){
+  if(test?.())return Promise.resolve(true);
+  if(externalScriptPromises.has(src))return externalScriptPromises.get(src);
+  const promise=new Promise(resolve=>{
+    const existing=[...document.scripts].find(x=>x.src===src);
+    const done=()=>resolve(!!test?.());
+    if(existing){
+      existing.addEventListener('load',done,{once:true});
+      existing.addEventListener('error',()=>resolve(false),{once:true});
+      setTimeout(done,8000);
+      return;
+    }
+    const script=document.createElement('script');
+    script.src=src;
+    script.async=true;
+    script.defer=true;
+    script.addEventListener('load',done,{once:true});
+    script.addEventListener('error',()=>resolve(false),{once:true});
+    document.head.appendChild(script);
+  });
+  externalScriptPromises.set(src,promise);
+  return promise;
+}
+async function ensureGoogleIdentity(){
+  if(window.google?.accounts?.oauth2?.initTokenClient)return true;
+  return loadExternalScriptOnce('https://accounts.google.com/gsi/client',()=>!!window.google?.accounts?.oauth2?.initTokenClient);
+}
+async function ensureExcelLibrary(){
+  if(window.XLSX?.utils)return true;
+  return loadExternalScriptOnce('https://cdn.jsdelivr.net/npm/xlsx-js-style@1.2.0/dist/xlsx.bundle.js',()=>!!window.XLSX?.utils);
+}
+async function ensurePdfLibraries(){
+  const canvasOk=window.html2canvas?true:await loadExternalScriptOnce('https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js',()=>!!window.html2canvas);
+  if(!canvasOk)return false;
+  if(window.jspdf?.jsPDF)return true;
+  return loadExternalScriptOnce('https://cdn.jsdelivr.net/npm/jspdf@2.5.1/dist/jspdf.umd.min.js',()=>!!window.jspdf?.jsPDF);
 }
 
-async function exportReport() {
-  const range = reportRange();
-  const roomIds = selectedReportRoomIds();
-  const roomSet = new Set(roomIds);
-
-  let bookings = await repository.queryBookingsRange(
-    range.from,
-    range.to
-  );
-
-  bookings = bookings.filter(booking =>
-    roomSet.has(booking.roomId)
-  );
-
-  const rows = excelRows(bookings);
-  const statistics = reportStatistics(bookings, roomIds);
-  const selectedRooms = roomIds
-    .map(id => roomById(id))
-    .filter(Boolean);
-
-  const roomDescription =
-    roomIds.length === state.rooms.length
-      ? 'Todas las salas'
-      : selectedRooms.map(defaultRoomShort).join(', ');
-
-  const fileBase =
-    `reporte_reservaciones_${range.file}`
-      .replace(/[^a-zA-Z0-9_-]/g, '_');
-
-  if (!window.XLSX) {
-    throw new Error('No se pudo cargar el generador XLSX.');
+function sessionStorageKey(){
+  return currentUser?.uid?`PAD_UTEQ_SESSION_${currentUser.uid}`:'PAD_UTEQ_SESSION';
+}
+function getOrCreateSessionId(){
+  const key=sessionStorageKey();
+  try{
+    const existing=sessionStorage.getItem(key);
+    if(existing)return existing;
+    const id=(crypto?.randomUUID?.()||`${Date.now()}-${Math.random().toString(36).slice(2)}`);
+    sessionStorage.setItem(key,id);
+    return id;
+  }catch(_){
+    return `${Date.now()}-${Math.random().toString(36).slice(2)}`;
   }
+}
+function getOrCreateDeviceId(){
+  const key='PAD_UTEQ_DEVICE_ID';
+  try{
+    const existing=localStorage.getItem(key);
+    if(existing)return existing;
+    const id=(crypto?.randomUUID?.()||`device-${Date.now()}-${Math.random().toString(36).slice(2)}`);
+    localStorage.setItem(key,id);
+    return id;
+  }catch(_){
+    return `device-${navigator.platform||'unknown'}`;
+  }
+}
+function deviceLabel(){
+  const ua=navigator.userAgent||'';
+  if(/Android/i.test(ua))return 'Teléfono o tableta Android';
+  if(/iPhone/i.test(ua))return 'iPhone';
+  if(/iPad/i.test(ua))return 'iPad';
+  if(/Windows/i.test(ua)||/Win32|Win64/i.test(navigator.platform||''))return 'Computadora Windows';
+  if(/Macintosh|Mac OS/i.test(ua))return 'Computadora Mac';
+  if(/Linux/i.test(ua))return 'Computadora Linux';
+  return /Mobile/i.test(ua)?'Dispositivo móvil':'Computadora';
+}
+function updateSessionStatus(text,kind='neutral'){
+  const el=$('sessionStatus');
+  if(!el)return;
+  el.textContent=text;
+  el.className=`session-status ${kind}`;
+}
+function sessionCanWrite(){
+  // V92: no existe candado por dispositivo. El guardado manual confirmado más reciente
+  // es la referencia en nube. El control real de escritura es administrativo.
+  return !!currentUser;
+}
+function nextSessionWriteSeq(){
+  sessionWriteSeq=Math.max(sessionWriteSeq,Number(store.sessionWriteSeq)||0)+1;
+  store.sessionWriteSeq=sessionWriteSeq;
+  return sessionWriteSeq;
+}
+async function refreshSessionWriteSeqFromCloud(){
+  if(!db||!currentUser)return;
+  if(remoteProfileLoaded)return;
+  try{
+    const snap=await withTimeout(getDoc(doc(db,'profiles',currentUser.uid)),2500,null);
+    if(!snap||!snap.exists())return;
+    const d=snap.data()||{};
+    sessionWriteSeq=Math.max(sessionWriteSeq,Number(d.sessionWriteSeq)||0);
+    store.sessionWriteSeq=sessionWriteSeq;
+    try{localStorage.setItem('PAD_UTEQ',JSON.stringify(store))}catch(_){}
+  }catch(e){
+    console.warn('No fue posible refrescar el contador de sesión',e);
+  }
+}
+function sessionIsStale(active,heartbeat,sessionData={}){
+  const leaseMs=Number(sessionData?.leaseVersion)>=2?SESSION_LEASE_MS:120000;
+  return !active || !Number(heartbeat) || (Date.now()-Number(heartbeat))>leaseMs;
+}
+function sessionBelongsToThisDevice(d={}){
+  const remoteDeviceId=String(d.activeDeviceId||'');
+  return !!remoteDeviceId && remoteDeviceId===getOrCreateDeviceId();
+}
+function stopSessionHeartbeat(){
+  clearInterval(sessionHeartbeatTimer);
+  sessionHeartbeatTimer=null;
+}
+async function renewSessionLease(){
+  // V92: compatibilidad con llamadas heredadas. No escribe profileSessions.
+  return true;
+}
+async function heartbeatSession(){return true}
+function startSessionHeartbeat(){stopSessionHeartbeat()}
+function captureVisibleStateBeforeHandoff(){
+  try{
+    if($('apPat'))store.profile=profileFromInputs();
+    if(planningEnabled()&&$('commissionsBlock')){
+      try{collectPlanning()}catch(_){}
+    }
+    persist({schedule:false});
+  }catch(e){
+    console.warn('No fue posible conservar el borrador local antes del cambio de dispositivo',e);
+  }
+}
+async function activateSessionControl({preferRemote=false}={}){
+  if(sessionActivationBusy)return false;
+  sessionActivationBusy=true;
+  sessionHasControl=true;
+  updateSessionStatus(preferRemote?'Recuperando la última versión guardada…':'Preparando edición…','warn');
+  applyEditState();
+  updateNavState();
+  try{
+    if(preferRemote)await loadRemoteProfile({preferRemote:true});
+    await refreshSessionWriteSeqFromCloud();
+  }catch(e){
+    console.warn('No fue posible refrescar completamente la sesión antes de editar',e);
+  }finally{
+    sessionActivationBusy=false;
+  }
+  sessionLastLeaseTouchMs=Date.now();
+  updateSessionStatus('Editando en este dispositivo','ok');
+  applyEditState();
+  updateNavState();
+  if(store.syncPending)updateCloudStatus('Cambios locales pendientes · pulse Guardar y continuar','warn');
+  return true;
+}
+async function forceClaimSession({preferRemote=false}={}){
+  if(!currentUser)return false;
+  sessionHasControl=true;
+  sessionConflictKnown=false;
+  sessionActivationBusy=false;
+  if(preferRemote)await loadRemoteProfile({preferRemote:true});
+  hideSessionTransferModal();
+  applyEditState();
+  updateNavState();
+  return true;
+}
+function hideSessionTransferModal(){
+  const modal=$('sessionTransferModal');
+  if(modal)modal.classList.add('hidden');
+  document.body.classList.remove('session-transfer-open');
+}
+function setSessionActionBusy(busy,label='Procesando…'){
+  const continueBtn=$('sessionContinueHereBtn');
+  if(continueBtn){
+    continueBtn.disabled=!!busy;
+    continueBtn.classList.toggle('is-busy',!!busy);
+    continueBtn.textContent=busy?label:'Continuar edición aquí';
+  }
+}
+function showSessionTransferModal({device='otro dispositivo'}={}){
+  const modal=$('sessionTransferModal');
+  if(!modal||sessionTransferModalDismissed)return;
+  sessionConflictDevice=device;
+  const text=$('sessionTransferText'),state=$('sessionTransferState');
+  if(text)text.textContent=`Existe una sesión reciente de edición en ${device}.`;
+  if(state){
+    state.className='session-transfer-state warn';
+    state.innerHTML='<strong>Puede continuar en este dispositivo.</strong> La sesión anterior quedará en solo lectura. Solo se conservarán en ambos equipos los datos que ya hayan sido guardados en la nube.';
+  }
+  const continueBtn=$('sessionContinueHereBtn');
+  if(continueBtn){
+    continueBtn.disabled=false;
+    continueBtn.classList.remove('is-busy');
+    continueBtn.textContent='Continuar edición aquí';
+  }
+  modal.classList.remove('hidden');
+  document.body.classList.add('session-transfer-open');
+}
+window.closeSessionTransferModal=function(){
+  sessionTransferModalDismissed=true;
+  hideSessionTransferModal();
+  updateSessionStatus(`Solo lectura · edición activa en ${sessionConflictDevice||'otro dispositivo'}`,'readonly');
+  applyEditState();
+  updateNavState();
+}
+window.continueEditingHere=async function(){
+  sessionTransferModalDismissed=false;
+  if(!db||!currentUser||isAdmin())return;
+  activeSessionId=activeSessionId||getOrCreateSessionId();
+  setSessionActionBusy(true,'Activando edición…');
+  updateSessionStatus('Activando la edición en este dispositivo…','warn');
+  try{
+    const claimed=await forceClaimSession({force:true,preferRemote:true});
+    if(claimed){
+      hideSessionTransferModal();
+      toast('La edición ya está activa en este dispositivo.');
+    }else{
+      showSessionTransferModal({device:sessionConflictDevice||'otro dispositivo'});
+      updateSessionStatus('No fue posible activar la edición. Intente nuevamente.','warn');
+      toast('No fue posible activar la edición en este dispositivo.');
+    }
+  }catch(e){
+    console.error('No fue posible continuar la edición aquí',e);
+    showSessionTransferModal({device:sessionConflictDevice||'otro dispositivo'});
+    updateSessionStatus('No fue posible activar la edición. Intente nuevamente.','warn');
+  }finally{
+    setSessionActionBusy(false);
+  }
+}
+window.recoverEditingHere=window.continueEditingHere;
+function watchSessionDocument(ref){
+  if(sessionDocUnsub)sessionDocUnsub();
+  sessionDocUnsub=onSnapshot(ref,snap=>{
+    const d=snap.exists()?snap.data():{};
+    sessionSnapshotCache=d;
+    const active=String(d.activeSessionId||'');
+    const activeDevice=String(d.activeDevice||'otro dispositivo');
+    const heartbeat=Number(d.heartbeatMs)||0;
 
-  const headers = [
-    'Fecha',
-    'Día',
-    'Sala',
-    'Abreviatura',
-    'Hora inicial',
-    'Hora final',
-    'Duración (min)',
-    'Maestro',
-    'Grupo',
-    'Actividad',
-    'Registrado por',
-    'Última edición por',
-    'Estado',
-    'Cancelado por',
-    'Fecha de cancelación'
-  ];
+    if(active===activeSessionId&&active){
+      sessionConflictKnown=false;
+      sessionTransferModalDismissed=false;
+      hideSessionTransferModal();
+      sessionLastLeaseTouchMs=Math.max(sessionLastLeaseTouchMs,heartbeat||Date.now());
+      if(!sessionHasControl&&!sessionActivationBusy&&!sessionClaimInFlight){
+        activateSessionControl({preferRemote:false}).catch(e=>{
+          console.warn('Activación de sesión pendiente',e);
+          sessionHasControl=false;
+          updateSessionStatus('No fue posible activar la edición. Intente nuevamente.','warn');
+        });
+      }
+      return;
+    }
 
-  const dataSheet = rows.length
-    ? window.XLSX.utils.json_to_sheet(rows, { header: headers })
-    : window.XLSX.utils.aoa_to_sheet([headers]);
+    if(!active || sessionBelongsToThisDevice(d) || sessionIsStale(active,heartbeat,d)){
+      sessionConflictKnown=false;
+      hideSessionTransferModal();
+      if(!sessionClaimInFlight){
+        forceClaimSession({force:false,preferRemote:false}).catch(e=>console.warn('Recuperación automática de sesión pendiente',e));
+      }
+      return;
+    }
 
-  dataSheet['!cols'] = [
-    { wch: 12 }, { wch: 12 }, { wch: 34 }, { wch: 13 },
-    { wch: 13 }, { wch: 13 }, { wch: 15 }, { wch: 30 },
-    { wch: 16 }, { wch: 44 }, { wch: 22 }, { wch: 22 },
-    { wch: 12 }, { wch: 22 }, { wch: 24 }
-  ];
-
-  const summarySheet = window.XLSX.utils.aoa_to_sheet([
-    ['Reporte de reservaciones de Salas Audiovisuales · División Industrial'],
-    [],
-    ['Periodo', range.label],
-    ['Desde', range.from],
-    ['Hasta', range.to],
-    ['Salas', roomDescription],
-    ['Total de reservaciones', bookings.length],
-    ['Generado', new Date().toLocaleString('es-MX')],
-    [],
-    ['Elaborado desde la agenda de reservaciones de la División Industrial.']
-  ]);
-
-  summarySheet['!cols'] = [
-    { wch: 26 },
-    { wch: 70 }
-  ];
-
-  const statsRows = [
-    ['Estadística', 'Valor'],
-    ['Total de reservaciones', statistics.total],
-    ['Total de horas reservadas', Number(statistics.totalHours.toFixed(1))],
-    ['Reservaciones activas', statistics.active],
-    ['Reservaciones canceladas', statistics.cancelled],
-    ['Sala más utilizada', statistics.topRoom],
-    [],
-    ['Sala', 'Reservaciones', 'Horas'],
-    ...statistics.roomStats.map(([room, value]) => [
-      room,
-      value.reservations,
-      Number(value.hours.toFixed(1))
-    ]),
-    [],
-    ['Usuario', 'Reservaciones'],
-    ...statistics.userStats.map(([user, count]) => [
-      user,
-      count
-    ]),
-    [],
-    ['Horario', 'Reservaciones'],
-    ...statistics.hourStats.map(([hour, count]) => [
-      hour,
-      count
-    ])
-  ];
-
-  const statsSheet =
-    window.XLSX.utils.aoa_to_sheet(statsRows);
-
-  statsSheet['!cols'] = [
-    { wch: 34 },
-    { wch: 18 },
-    { wch: 14 }
-  ];
-
-  const workbook = window.XLSX.utils.book_new();
-  window.XLSX.utils.book_append_sheet(
-    workbook,
-    summarySheet,
-    'Resumen'
-  );
-  window.XLSX.utils.book_append_sheet(
-    workbook,
-    dataSheet,
-    'Reservaciones'
-  );
-  window.XLSX.utils.book_append_sheet(
-    workbook,
-    statsSheet,
-    'Estadísticas'
-  );
-
-  window.XLSX.writeFile(
-    workbook,
-    `${fileBase}.xlsx`,
-    { compression: true }
-  );
-
-  notice(
-    `Reporte descargado: ${bookings.length} ${bookings.length === 1 ? 'reservación' : 'reservaciones'}.`
-  );
+    if(sessionHasControl)captureVisibleStateBeforeHandoff();
+    sessionHasControl=false;
+    sessionConflictKnown=true;
+    sessionConflictDevice=activeDevice;
+    stopSessionHeartbeat();
+    applyEditState();
+    updateNavState();
+    showSessionTransferModal({device:activeDevice});
+    updateSessionStatus(`Solo lectura temporal · edición activa en ${activeDevice}`,'readonly');
+  },e=>{
+    console.warn('No fue posible vigilar la sesión activa',e);
+    sessionConflictKnown=false;
+    updateSessionStatus('Modo local · control remoto de sesión no disponible','warn');
+    applyEditState();
+  });
+}
+async function requestSingleDeviceControl(){
+  if(!currentUser)return false;
+  sessionHasControl=true;
+  sessionConflictKnown=false;
+  sessionActivationBusy=false;
+  sessionTransferModalDismissed=true;
+  hideSessionTransferModal();
+  updateSessionStatus('Guardado manual activo','ok');
+  applyEditState();
+  updateNavState();
+  return true;
+}
+function scheduleSessionControlRetry(){/* V92: sin control remoto de dispositivo */}
+async function retrySessionControl(){return !!currentUser}
+async function releaseSessionIfOwned(){
+  // V92: no hay una sesión exclusiva que liberar en Firestore.
+  sessionHasControl=false;
+  sessionConflictKnown=false;
+  stopSessionHeartbeat();
 }
 
-function downloadJson(data, fileName) {
-  const blob = new Blob(
-    [JSON.stringify(data, null, 2)],
-    { type: 'application/json;charset=utf-8' }
-  );
+const allowedDomain=(window.PAD_ALLOWED_DOMAIN||'uteq.edu.mx').toLowerCase();
+const PAD_BUILD_VERSION='V92-2026-09-30';
+window.PAD_BUILD_VERSION=PAD_BUILD_VERSION;
+const adminEmail=(window.PAD_ADMIN_EMAIL||'ivan.gutierrez@uteq.edu.mx').toLowerCase();
+const googleClientId=String(window.PAD_GOOGLE_CLIENT_ID||'').trim();
 
-  const url = URL.createObjectURL(blob);
-  const anchor = document.createElement('a');
-  anchor.href = url;
-  anchor.download = fileName;
-  document.body.appendChild(anchor);
-  anchor.click();
-  anchor.remove();
-  URL.revokeObjectURL(url);
-}
 
-function clearBookingDropPreview() {
-  document
-    .querySelectorAll('.booking-drop-preview')
-    .forEach(node => node.remove());
+const PLANNING_DAYS=[
+  {key:'lunes',label:'Lunes'},
+  {key:'martes',label:'Martes'},
+  {key:'miercoles',label:'Miércoles'},
+  {key:'jueves',label:'Jueves'},
+  {key:'viernes',label:'Viernes'}
+];
+const PLANNING_SLOTS=[
+  ['07:00','08:00'],['08:00','09:00'],['09:00','10:00'],['10:00','11:00'],
+  ['11:00','12:00'],['12:00','13:00'],['13:00','14:00'],['14:00','15:00'],['15:00','16:00']
+];
 
-  document
-    .querySelectorAll('.lane.booking-drop-target')
-    .forEach(node =>
-      node.classList.remove('booking-drop-target')
-    );
 
-  $('#calendar').classList.remove('booking-moving');
-}
-
-function bookingDropTarget(lane, clientY, booking, grabOffsetY = 0) {
-  if (!lane || !booking) return null;
-
-  const step = slotMinutesValue();
-  const duration =
-    minutes(booking.end) - minutes(booking.start);
-
-  const durationSlots =
-    Math.max(1, Math.ceil(duration / step));
-
-  const rect = lane.getBoundingClientRect();
-  const rawTop =
-    clientY - rect.top - grabOffsetY;
-
-  const maxStartIndex =
-    Math.max(0, slotCount() - durationSlots);
-
-  const slotIndex = Math.max(
-    0,
-    Math.min(
-      maxStartIndex,
-      Math.round(rawTop / SLOT_HEIGHT)
-    )
-  );
-
-  const startM =
-    dayStartMinutes() + slotIndex * step;
-
-  const endM = startM + duration;
-
+function emptyCommission(){
   return {
-    roomId: lane.dataset.room,
-    date: lane.dataset.date,
-    start: timeLabel(startM),
-    end: timeLabel(endM),
-    top: slotIndex * SLOT_HEIGHT + 2,
-    height: Math.max(
-      (duration / step) * SLOT_HEIGHT - 4,
-      24
-    )
+    name:'',
+    authorizedHours:'',
+    scheduleRequired:'no',
+    reservedSlots:[]
   };
 }
-
-function paintBookingDropPreview(lane, target, booking, conflict) {
-  clearBookingDropPreview();
-  if (!lane || !target || !booking) return;
-
-  const preview = document.createElement('div');
-  preview.className =
-    `booking-drop-preview${conflict ? ' conflict' : ''}`;
-
-  preview.style.cssText =
-    `top:${target.top}px;` +
-    `height:${target.height}px;` +
-    bookingColorStyle(booking);
-
-  preview.innerHTML = `
-    <span>${escape(target.start)}–${escape(target.end)}</span>
-    <strong>${escape(booking.teacher)}</strong>
-    <small>${escape(roomShort(target.roomId))} · ${escape(target.date)}</small>
-  `;
-
-  lane.classList.add('booking-drop-target');
-  lane.appendChild(preview);
-  $('#calendar').classList.add('booking-moving');
+function commissionIsBlank(commission){
+  if(!commission||typeof commission!=='object')return true;
+  const name=String(commission.name||'').trim();
+  const hours=String(commission.authorizedHours??'').trim();
+  const hasSchedule=commission.scheduleRequired==='yes';
+  const slots=Array.isArray(commission.reservedSlots)?commission.reservedSlots:[];
+  return !name && !hours && !hasSchedule && slots.length===0;
 }
+function defaultPlanningRecord(){
+  return {
+    commissionMode:'',
+    commissions:[],
+    projectMode:'',
+    projectName:'',
+    projectRole:'',
+    projectHours:'',
+    projectReference:'',
+    comments:'',
+    completedAtMs:null,
+    updatedAtMs:null
+  };
+}
+function migratePlanningRecord(raw){
+  if(!raw||typeof raw!=='object')return defaultPlanningRecord();
 
-function laneUnderPointer(clientX, clientY, sourceBookingElement) {
-  const previous =
-    sourceBookingElement?.style.pointerEvents || '';
 
-  if (sourceBookingElement) {
-    sourceBookingElement.style.pointerEvents = 'none';
+  // Compatibilidad con V46/V47: conserva información capturada previamente.
+  if(!Array.isArray(raw.commissions)){
+    const oldName=String(raw.commissionName||'').trim();
+    const oldMgmt=Array.isArray(raw.managementCommissions)
+      ?raw.managementCommissions.map(x=>String(x||'').trim()).filter(Boolean)
+      :[];
+    const oldSlots=Array.isArray(raw.reservedSlots)?raw.reservedSlots:[];
+    const names=[oldName,...oldMgmt].filter(Boolean);
+    raw.commissions=(names.length?names:['']).map((name,i)=>({
+      name,
+      authorizedHours:'',
+      scheduleRequired:(i===0&&oldSlots.length)?'yes':'no',
+      reservedSlots:(i===0?oldSlots:[])
+    }));
+    raw.commissionMode=(raw.scheduleMode==='yes'||raw.managementMode==='yes'||names.length)?'yes':
+      ((raw.scheduleMode==='na'&&raw.managementMode==='na')?'na':'');
   }
 
-  const element =
-    document.elementFromPoint(clientX, clientY);
 
-  const lane =
-    element?.closest?.('.lane') || null;
+  raw.projectMode=raw.projectMode||raw.pidetMode||'';
+  raw.projectName=raw.projectName||raw.pidetName||'';
+  raw.projectRole=raw.projectRole||raw.pidetCoordinator||'';
+  raw.projectHours=raw.projectHours||'';
+  raw.projectReference=raw.projectReference||'';
+  raw.comments=raw.comments||'';
+  if(!Array.isArray(raw.commissions))raw.commissions=[];
+  raw.commissions=raw.commissions.map(c=>({
+    name:String(c?.name||''),
+    authorizedHours:String(c?.authorizedHours??''),
+    scheduleRequired:['yes','no'].includes(c?.scheduleRequired)?c.scheduleRequired:'no',
+    reservedSlots:Array.isArray(c?.reservedSlots)?c.reservedSlots:[]
+  }));
+  return raw;
+}
+function currentPlanningRecord(create=true){
+  const period=cfg.periodo||'';
+  if(!planningByPeriod[period]&&create)planningByPeriod[period]=defaultPlanningRecord();
+  const raw=migratePlanningRecord(planningByPeriod[period]||defaultPlanningRecord());
+  if(create)planningByPeriod[period]=raw;
+  return raw;
+}
+function planningEnabled(){return true}
+function planningEditingAllowed(){return editingAllowed()}
+function planningSlotKey(day,start,end){return `${day}|${start}-${end}`}
+function planningSlotLabel(slotKey){
+  const [dayKey,hours='']=String(slotKey||'').split('|');
+  const day=PLANNING_DAYS.find(d=>d.key===dayKey)?.label||dayKey;
+  return `${day} ${hours}`;
+}
+function commissionScheduleSummary(commission){
+  const slots=Array.isArray(commission?.reservedSlots)?commission.reservedSlots:[];
+  if(commission?.scheduleRequired!=='yes')return 'Sin bloque específico';
+  return PLANNING_DAYS.map(day=>{
+    const daySlots=slots
+      .filter(x=>String(x).startsWith(day.key+'|'))
+      .map(x=>String(x).split('|')[1])
+      .filter(Boolean);
+    return daySlots.length?`${day.label}: ${daySlots.join(', ')}`:'';
+  }).filter(Boolean).join(' | ');
+}
 
-  if (sourceBookingElement) {
-    sourceBookingElement.style.pointerEvents = previous;
+
+
+
+function allPrograms(){
+  const base=PROGRAMS.map(p=>{
+    const ov=programOverrides[p.id];
+    if(!ov)return {...p,hours:(typeof PROGRAM_HOURS!=='undefined'&&PROGRAM_HOURS[p.id])?JSON.parse(JSON.stringify(PROGRAM_HOURS[p.id])):p.hours};
+    return {
+      ...p,
+      name:ov.name??p.name,
+      exit:ov.exit??p.exit,
+      semesters:Array.isArray(ov.semesters)?JSON.parse(JSON.stringify(ov.semesters)):JSON.parse(JSON.stringify(p.semesters)),
+      hours:Array.isArray(ov.hours)?JSON.parse(JSON.stringify(ov.hours)):((typeof PROGRAM_HOURS!=='undefined'&&PROGRAM_HOURS[p.id])?JSON.parse(JSON.stringify(PROGRAM_HOURS[p.id])):p.hours)
+    };
+  });
+  return [...base,...customPrograms];
+}
+const PROGRAM_ORDER_V82=['ind_procesos','ind_plasticos','mec_auto','mec_ind','mec_moldes','auto_diseno','mantenimiento','nano'];
+function programs(){
+  const order=new Map(PROGRAM_ORDER_V82.map((id,i)=>[id,i]));
+  return allPrograms()
+    .filter(p=>!disabledPrograms.includes(p.id))
+    .sort((a,b)=>(order.get(a.id)??999)-(order.get(b.id)??999));
+}
+function key(pid,s,c){return `${pid}|${s}|${c}`}
+function academicDegree(){return String(store.profile?.gradoAcademico||'').trim();}
+function printedProfessorName(){
+  const p=store.profile||{};
+  const degree=String(p.gradoAcademico||'').trim();
+  const name=[p.nombres,p.apPat,p.apMat].filter(Boolean).join(' ').trim();
+  return [degree,name].filter(Boolean).join(' ').trim();
+}
+function fullName(){return [$('apPat').value.trim(),$('apMat').value.trim(),$('nombres').value.trim()].filter(Boolean).join(' ')}
+function isEnglish(name){return /^INGLÉS\b/i.test(name.trim())}
+function subjectCase(text){
+  if(!text)return '';
+  let s=String(text).trim().toLocaleLowerCase('es-MX');
+  s=s.charAt(0).toLocaleUpperCase('es-MX')+s.slice(1);
+  // Acrónimos y números romanos de uso frecuente
+  s=s.replace(/\bcad\b/gi,'CAD').replace(/\bcam\b/gi,'CAM');
+  s=s.replace(/\b(i|ii|iii|iv|v)\b/gi,m=>m.toUpperCase());
+  return s;
+}
+function programAcronym(pr){
+  if(programAcronyms[pr.id])return programAcronyms[pr.id];
+  const map={
+    auto_diseno:'IMA-DMA',
+    mec_ind:'IM-MI',
+    mec_moldes:'IM-MT',
+    mec_auto:'IM-MA',
+    ind_plasticos:'II-MP',
+    ind_procesos:'II-PP',
+    nano:'IN-N',
+    mantenimiento:'IMI-MI'
+  };
+  return map[pr.id]||pr.id.replace(/^custom_/,'PE-').slice(0,12).toUpperCase();
+}
+
+
+
+
+function subjectHours(pid,s,c){
+  const pr=allPrograms().find(x=>x.id===pid);
+  const edited=Number(pr?.hours?.[s]?.[c])||0;
+  if(edited)return edited;
+  const rows=(typeof PROGRAM_HOURS!=='undefined'&&PROGRAM_HOURS[pid])||[];
+  return Number(rows?.[s]?.[c])||0;
+}
+function weeklyHours(pid,s,c){
+  const total=subjectHours(pid,s,c);
+  if(!total)return '';
+  const weekly=total/15;
+  return Number.isInteger(weekly)?weekly:Number(weekly.toFixed(1));
+}
+function deadlinePassed(){
+  return !!cfg.captureDeadline && Date.now()>=Number(cfg.captureDeadline);
+}
+function submissionLockedForCurrentPeriod(){
+  return !!store.submittedPeriod && store.submittedPeriod===cfg.periodo;
+}
+function individualEditOverride(){
+  return !!store.individualEditEnabled;
+}
+function individualEditBlocked(){
+  return !!store.individualEditDisabled;
+}
+function administrativeEditingAllowed(){
+  if(isAdmin())return true;
+  if(individualEditBlocked())return false;
+  // Una habilitación individual del JUCA es una autorización explícita y prevalece
+  // sobre cierre global, fecha límite y finalización del periodo.
+  if(individualEditOverride())return true;
+  if(deadlinePassed())return false;
+  if(cfg.editingLocked)return false;
+  if(submissionLockedForCurrentPeriod())return false;
+  return true;
+}
+function editingLockReason(){
+  if(isAdmin())return '';
+  if(individualEditBlocked())return 'individual-admin';
+  if(!individualEditOverride()){
+    if(deadlinePassed())return 'deadline';
+    if(cfg.editingLocked)return 'global-admin';
+    if(submissionLockedForCurrentPeriod())return 'finalized';
   }
-
-  return lane;
+  if(currentUser&&(!bootstrapComplete||sessionActivationBusy))return 'initializing';
+  return '';
 }
-
-function clearDragSelection() {
-  document
-    .querySelectorAll('.slot.drag-selected')
-    .forEach(slot =>
-      slot.classList.remove('drag-selected')
-    );
-
-  $('#calendar').classList.remove(
-    'dragging',
-    'selection-free',
-    'selection-busy'
-  );
+function editingAllowed(){
+  if(currentUser&&(!bootstrapComplete||sessionActivationBusy))return false;
+  if(!administrativeEditingAllowed())return false;
+  return true;
 }
-
-function paintDragSelection() {
-  clearDragSelection();
-
-  if (!dragState) return;
-
-  $('#calendar').classList.add('dragging');
-
-  const [from, to] = [
-    dragState.startIndex,
-    dragState.endIndex
-  ].sort((a, b) => a - b);
-
-  dragState.slots.forEach((slot, index) => {
-    if (index >= from && index <= to) {
-      slot.classList.add('drag-selected');
+function sequentialProfessorMode(){
+  return !isAdmin() && editingAllowed();
+}
+function resetWorkflowState(){
+  workflowState.profileConfirmed=false;
+  workflowState.expectedProgramIndex=0;
+  workflowState.reviewUnlocked=false;
+  currentProgramIndex=0;
+  store.currentProgramIndex=0;
+}
+function activateViewDirect(id){
+  document.querySelectorAll('.view').forEach(x=>x.classList.remove('active'));
+  const target=$(id);
+  if(target)target.classList.add('active');
+  document.querySelectorAll('.main-nav button').forEach(b=>b.classList.toggle('active',b.dataset.view===id));
+  window.scrollTo(0,0);
+}
+function formatDateTime(ts){
+  if(!ts)return 'Sin fecha límite';
+  return new Intl.DateTimeFormat('es-MX',{dateStyle:'medium',timeStyle:'short'}).format(new Date(Number(ts)));
+}
+function remainingParts(ms){
+  const total=Math.max(0,Math.floor(ms/1000));
+  const d=Math.floor(total/86400),h=Math.floor((total%86400)/3600),m=Math.floor((total%3600)/60),s=total%60;
+  return {d,h,m,s};
+}
+function deadlineText(){
+  if(!cfg.captureDeadline){
+    if(!currentUser && !globalSettingsKnown){
+      return {text:'Inicie sesión para consultar la fecha límite de captura',level:'neutral'};
     }
+    return {text:'Captura sin fecha límite definida',level:'neutral'};
+  }
+  const ms=Number(cfg.captureDeadline)-Date.now();
+  if(ms<=0)return {text:`CAPTURA FUERA DE TIEMPO · cerró ${formatDateTime(cfg.captureDeadline)}`,level:'expired'};
+  const x=remainingParts(ms);
+  const text=`Tiempo restante: ${x.d?x.d+' d · ':''}${String(x.h).padStart(2,'0')} h · ${String(x.m).padStart(2,'0')} min · ${String(x.s).padStart(2,'0')} s`;
+  return {text,level:ms<=3*3600000?'urgent':ms<=24*3600000?'warning':'open'};
+}
+function updateCountdownUI(){
+  const info=deadlineText();
+  ['deadlineGate','deadlineHeader','deadlineCapture'].forEach(id=>{
+    const el=$(id);if(!el)return;
+    el.textContent=info.text;
+    el.className=`deadline-card ${id==='deadlineHeader'?'header-deadline ':id==='deadlineCapture'?'capture-deadline ':'compact '}${info.level}`;
+  });
+  const st=$('deadlineAdminStatus'),prev=$('deadlineAdminPreview');
+  if(st){
+    st.textContent=cfg.captureDeadline
+      ?(deadlinePassed()?'Fuera de tiempo':'Captura abierta')
+      :(globalSettingsKnown?'Sin fecha límite':'Cargando configuración');
+    st.className=`deadline-admin-status ${deadlinePassed()?'expired':cfg.captureDeadline?'open':'neutral'}`
+  }
+  if(prev)prev.innerHTML=cfg.captureDeadline
+    ?`<b>${formatDateTime(cfg.captureDeadline)}</b><span>${info.text}</span>`
+    :(globalSettingsKnown
+      ?'<b>Sin fecha límite</b><span>La edición dependerá únicamente del interruptor general.</span>'
+      :'<b>Cargando configuración</b><span>La fecha límite se confirmará al iniciar sesión.</span>');
+  const editSignature=[
+    editingAllowed(),planningEditingAllowed(),deadlinePassed(),submissionLockedForCurrentPeriod(),
+    !!cfg.editingLocked,!!store.individualEditEnabled,!!store.individualEditDisabled,!!sessionHasControl
+  ].join('|');
+  if(updateCountdownUI.lastEditSignature!==editSignature){
+    updateCountdownUI.lastEditSignature=editSignature;
+    applyEditState();
+  }
+}
+function startCountdown(){
+  clearInterval(countdownTimer);
+  updateCountdownUI();
+  countdownTimer=setInterval(updateCountdownUI,1000);
+}
+function requireEditing(){
+  if(editingAllowed())return true;
+  const reason=editingLockReason();
+  if(reason==='individual-admin') toast('Administración deshabilitó temporalmente la edición de este perfil.');
+  else if(reason==='finalized') toast('Este perfil ya fue finalizado. Si requiere corregirlo, solicite al JUCA habilitar su edición.');
+  else if(reason==='deadline') toast('La fecha límite de captura ya concluyó. El JUCA puede habilitar individualmente su perfil si corresponde.');
+  else if(reason==='global-admin') toast('La edición general está cerrada por Administración.');
+  else toast('La edición se está preparando. Intente nuevamente en un momento.');
+  return false;
+}
+function applyPlanningEditState(){
+  const commissionsRoot=$('commissionsBlock');
+  if(!commissionsRoot)return;
+  const planningLocked=!planningEditingAllowed();
+  commissionsRoot.querySelectorAll('input,select,textarea,button').forEach(el=>{
+    el.disabled=planningLocked;
+    el.setAttribute('aria-disabled',planningLocked?'true':'false');
+  });
+}
+function applyEditState(){
+  const locked=!editingAllowed();
+  document.body.classList.toggle('profile-edit-locked',locked);
+  ['perfil','captura'].forEach(id=>{
+    const root=$(id); if(!root)return;
+    root.querySelectorAll('input,select,textarea,button').forEach(el=>{
+      // En solo lectura se permite navegar por todos los programas y llegar a Revisión.
+      if(el.closest('.flow-buttons')) return;
+      if(id==='captura' && (el.textContent.includes('Continuar a revisión')||el.textContent.includes('continuar a revisión'))) return;
+      const limitReached=el.classList.contains('profile-add-row-btn')&&el.dataset.limitReached==='1';
+      el.disabled=locked||limitReached;
+    });
+  });
+  const banner=$('editingLockedBanner');
+  if(banner){
+    const reason=editingLockReason();
+    banner.classList.toggle('hidden',!locked);
+    banner.classList.toggle('finalized-profile-banner',reason==='finalized');
+    if(locked){
+      if(reason==='individual-admin'){
+        banner.textContent='🔒 Administración deshabilitó temporalmente la edición de este perfil. Puede consultar e imprimir la información guardada.';
+      }else if(reason==='finalized'){
+        banner.innerHTML=`<strong>🔒 Perfil finalizado</strong>
+          <ul>
+            <li>La edición está bloqueada para el periodo actual.</li>
+            <li>Puede consultar e imprimir nuevamente su información cuando lo requiera.</li>
+            <li>Si necesita corregir algo, solicite al JUCA la habilitación individual de edición.</li>
+          </ul>`;
+      }else if(reason==='deadline'){
+        banner.textContent='⏱ Captura fuera de tiempo. Puede consultar e imprimir. El JUCA puede habilitar individualmente este perfil cuando proceda.';
+      }else if(reason==='global-admin'){
+        banner.textContent='🔒 Edición general desactivada por Administración. Puede consultar e imprimir normalmente.';
+      }else{
+        banner.textContent='Preparando permisos de edición…';
+      }
+    }
+  }
+
+  const planningLocked=!planningEditingAllowed();
+  applyPlanningEditState();
+  if(!isAdmin()&&individualEditBlocked()){
+    clearTimeout(cloudSaveTimer);
+    clearTimeout(cloudRetryTimer);
+  }
+  updateReviewFinalizeUI();
+
+  const planningBanner=$('commissionsLockedBanner');
+  if(planningBanner){
+    planningBanner.classList.toggle('hidden',!planningLocked);
+    if(planningLocked){
+      planningBanner.textContent=deadlinePassed()
+        ?'⏱ La captura de Comisiones está fuera de tiempo. La información permanece disponible para consulta.'
+        :'🔒 La edición de Comisiones está bloqueada. La información permanece disponible para consulta.';
+    }
+  }
+}
+window.toggleEditingLock=async function(){
+  if(!isAdmin()){toast('Solo el administrador puede cambiar este estado.');return}
+  const previous=!!cfg.editingLocked;
+  cfg.editingLocked=!previous;
+  try{
+    persist();
+    await saveGlobalSettings(cfg.editingLocked?'Edición global desactivada':'Edición global activada');
+    renderAdmin();
+    applyEditState();
+    toast(cfg.editingLocked
+      ?'Edición general desactivada. Solo podrán editar los perfiles con habilitación individual.'
+      :'Edición general activada para perfiles que no estén finalizados.');
+  }catch(e){
+    cfg.editingLocked=previous;
+    persist();renderAdmin();applyEditState();
+    console.error(e);
+    alert('No fue posible cambiar el estado general de edición. Revise la conexión con Firestore.');
+  }
+}
+
+
+
+
+function normalizeSubjectName(name){
+  return subjectCase(name||'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase().trim();
+}
+function commonRuleFor(pid,s){
+  return commonRules.find(r=>
+    Array.isArray(r.programIds)&&r.programIds.includes(pid)&&
+    Array.isArray(r.semesters)&&r.semesters.includes(s)
+  )||null;
+}
+function commonRuleForProgram(pid){
+  return commonRules.find(r=>Array.isArray(r.programIds)&&r.programIds.includes(pid))||null;
+}
+function logicalCourseKey(pid,s,c,name){
+  const rule=commonRuleFor(pid,s);
+  return rule?`${rule.id}|${s}|${normalizeSubjectName(name)}`:`${pid}|${s}|${c}`;
+}
+function commonDescription(pid){
+  const rule=commonRuleForProgram(pid);
+  if(!rule)return '';
+  const sems=(rule.semesters||[]).map(x=>x+1).sort((a,b)=>a-b).join(', ');
+  const names=(rule.programIds||[]).map(id=>{
+    const p=allPrograms().find(x=>x.id===id);
+    return p?programAcronym(p):id;
+  }).join(' · ');
+  return `${rule.name}: cuatrimestre${rule.semesters?.length===1?'':'s'} ${sems} · ${names}`;
+}
+function ordinalSemesterList(values=[]){
+  const items=[...values].sort((a,b)=>a-b).map(x=>`${x+1}.°`);
+  if(items.length<=1)return items.join('');
+  if(items.length===2)return `${items[0]} y ${items[1]}`;
+  return `${items.slice(0,-1).join(', ')} y ${items[items.length-1]}`;
+}
+function commonProgramDisplay(id){
+  const pr=allPrograms().find(x=>x.id===id);
+  if(!pr)return id;
+  return `${pr.name}${pr.exit?` — ${pr.exit}`:''}`;
+}
+function commonNoticeHtml(pid){
+  const rule=commonRuleForProgram(pid);
+  if(!rule)return '';
+  const semesterText=ordinalSemesterList(rule.semesters||[]);
+  const peers=(rule.programIds||[])
+    .filter(id=>id!==pid)
+    .map(commonProgramDisplay);
+  const peerHtml=peers.length
+    ? peers.map(x=>`<li>${escapeHtml(x)}</li>`).join('')
+    : '<li>Otros programas vinculados al mismo tronco común.</li>';
+  return `<div class="common-sync-alert">
+    <div class="common-sync-icon">↔</div>
+    <div class="common-sync-copy">
+      <strong>Tronco común sincronizado · ${escapeHtml(semesterText)} cuatrimestre${(rule.semesters||[]).length===1?'':'s'}</strong>
+      <p>Las asignaturas coincidentes de estos cuatrimestres comparten su configuración académica. Si posteriormente <b>deshabilita</b> una materia, esa decisión será individual y no modificará las demás.</p>
+      <div class="common-sync-programs"><span>Programas relacionados:</span><ul>${peerHtml}</ul></div>
+    </div>
+  </div>`;
+}
+
+
+function getAns(pid,s,c,name){
+  const k=key(pid,s,c);
+  if(isEnglish(name)){answers[k]={status:'na',origins:[],ideal:false};return answers[k]}
+  if(!answers[k])answers[k]={status:'pending',origins:[],ideal:false};
+  return answers[k]
+}
+function toast(msg){const t=$('toast');t.textContent=msg;t.classList.add('show');clearTimeout(toast.timer);toast.timer=setTimeout(()=>t.classList.remove('show'),2400)}
+function profileBackupKey(uid=currentUser?.uid){
+  return uid?`PAD_UTEQ_PROFILE_${uid}`:'';
+}
+function profileBackupSnapshot(){
+  return {
+    profile:JSON.parse(JSON.stringify(store.profile||{})),
+    answers:JSON.parse(JSON.stringify(answers||{})),
+    programMeta:JSON.parse(JSON.stringify(programMeta||{})),
+    planningByPeriod:JSON.parse(JSON.stringify(planningByPeriod||{})),
+    submittedPeriod:store.submittedPeriod||null,
+    finalizedAtMs:Number(store.finalizedAtMs)||null,
+    profileResetToken:store.profileResetToken||null,
+    profileDeletionToken:store.profileDeletionToken||null,
+    currentProgramIndex:0,
+    localUpdatedAt:Number(store.localUpdatedAt)||Number(store.lastSavedAt)||Date.now(),
+    cloudUpdatedAt:Number(store.cloudUpdatedAt)||0,
+    syncPending:!!store.syncPending,
+    dataRevision:Number(store.dataRevision)||0,
+    savedAt:Date.now()
+  };
+}
+function saveUserBackup(){
+  const key=profileBackupKey();
+  if(!key)return;
+  try{localStorage.setItem(key,JSON.stringify(profileBackupSnapshot()))}
+  catch(e){console.warn('No fue posible actualizar el respaldo local por usuario',e)}
+}
+function readUserBackup(){
+  const key=profileBackupKey();
+  if(!key)return null;
+  try{
+    const raw=localStorage.getItem(key);
+    return raw?JSON.parse(raw):null;
+  }catch(e){
+    console.warn('No fue posible leer el respaldo local por usuario',e);
+    return null;
+  }
+}
+function clearUserBackup(uid){
+  const key=profileBackupKey(uid);
+  if(key)localStorage.removeItem(key);
+}
+function backupHasTeacherData(backup){
+  if(!backup||typeof backup!=='object')return false;
+  const p=backup.profile||{};
+  const counts=p.rowCounts||{};
+  const hasExpandedRows=(Number(counts.formation)||0)>7 || (Number(counts.docencia)||0)>4 || (Number(counts.laboral)||0)>5;
+  const hasProfile=!!(p.apPat||p.apMat||p.nombres||p.categoria||p.gradoAcademico||Object.values(p.extra||{}).some(Boolean)||hasExpandedRows);
+  const hasAnswers=Object.keys(backup.answers||{}).length>0;
+  const hasMeta=Object.keys(backup.programMeta||{}).length>0;
+  const hasPlanning=Object.keys(backup.planningByPeriod||{}).length>0;
+  return hasProfile||hasAnswers||hasMeta||hasPlanning||!!backup.submittedPeriod||!!backup.finalizedAtMs;
+}
+function cloudHasTeacherData(data){
+  return backupHasTeacherData({
+    profile:data?.profile||{},
+    answers:data?.answers||{},
+    programMeta:data?.programMeta||{},
+    planningByPeriod:data?.planningByPeriod||{},
+    submittedPeriod:data?.submittedPeriod||null,
+    finalizedAtMs:Number(data?.finalizedAtMs)||null
   });
 }
 
-function openAdminTab(tab) {
-  const owner = authService.isOwner(currentUser);
 
-  if (!owner && tab !== 'report') {
-    tab = 'report';
+// =========================================================
+// V90 · CONTROL DE CAMBIOS Y GUARDADO MANUAL EN FIRESTORE
+// =========================================================
+const FINGERPRINT_IGNORED_KEYS=new Set(['updatedAtMs','completedAtMs']);
+function canonicalTeacherValue(value,key=''){
+  if(FINGERPRINT_IGNORED_KEYS.has(key))return undefined;
+  if(Array.isArray(value))return value.map(v=>canonicalTeacherValue(v)).filter(v=>v!==undefined);
+  if(value&&typeof value==='object'){
+    const out={};
+    Object.keys(value).sort().forEach(k=>{
+      const normalized=canonicalTeacherValue(value[k],k);
+      if(normalized!==undefined)out[k]=normalized;
+    });
+    return out;
   }
-
-  activeAdminTab = tab;
-
-  for (const button of $$('#admin-tabs [data-admin-tab]')) {
-    const allowed =
-      owner || button.dataset.adminTab === 'report';
-
-    button.hidden = !allowed;
-    button.setAttribute(
-      'aria-pressed',
-      String(button.dataset.adminTab === tab)
+  return value===undefined?null:value;
+}
+function teacherComparableState(data={}){
+  return {
+    profile:cloneTeacherData(data.profile||{}),
+    answers:cloneTeacherData(data.answers||{}),
+    programMeta:cloneTeacherData(data.programMeta||{}),
+    planningByPeriod:cloneTeacherData(data.planningByPeriod||{}),
+    submittedPeriod:data.submittedPeriod||null,
+    finalizedAtMs:Number(data.finalizedAtMs)||null
+  };
+}
+function currentTeacherComparableState(){
+  return teacherComparableState({
+    profile:store.profile||{},
+    answers,
+    programMeta,
+    planningByPeriod,
+    submittedPeriod:store.submittedPeriod||null,
+    finalizedAtMs:Number(store.finalizedAtMs)||null
+  });
+}
+function teacherFingerprint(data={}){
+  return JSON.stringify(canonicalTeacherValue(teacherComparableState(data)));
+}
+function currentTeacherFingerprint(){
+  return JSON.stringify(canonicalTeacherValue(currentTeacherComparableState()));
+}
+function setCloudTeacherFingerprint(data={}){
+  lastCloudTeacherFingerprint=teacherFingerprint(data);
+  cloudTeacherFingerprintKnown=true;
+}
+function teacherHasUnsavedCloudChanges(){
+  if(!cloudTeacherFingerprintKnown)return !!store.syncPending;
+  return currentTeacherFingerprint()!==lastCloudTeacherFingerprint;
+}
+function persistStoreSnapshot(){
+  try{
+    localStorage.setItem('PAD_UTEQ',JSON.stringify(store));
+    saveUserBackup();
+  }catch(e){
+    console.warn('No fue posible conservar el estado local',e);
+  }
+}
+function refreshManualSaveStatus(){
+  const pending=teacherHasUnsavedCloudChanges();
+  store.syncPending=pending;
+  if(currentUser){
+    updateCloudStatus(
+      pending?'Cambios locales sin guardar en nube':'Sin cambios pendientes',
+      pending?'warn':'ok'
     );
   }
-
-  for (const panel of $$('[data-admin-panel]')) {
-    panel.hidden = panel.dataset.adminPanel !== tab;
+  return pending;
+}
+async function saveTeacherChangesNow(reason='guardado manual'){
+  if(manualSaveInFlight){
+    toast('Ya hay un guardado en curso.');
+    return {ok:false,wrote:false,busy:true};
+  }
+  if(!db||!currentUser||!remoteProfileLoaded){
+    updateCloudStatus('Nube no disponible · cambios conservados localmente','warn');
+    toast('No se pudo confirmar el guardado en nube. No se avanzó.');
+    return {ok:false,wrote:false};
+  }
+  if(!isAdmin()&&individualEditBlocked()){
+    updateCloudStatus('Edición bloqueada por Administración · datos conservados','readonly');
+    return {ok:false,wrote:false};
+  }
+  if(!sessionCanWrite()){
+    updateCloudStatus('Sin control de edición · cambios conservados localmente','warn');
+    toast('Este dispositivo no tiene el control de edición. No se avanzó.');
+    return {ok:false,wrote:false};
   }
 
-  if (tab === 'summary') loadAdminSummary();
-  if (tab === 'reservations') loadAdminReservations();
-  if (tab === 'rooms') loadAdminRooms();
-  if (tab === 'users') loadAdminUsers();
-  if (tab === 'report') {
-    renderReportRoomOptions();
-    setupReportDefaults();
-    toggleReportPeriodFields();
-  }
-  if (tab === 'audit') loadAuditLogs();
-  if (tab === 'settings') renderSettingsForm();
-}
-
-function adminDefaultDates() {
-  const now = new Date();
-  const first =
-    `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-01`;
-
-  const last = dateKey(
-    new Date(
-      now.getFullYear(),
-      now.getMonth() + 1,
-      0,
-      12
-    )
-  );
-
-  return { first, last };
-}
-
-function countEnabledDaysInRange(from, to) {
-  const enabled = new Set(settings().enabledDays);
-  let cursor = parseDate(from);
-  const end = parseDate(to);
-  let count = 0;
-
-  while (cursor <= end) {
-    if (enabled.has(cursor.getDay())) count += 1;
-    cursor = addDays(cursor, 1);
+  if(cloudTeacherFingerprintKnown&&!teacherHasUnsavedCloudChanges()){
+    store.syncPending=false;
+    persistStoreSnapshot();
+    updateCloudStatus('Sin cambios nuevos · no se realizó escritura','ok');
+    return {ok:true,wrote:false};
   }
 
-  return count;
-}
-
-async function loadAdminSummary() {
-  if (!authService.isOwner(currentUser)) return;
-
-  const target = $('#summary-cards');
-  target.innerHTML =
-    '<div class="admin-loading">Calculando indicadores…</div>';
-
-  try {
-    const now = new Date();
-    const today = dateKey(now);
-    const month = adminDefaultDates();
-    const weekStart = dateKey(monday(now));
-    const weekEnd = dateKey(addDays(monday(now), 5));
-
-    const monthBookings = await repository.queryBookingsRange(
-      month.first,
-      month.last
-    );
-
-    // V6.5: la semana normalmente se deriva de los datos del mes ya leídos.
-    // Solo se consulta el fragmento que cae fuera del mes en semanas de cambio mensual.
-    let weekBookings = monthBookings.filter(booking =>
-      booking.date >= weekStart && booking.date <= weekEnd
-    );
-
-    if (weekStart < month.first) {
-      const previousMonthTail = await repository.queryBookingsRange(
-        weekStart,
-        dateKey(addDays(parseDate(month.first), -1))
-      );
-      weekBookings = [...previousMonthTail, ...weekBookings];
+  manualSaveInFlight=true;
+  updateCloudStatus('Guardando cambios…','warn');
+  try{
+    const before=currentTeacherFingerprint();
+    const ok=await forceProfileCheckpointToCloud(reason);
+    if(!ok){
+      toast('No se pudo confirmar el guardado en nube. Tus cambios siguen en este dispositivo.');
+      return {ok:false,wrote:false};
     }
-
-    if (weekEnd > month.last) {
-      const nextMonthHead = await repository.queryBookingsRange(
-        dateKey(addDays(parseDate(month.last), 1)),
-        weekEnd
-      );
-      weekBookings = [...weekBookings, ...nextMonthHead];
+    // Si algo cambió durante la escritura, no avanzamos con cambios todavía pendientes.
+    if(currentTeacherFingerprint()!==before){
+      store.syncPending=true;
+      persistStoreSnapshot();
+      updateCloudStatus('Se guardó una versión, pero hay cambios nuevos pendientes','warn');
+      toast('Se detectaron cambios nuevos durante el guardado. Guarda nuevamente para continuar.');
+      return {ok:false,wrote:true};
     }
-
-    const activeMonth =
-      monthBookings.filter(booking =>
-        bookingStatus(booking) === 'active'
-      );
-
-    const activeWeek =
-      weekBookings.filter(booking =>
-        bookingStatus(booking) === 'active'
-      );
-
-    const todayBookings =
-      activeMonth.filter(booking =>
-        booking.date === today
-      );
-
-    const monthHours =
-      activeMonth.reduce(
-        (sum, booking) =>
-          sum +
-          (minutes(booking.end) - minutes(booking.start)) / 60,
-        0
-      );
-
-    target.innerHTML = [
-      ['Reservaciones hoy', todayBookings.length],
-      ['Esta semana', activeWeek.length],
-      ['Este mes', activeMonth.length],
-      ['Horas reservadas este mes', monthHours.toFixed(1)]
-    ].map(([label, value]) => `
-      <article class="summary-card">
-        <span>${escape(label)}</span>
-        <strong>${escape(value)}</strong>
-      </article>
-    `).join('');
-
-    const nowMinutes =
-      now.getHours() * 60 + now.getMinutes();
-
-    const upcoming =
-      todayBookings
-        .filter(booking =>
-          minutes(booking.end) >= nowMinutes
-        )
-        .sort((a, b) =>
-          minutes(a.start) - minutes(b.start)
-        );
-
-    $('#summary-upcoming').innerHTML =
-      upcoming.length
-        ? upcoming.slice(0, 8).map(booking => `
-            <div class="compact-row">
-              <strong>${escape(booking.start)}–${escape(booking.end)}</strong>
-              <span>${escape(roomShort(booking.roomId))} · ${escape(booking.teacher)}</span>
-              <small>${escape(booking.group)}</small>
-            </div>
-          `).join('')
-        : '<p class="empty-mini">No hay próximas reservaciones hoy.</p>';
-
-    const usage = new Map();
-
-    for (const booking of activeMonth) {
-      const value =
-        usage.get(booking.roomId) ||
-        { count: 0, hours: 0 };
-
-      value.count += 1;
-      value.hours +=
-        (minutes(booking.end) - minutes(booking.start)) / 60;
-
-      usage.set(booking.roomId, value);
-    }
-
-    const enabledDaysInMonth =
-      countEnabledDaysInRange(month.first, month.last);
-
-    const availableHoursPerRoom =
-      enabledDaysInMonth *
-      ((dayEndMinutes() - dayStartMinutes()) / 60);
-
-    $('#summary-room-usage').innerHTML =
-      state.rooms.map(room => {
-        const value =
-          usage.get(room.id) ||
-          { count: 0, hours: 0 };
-
-        const occupancy =
-          availableHoursPerRoom > 0
-            ? Math.min(100, value.hours / availableHoursPerRoom * 100)
-            : 0;
-
-        return `
-          <div class="compact-row">
-            <strong>${escape(defaultRoomShort(room))}</strong>
-            <span>${value.count} reservaciones · ${value.hours.toFixed(1)} h</span>
-            <small>${occupancy.toFixed(1)} % ocupación</small>
-          </div>
-        `;
-      }).join('');
-  } catch (error) {
-    target.innerHTML =
-      `<p class="form-error">${escape(error.message)}</p>`;
+    updateCloudStatus('Cambios guardados en nube','ok');
+    return {ok:true,wrote:true};
+  }finally{
+    manualSaveInFlight=false;
   }
 }
 
-function renderAdminReservationRows() {
-  const search =
-    $('#admin-res-search').value
-      .trim()
-      .toLocaleLowerCase('es-MX');
+function persist(options={}){
+  const {touch=true}=options;
+  cfg.periodo=cfg.periodo||'SEP 2026 - AGO 2027';
+  const now=Date.now();
+  store.cfg=cfg;
+  store.answers=answers;
+  store.programMeta=programMeta;
+  store.customPrograms=customPrograms;
+  store.programOverrides=programOverrides;
+  store.disabledPrograms=disabledPrograms;
+  store.programAcronyms=programAcronyms;
+  store.commonRules=commonRules;
+  store.transversalRules=transversalRules;
+  store.planningByPeriod=planningByPeriod;
+  store.currentProgramIndex=0;
+  store.lastSavedAt=now;
 
-  const roomId = $('#admin-res-room').value;
-  const statusFilter = $('#admin-res-status').value;
-  const today = dateKey(new Date());
+  const fingerprint=currentTeacherFingerprint();
+  const previousLocalFingerprint=String(store.lastLocalTeacherFingerprint||'');
+  const teacherDataChanged=!previousLocalFingerprint || fingerprint!==previousLocalFingerprint;
+  if(touch&&teacherDataChanged){
+    store.localUpdatedAt=now;
+    store.dataRevision=(Number(store.dataRevision)||0)+1;
+  }
+  store.lastLocalTeacherFingerprint=fingerprint;
+  store.syncPending=cloudTeacherFingerprintKnown
+    ? fingerprint!==lastCloudTeacherFingerprint
+    : (!!store.syncPending || (touch&&teacherDataChanged));
 
-  let rows = adminBookings.filter(booking => {
-    if (roomId !== 'all' && booking.roomId !== roomId) {
-      return false;
-    }
+  lastSavedAt=store.lastSavedAt;
+  try{
+    localStorage.setItem('PAD_UTEQ',JSON.stringify(store));
+    saveUserBackup();
+  }catch(e){
+    console.error('No fue posible guardar localmente el perfil',e);
+    updateCloudStatus('Error de almacenamiento local','warn');
+  }
+  updateLastSavedUI();
+  // V90: persist() NUNCA escribe en Firestore. La nube se toca sólo desde una acción manual.
+  if(currentUser&&store.syncPending){
+    updateCloudStatus('Cambios locales sin guardar en nube','warn');
+  }
+}
+function statusBox(errors,title){return `<div class="status-box bad"><b>${title}</b><ul>${errors.map(x=>`<li>${x}</li>`).join('')}</ul></div>`}
+function updatePeriodBadges(){ $('periodBadgeGate').textContent=`Periodo de vigencia · ${cfg.periodo}`; $('periodBadgeInline').textContent=`Periodo de vigencia · ${cfg.periodo}`; }
+function authConfigured(){return !!(window.FIREBASE_CONFIG&&window.FIREBASE_CONFIG.apiKey&&window.FIREBASE_CONFIG.projectId&&window.FIREBASE_CONFIG.appId)}
 
-    if (statusFilter === 'active' &&
-        bookingStatus(booking) !== 'active') {
-      return false;
-    }
 
-    if (statusFilter === 'cancelled' &&
-        bookingStatus(booking) !== 'cancelled') {
-      return false;
-    }
+function updateCloudStatus(text,kind='neutral'){
+  const el=$('cloudStatus');if(!el)return;el.textContent=text;el.className=`cloud-status ${kind}`;
+}
+function updateLastSavedUI(){
+  const el=$('lastSaved');if(!el)return;
+  if(!lastSavedAt){el.textContent='Sin cambios guardados';return}
+  el.textContent=`Borrador local: ${new Intl.DateTimeFormat('es-MX',{hour:'2-digit',minute:'2-digit'}).format(new Date(lastSavedAt))}`;
+}
+function globalSettingsPayload(){
+  return {
+    cfg:{...cfg},
+    disabledPrograms:[...disabledPrograms],
+    customPrograms:JSON.parse(JSON.stringify(customPrograms)),
+    programOverrides:JSON.parse(JSON.stringify(programOverrides)),
+    programAcronyms:{...programAcronyms},
+    commonRules:JSON.parse(JSON.stringify(commonRules)),
+    transversalRules:JSON.parse(JSON.stringify(transversalRules))
+  };
+}
+function cacheGlobalSettings(){
+  try{
+    localStorage.setItem(GLOBAL_SETTINGS_CACHE_KEY,JSON.stringify({
+      cfg:{...cfg},
+      savedAt:Date.now()
+    }));
+    globalSettingsKnown=true;
+  }catch(e){
+    console.warn('No fue posible conservar la configuración global en caché',e);
+  }
+}
 
-    if (statusFilter === 'past' &&
-        !(bookingStatus(booking) === 'active' &&
-          booking.date < today)) {
-      return false;
-    }
 
-    if (search) {
-      const haystack =
-        `${booking.teacher} ${booking.group} ${booking.activity}`
-          .toLocaleLowerCase('es-MX');
+function applyGlobalSettings(data){
+  if(!data)return;
+  if(data.cfg)Object.assign(cfg,data.cfg);
+  globalSettingsKnown=true;
+  cacheGlobalSettings();
+  if(Array.isArray(data.disabledPrograms))disabledPrograms=data.disabledPrograms;
+  if(Array.isArray(data.customPrograms))customPrograms=data.customPrograms;
+  if(data.programOverrides&&typeof data.programOverrides==='object')programOverrides=data.programOverrides;
+  if(data.programAcronyms&&typeof data.programAcronyms==='object')programAcronyms=data.programAcronyms;
+  if(Array.isArray(data.commonRules))commonRules=data.commonRules;
+  if(Array.isArray(data.transversalRules))transversalRules=data.transversalRules;
+  currentProgramIndex=Math.min(currentProgramIndex,Math.max(0,programs().length-1));
+  localStorage.setItem('PAD_UTEQ',JSON.stringify({...store,cfg,answers,programMeta,customPrograms,programOverrides,disabledPrograms,programAcronyms,commonRules,transversalRules,currentProgramIndex:0,lastSavedAt}));
+  updatePeriodBadges();renderCurrentProgram();renderAdmin();updateCountdownUI();updatePlanningAvailability();renderPlanning();applyEditState();updateNavState();
+}
+async function saveGlobalSettings(action='Configuración global actualizada'){
+  if(!db||!isAdmin())return;
+  cacheGlobalSettings();
+  try{
+    await setDoc(doc(db,'settings','app'),{...globalSettingsPayload(),updatedAt:serverTimestamp(),updatedBy:currentUser.email},{merge:true});
+    updateCloudStatus('Configuración global sincronizada','ok');
+    await writeAudit(action);
+  }catch(e){
+    console.warn('No se pudo guardar configuración global',e);
+    updateCloudStatus('Configuración global solo local','warn');
+  }
+}
+async function writeAudit(action){
+  if(!db||!currentUser)return;
+  try{
+    await addDoc(collection(db,'audit'),{action,email:currentUser.email||'',uid:currentUser.uid,at:serverTimestamp(),period:cfg.periodo});
+  }catch(e){console.warn('Auditoría no disponible',e)}
+}
+function resetLocalTeacherData({keepProfile=false}={}){
+  const previousProfile=store.profile||{};
+  store.profile=keepProfile?JSON.parse(JSON.stringify(previousProfile)):{};
+  answers={};
+  programMeta={};
+  store.answers=answers;
+  store.programMeta=programMeta;
+  store.submittedPeriod=null;
+  store.finalizedAtMs=null;
+  store.individualEditEnabled=false;
+  store.profileResetToken=null;
+  planningByPeriod={};
+  store.planningByPeriod=planningByPeriod;
+  currentProgramIndex=0;
+  lastSavedAt=null;
 
-      if (!haystack.includes(search)) return false;
-    }
 
+  localStorage.setItem('PAD_UTEQ',JSON.stringify({
+    ...store,cfg,answers,programMeta,customPrograms,programOverrides,
+    disabledPrograms,programAcronyms,commonRules,transversalRules,currentProgramIndex:0,lastSavedAt
+  }));
+
+
+  buildProfileRows();
+  loadProfileValuesOnly();
+  renderCurrentProgram();
+  updateProgress();
+  applyEditState();
+  updateNavState();
+}
+function cloneTeacherData(value){
+  try{return JSON.parse(JSON.stringify(value??{}))}catch(_){return {}}
+}
+function mergeProfilePreservingRemote(remoteProfile={},localProfile={}){
+  const out={...cloneTeacherData(remoteProfile),...cloneTeacherData(localProfile)};
+  out.extra={...(remoteProfile?.extra||{}),...(localProfile?.extra||{})};
+  out.rowCounts={...(remoteProfile?.rowCounts||{}),...(localProfile?.rowCounts||{})};
+  return out;
+}
+function mergeRecordPreservingRemote(remoteRecord={},localRecord={}){
+  return {...cloneTeacherData(remoteRecord),...cloneTeacherData(localRecord)};
+}
+function updateRemoteProfileShadow(data){
+  if(!data||typeof data!=='object')return;
+  remoteProfileShadow={
+    profile:cloneTeacherData(data.profile||remoteProfileShadow?.profile||{}),
+    answers:cloneTeacherData(data.answers||remoteProfileShadow?.answers||{}),
+    programMeta:cloneTeacherData(data.programMeta||remoteProfileShadow?.programMeta||{}),
+    planningByPeriod:cloneTeacherData(data.planningByPeriod||remoteProfileShadow?.planningByPeriod||{}),
+    submittedPeriod:Object.prototype.hasOwnProperty.call(data,'submittedPeriod')?(data.submittedPeriod||null):(remoteProfileShadow?.submittedPeriod||null),
+    finalizedAtMs:Object.prototype.hasOwnProperty.call(data,'finalizedAtMs')?(Number(data.finalizedAtMs)||null):(Number(remoteProfileShadow?.finalizedAtMs)||null)
+  };
+  setCloudTeacherFingerprint(remoteProfileShadow);
+}
+function preserveUserBackupForRecovery(reason='respaldo preventivo'){
+  if(!currentUser)return false;
+  const backup=readUserBackup();
+  if(!backupHasTeacherData(backup))return false;
+  try{
+    const key=`PAD_UTEQ_RECOVERY_${currentUser.uid}_${Date.now()}`;
+    localStorage.setItem(key,JSON.stringify({reason,savedAt:Date.now(),backup}));
     return true;
+  }catch(e){console.warn('No fue posible crear copia local preventiva',e);return false}
+}
+async function archiveTeacherProfileBeforeChange(uid,reason){
+  if(!isAdmin()||!db)throw new Error('Archivo administrativo no disponible.');
+  const ref=doc(db,'profiles',uid);
+  const snap=await getDoc(ref);
+  if(!snap.exists())throw new Error('El perfil seleccionado no existe.');
+  const data=snap.data()||{};
+  const archiveId=String(Date.now());
+  await setDoc(doc(db,'profileArchives',uid,'snapshots',archiveId),{
+    ...data,
+    archivedUid:uid,
+    archiveReason:reason,
+    archivedAt:serverTimestamp(),
+    archivedAtMs:Date.now(),
+    archivedBy:currentUser?.email||''
+  });
+  return data;
+}
+
+function profileCloudPayload({releaseEditOverride=false}={}){
+  const remote=remoteProfileShadow||{};
+  const payload={
+    uid:currentUser?.uid||'',
+    email:currentUser?.email||'',
+    displayName:currentUser?.displayName||'',
+    profile:mergeProfilePreservingRemote(remote.profile||{},store.profile||{}),
+    answers:mergeRecordPreservingRemote(remote.answers||{},answers),
+    programMeta:mergeRecordPreservingRemote(remote.programMeta||{},programMeta),
+    period:cfg.periodo,
+    submittedPeriod:store.submittedPeriod||null,
+    finalizedAtMs:store.finalizedAtMs||null,
+    planningByPeriod:mergeRecordPreservingRemote(remote.planningByPeriod||{},planningByPeriod),
+    clientUpdatedAt:Number(store.localUpdatedAt)||Date.now(),
+    dataRevision:Number(store.dataRevision)||0,
+    updatedAt:serverTimestamp()
+  };
+  // Los controles administrativos nunca viajan en el guardado manual del profesor.
+  // La única excepción es cerrar una reapertura individual al finalizar de nuevo.
+  if(releaseEditOverride)payload.individualEditEnabled=false;
+  return payload;
+}
+function scheduleCloudRetry(){
+  // V90: no existen reintentos automáticos de escritura del perfil.
+  // Se conserva esta función para compatibilidad con llamadas antiguas, pero sólo informa estado.
+  clearTimeout(cloudRetryTimer);
+  if(!currentUser||!store.syncPending)return;
+  updateCloudStatus(
+    navigator.onLine===false
+      ?'Sin conexión · cambios conservados localmente'
+      :'Cambios locales pendientes · use Guardar y continuar',
+    'warn'
+  );
+}
+async function syncProfileToCloud({reason='guardado manual',releaseEditOverride=false,force=false}={}){
+  if(!db||!currentUser||cloudSyncInFlight)return false;
+  if(!isAdmin()&&individualEditBlocked()){
+    updateCloudStatus('Edición bloqueada por Administración · datos conservados','readonly');
+    return false;
+  }
+  if(!sessionCanWrite()){
+    updateCloudStatus('Sin control de edición · cambios conservados localmente','warn');
+    return false;
+  }
+
+  const fingerprintBefore=currentTeacherFingerprint();
+  if(!force&&!releaseEditOverride&&cloudTeacherFingerprintKnown&&fingerprintBefore===lastCloudTeacherFingerprint){
+    store.syncPending=false;
+    persistStoreSnapshot();
+    updateCloudStatus('Sin cambios nuevos · no se realizó escritura','ok');
+    return true;
+  }
+
+  cloudSyncInFlight=true;
+  const version=Number(store.localUpdatedAt)||Date.now();
+  try{
+    const safePayload=profileCloudPayload({releaseEditOverride});
+    await setDoc(doc(db,'profiles',currentUser.uid),safePayload,{merge:true});
+    updateRemoteProfileShadow(safePayload);
+    lastCloudTeacherFingerprint=fingerprintBefore;
+    cloudTeacherFingerprintKnown=true;
+    store.cloudUpdatedAt=version;
+    store.lastCloudSavedAt=Date.now();
+    store.syncPending=currentTeacherFingerprint()!==lastCloudTeacherFingerprint;
+    store.lastLocalTeacherFingerprint=currentTeacherFingerprint();
+    persistStoreSnapshot();
+    updateCloudStatus(
+      store.syncPending?'Guardado confirmado · hay cambios nuevos pendientes':'Cambios guardados en nube',
+      store.syncPending?'warn':'ok'
+    );
+    return true;
+  }catch(e){
+    console.warn(`Guardado en nube no disponible (${reason})`,e);
+    store.syncPending=true;
+    persistStoreSnapshot();
+    updateCloudStatus('Cambios locales sin guardar en nube','warn');
+    return false;
+  }finally{
+    cloudSyncInFlight=false;
+  }
+}
+function scheduleCloudProfileSave(){
+  // V90: compatibilidad. Deliberadamente NO programa escrituras automáticas.
+  clearTimeout(cloudSaveTimer);
+  if(currentUser&&store.syncPending){
+    updateCloudStatus('Cambios locales sin guardar en nube','warn');
+  }
+}
+async function forceProfileCheckpointToCloud(reason='guardado manual',options={}){
+  const force=!!options.force;
+  if(!db||!currentUser)return false;
+  if(!isAdmin()&&individualEditBlocked()){
+    updateCloudStatus('Edición bloqueada por Administración · datos conservados','readonly');
+    return false;
+  }
+  if(!sessionCanWrite()){
+    updateCloudStatus('Sin control de edición · cambios conservados localmente','warn');
+    return false;
+  }
+
+  const fingerprintBefore=currentTeacherFingerprint();
+  if(!force&&cloudTeacherFingerprintKnown&&fingerprintBefore===lastCloudTeacherFingerprint){
+    store.syncPending=false;
+    store.lastLocalTeacherFingerprint=fingerprintBefore;
+    persistStoreSnapshot();
+    updateCloudStatus('Sin cambios nuevos · no se realizó escritura','ok');
+    return true;
+  }
+
+  try{
+    const safePayload=profileCloudPayload();
+    await setDoc(doc(db,'profiles',currentUser.uid),safePayload,{merge:true});
+    updateRemoteProfileShadow(safePayload);
+    lastCloudTeacherFingerprint=fingerprintBefore;
+    cloudTeacherFingerprintKnown=true;
+    store.cloudUpdatedAt=Number(store.localUpdatedAt)||Date.now();
+    store.lastCloudSavedAt=Date.now();
+    store.syncPending=currentTeacherFingerprint()!==lastCloudTeacherFingerprint;
+    store.lastLocalTeacherFingerprint=currentTeacherFingerprint();
+    persistStoreSnapshot();
+    updateCloudStatus(
+      store.syncPending?'Guardado confirmado · hay cambios nuevos pendientes':'Cambios guardados en nube',
+      store.syncPending?'warn':'ok'
+    );
+    return true;
+  }catch(e){
+    console.warn(`No fue posible confirmar ${reason}`,e);
+    store.syncPending=true;
+    persistStoreSnapshot();
+    updateCloudStatus('Cambios locales sin guardar en nube','warn');
+    return false;
+  }
+}
+
+
+function applyProfileContent(data){
+  if(data.profile)store.profile=JSON.parse(JSON.stringify(data.profile));
+  if(data.answers)answers=JSON.parse(JSON.stringify(data.answers));
+  if(data.programMeta)programMeta=JSON.parse(JSON.stringify(data.programMeta));
+  if(data.planningByPeriod&&typeof data.planningByPeriod==='object'){
+    planningByPeriod=JSON.parse(JSON.stringify(data.planningByPeriod));
+  }
+  store.answers=answers;
+  store.programMeta=programMeta;
+  store.planningByPeriod=planningByPeriod;
+}
+function renderLoadedProfile(){
+  store.lastLocalTeacherFingerprint=currentTeacherFingerprint();
+  localStorage.setItem('PAD_UTEQ',JSON.stringify({
+    ...store,cfg,customPrograms,programOverrides,disabledPrograms,
+    programAcronyms,commonRules,transversalRules,currentProgramIndex:0,lastSavedAt
+  }));
+  saveUserBackup();
+  buildProfileRows();
+  loadProfileValuesOnly();
+  renderCurrentProgram();
+  renderPlanning();
+  updatePlanningAvailability();
+  updateProgress();
+  applyEditState();
+  updateNavState();
+}
+function restoreUserBackupBeforeCloud(){
+  if(!currentUser)return false;
+  const backup=readUserBackup();
+  if(!backupHasTeacherData(backup))return false;
+
+
+  applyProfileContent(backup);
+  if('submittedPeriod' in backup)store.submittedPeriod=backup.submittedPeriod||null;
+  if('finalizedAtMs' in backup)store.finalizedAtMs=Number(backup.finalizedAtMs)||null;
+  if('profileResetToken' in backup)store.profileResetToken=backup.profileResetToken||null;
+  if('profileDeletionToken' in backup)store.profileDeletionToken=backup.profileDeletionToken||null;
+  store.localUpdatedAt=Number(backup.localUpdatedAt)||Number(store.localUpdatedAt)||Date.now();
+  store.cloudUpdatedAt=Number(backup.cloudUpdatedAt)||Number(store.cloudUpdatedAt)||0;
+  store.dataRevision=Number(backup.dataRevision)||Number(store.dataRevision)||0;
+  store.syncPending=!!backup.syncPending;
+  currentProgramIndex=0;
+
+
+  renderLoadedProfile();
+  updateCloudStatus('Respaldo local cargado · verificando nube…','warn');
+  return true;
+}
+
+
+async function loadRemoteProfile({preferRemote=false}={}){
+  if(!db||!currentUser)return;
+  try{
+    const snap=await withTimeout(getDoc(doc(db,'profiles',currentUser.uid)),CLOUD_READ_TIMEOUT_MS,null);
+    if(!snap)throw new Error('Tiempo de espera agotado al recuperar el perfil');
+    if(snap.exists()){
+      const d=snap.data()||{};
+      updateRemoteProfileShadow(d);
+      sessionWriteSeq=Math.max(sessionWriteSeq,Number(d.sessionWriteSeq)||0);
+      store.sessionWriteSeq=sessionWriteSeq;
+      const backup=readUserBackup();
+
+
+      // Una eliminación administrativa explícita prevalece sobre cualquier respaldo local antiguo.
+      if(d.deletedByAdmin===true){
+        preserveUserBackupForRecovery('Perfil marcado como eliminado por Administración');
+        clearUserBackup(currentUser.uid);
+        resetLocalTeacherData({keepProfile:false});
+        store.profileDeletionToken=d.profileDeletionToken||null;
+        store.localUpdatedAt=timestampToMs(d.deletedAt)||Date.now();
+        store.cloudUpdatedAt=store.localUpdatedAt;
+        store.syncPending=false;
+        localStorage.setItem('PAD_UTEQ',JSON.stringify(store));
+        remoteProfileLoaded=true;
+        updateCloudStatus('Perfil eliminado por Administración · nueva captura disponible','warn');
+        toast('Administración eliminó este perfil. Puede iniciar una nueva captura desde cero.');
+        return;
+      }
+
+
+      const remoteUpdatedAt=Number(d.clientUpdatedAt)||timestampToMs(d.updatedAt)||0;
+      const localUpdatedAt=Number(backup?.localUpdatedAt)||0;
+      const remoteRevision=Number(d.dataRevision)||0;
+      const localRevision=Number(backup?.dataRevision)||0;
+      const remoteResetToken=d.profileResetToken||null;
+      const backupResetToken=backup?.profileResetToken||null;
+      const remoteAnswers=d.answers&&typeof d.answers==='object'?d.answers:{};
+      const remoteProgramMeta=d.programMeta&&typeof d.programMeta==='object'?d.programMeta:{};
+      const explicitResetIsNew=
+        !!remoteResetToken &&
+        remoteResetToken!==backupResetToken &&
+        Object.keys(remoteAnswers).length===0 &&
+        Object.keys(remoteProgramMeta).length===0;
+
+
+      const localHasData=backupHasTeacherData(backup);
+      const remoteHasData=cloudHasTeacherData(d);
+
+
+      // Prioridad de recuperación:
+      // 1. Una eliminación administrativa explícita ya fue tratada arriba.
+      // 2. Un reset administrativo explícito y realmente vacío sí debe respetarse.
+      // 3. Una copia local válida NUNCA puede ser reemplazada por una nube vacía accidental.
+      // 4. Si ambos lados tienen revisión V62, gana la revisión mayor.
+      // 5. Para datos previos a V62, se conserva la comparación por fecha.
+      const localIsNewer=!preferRemote && !!backup && !explicitResetIsNew && (
+        (localHasData && !remoteHasData) ||
+        (localRevision>0 && remoteRevision>0 && localRevision>remoteRevision) ||
+        (!(localRevision>0 && remoteRevision>0) && localUpdatedAt>remoteUpdatedAt)
+      );
+      const preserveLocalAgainstEmptyCloud=
+        !!backup &&
+        localHasData &&
+        !remoteHasData &&
+        d.deletedByAdmin!==true &&
+        !explicitResetIsNew;
+
+
+      if('individualEditEnabled' in d)store.individualEditEnabled=!!d.individualEditEnabled;
+      if('individualEditDisabled' in d)store.individualEditDisabled=!!d.individualEditDisabled;
+      if('profileResetToken' in d)store.profileResetToken=d.profileResetToken||null;
+
+
+      if(localIsNewer || preserveLocalAgainstEmptyCloud){
+        applyProfileContent(backup);
+        currentProgramIndex=0;
+        const localFinal=Number(backup.finalizedAtMs)||0;
+        const remoteFinal=Number(d.finalizedAtMs)||0;
+        if(localFinal>remoteFinal){
+          store.submittedPeriod=backup.submittedPeriod||d.submittedPeriod||null;
+          store.finalizedAtMs=localFinal;
+        }else{
+          store.submittedPeriod=d.submittedPeriod||null;
+          store.finalizedAtMs=remoteFinal||null;
+        }
+        store.localUpdatedAt=localUpdatedAt;
+        store.dataRevision=localRevision||Number(store.dataRevision)||0;
+        store.syncPending=true;
+        renderLoadedProfile();
+        remoteProfileLoaded=true;
+        updateCloudStatus('Cambios locales recuperados · guardado manual pendiente','warn');
+        scheduleCloudRetry();
+      }else{
+        applyProfileContent(d);
+        if('submittedPeriod' in d)store.submittedPeriod=d.submittedPeriod||null;
+        if('finalizedAtMs' in d)store.finalizedAtMs=Number(d.finalizedAtMs)||null;
+        store.localUpdatedAt=remoteUpdatedAt||Date.now();
+        store.cloudUpdatedAt=remoteUpdatedAt||store.localUpdatedAt;
+        store.dataRevision=remoteRevision||Number(store.dataRevision)||0;
+        store.syncPending=false;
+        renderLoadedProfile();
+        remoteProfileLoaded=true;
+        updateCloudStatus('Sincronizado','ok');
+      }
+
+
+      if(store.submittedPeriod===cfg.periodo){
+        toast('Perfil finalizado. Puede consultarlo e imprimirlo nuevamente. Si requiere editar algo, consulte a su JUCA.');
+      }
+    }else{
+      setCloudTeacherFingerprint({});
+      const backup=readUserBackup();
+      if(backupHasTeacherData(backup)){
+        // Firestore todavía no contiene el documento, pero existe una copia válida del mismo UID.
+        // Se recupera primero y después se intenta reconstruir la copia en nube; nunca se destruye al cerrar sesión.
+        applyProfileContent(backup);
+        currentProgramIndex=0;
+        store.submittedPeriod=backup.submittedPeriod||null;
+        store.finalizedAtMs=Number(backup.finalizedAtMs)||null;
+        store.profileResetToken=backup.profileResetToken||null;
+        store.profileDeletionToken=backup.profileDeletionToken||null;
+        store.localUpdatedAt=Number(backup.localUpdatedAt)||Date.now();
+        store.cloudUpdatedAt=Number(backup.cloudUpdatedAt)||0;
+        store.dataRevision=Number(backup.dataRevision)||Number(store.dataRevision)||0;
+        store.syncPending=true;
+        renderLoadedProfile();
+        remoteProfileLoaded=true;
+        updateCloudStatus('Perfil recuperado · guardado manual en nube pendiente','warn');
+        scheduleCloudRetry();
+      }else{
+        resetLocalTeacherData({keepProfile:false});
+        remoteProfileLoaded=true;
+        updateCloudStatus('Perfil nuevo · guardado manual listo','ok');
+      }
+    }
+  }catch(e){
+    remoteProfileLoaded=true;
+    cloudTeacherFingerprintKnown=false;
+    console.warn('Perfil remoto no disponible',e);
+    const backup=readUserBackup();
+    if(backup){
+      applyProfileContent(backup);
+      store.submittedPeriod=backup.submittedPeriod||store.submittedPeriod||null;
+      store.finalizedAtMs=Number(backup.finalizedAtMs)||store.finalizedAtMs||null;
+      store.localUpdatedAt=Number(backup.localUpdatedAt)||Number(store.localUpdatedAt)||Date.now();
+      store.dataRevision=Number(backup.dataRevision)||Number(store.dataRevision)||0;
+      store.syncPending=true;
+      renderLoadedProfile();
+    }
+    updateCloudStatus('Modo local · guardado manual pendiente','warn');
+    scheduleCloudRetry();
+  }
+}
+async function initCloud(){
+  if(!db||!currentUser)return;
+  cloudAvailable=true;
+  try{
+    const ref=doc(db,'settings','app');
+    const first=await withTimeout(getDoc(ref),CLOUD_READ_TIMEOUT_MS,null);
+    if(first?.exists()){
+      applyGlobalSettings(first.data());
+    }else if(first&&isAdmin()){
+      // Solo inicializar si Firestore respondió y confirmó que el documento no existe.
+      await withTimeout(setDoc(ref,{...globalSettingsPayload(),updatedAt:serverTimestamp(),updatedBy:currentUser.email},{merge:true}),3000,false);
+    }else if(!first){
+      updateCloudStatus('Configuración local disponible · nube verificándose','warn');
+    }
+    if(cloudSettingsUnsub)cloudSettingsUnsub();
+    cloudSettingsUnsub=onSnapshot(ref,s=>{if(s.exists())applyGlobalSettings(s.data())},e=>{console.warn(e);updateCloudStatus('Configuración global no disponible','warn')});
+  }catch(e){
+    console.warn('Firestore settings no disponible',e);
+    updateCloudStatus('Configuración local disponible · nube pendiente','warn');
+  }
+
+  // V84: recuperar perfil antes de negociar el control de edición.
+  // La UI ya está visible desde la copia local y esta lectura tiene tiempo máximo.
+  await loadRemoteProfile();
+
+  if(cloudProfileMetaUnsub)cloudProfileMetaUnsub();
+  cloudProfileMetaUnsub=onSnapshot(doc(db,'profiles',currentUser.uid),s=>{
+    if(!s.exists()){
+      // IMPORTANTE:
+      // Un snapshot inexistente puede ser temporal (caché vacía, reconexión, latencia o
+      // documento todavía no creado). NO debe borrar información local.
+      // La única eliminación válida se identifica mediante deletedByAdmin=true.
+      if(remoteProfileLoaded&&!isAdmin()){
+        const backup=readUserBackup();
+        if(backupHasTeacherData(backup)){
+          updateCloudStatus('Respaldo local conservado · guardado manual pendiente','warn');
+          store.syncPending=true;
+        }
+      }
+      return;
+    }
+    const d=s.data()||{};
+    updateRemoteProfileShadow(d);
+    sessionWriteSeq=Math.max(sessionWriteSeq,Number(d.sessionWriteSeq)||0);
+    store.sessionWriteSeq=sessionWriteSeq;
+
+
+    if(d.deletedByAdmin===true){
+      if(!isAdmin()){
+        preserveUserBackupForRecovery('Perfil marcado como eliminado por Administración');
+        clearUserBackup(currentUser?.uid);
+        resetLocalTeacherData({keepProfile:false});
+        store.profileDeletionToken=d.profileDeletionToken||null;
+        localStorage.setItem('PAD_UTEQ',JSON.stringify(store));
+        toast('Administración eliminó este perfil. La siguiente captura iniciará desde cero.');
+      }
+      return;
+    }
+
+
+    const priorPeriod=store.submittedPeriod||null;
+    const priorOverride=!!store.individualEditEnabled;
+    const priorDisabled=!!store.individualEditDisabled;
+    const priorResetToken=store.profileResetToken||null;
+    store.submittedPeriod=d.submittedPeriod||null;
+    store.finalizedAtMs=Number(d.finalizedAtMs)||null;
+    store.individualEditEnabled=!!d.individualEditEnabled;
+    store.individualEditDisabled=!!d.individualEditDisabled;
+    store.profileResetToken=d.profileResetToken||null;
+
+
+    const snapshotAnswers=d.answers&&typeof d.answers==='object'?d.answers:{};
+    const snapshotProgramMeta=d.programMeta&&typeof d.programMeta==='object'?d.programMeta:{};
+    const explicitProgramReset=
+      !!store.profileResetToken &&
+      priorResetToken!==store.profileResetToken &&
+      Object.keys(snapshotAnswers).length===0 &&
+      Object.keys(snapshotProgramMeta).length===0;
+
+
+    if(explicitProgramReset&&!isAdmin()){
+      preserveUserBackupForRecovery('Reinicio administrativo de asignaturas');
+      answers={};
+      programMeta={};
+      store.answers=answers;
+      store.programMeta=programMeta;
+      currentProgramIndex=0;
+      if(d.profile)store.profile=d.profile;
+      localStorage.setItem('PAD_UTEQ',JSON.stringify({
+        ...store,cfg,answers,programMeta,customPrograms,programOverrides,
+        disabledPrograms,programAcronyms,commonRules,transversalRules,currentProgramIndex:0,lastSavedAt
+      }));
+      saveUserBackup();
+      buildProfileRows();
+      loadProfileValuesOnly();
+      renderCurrentProgram();
+      updateProgress();
+      applyEditState();
+      updateNavState();
+      toast('Administración eliminó las asignaturas capturadas. El Perfil por programa iniciará desde cero.');
+      return;
+    }
+
+
+    if(priorPeriod!==store.submittedPeriod || priorOverride!==store.individualEditEnabled || priorDisabled!==store.individualEditDisabled){
+      localStorage.setItem('PAD_UTEQ',JSON.stringify({...store,cfg,answers,programMeta,customPrograms,programOverrides,disabledPrograms,programAcronyms,commonRules,transversalRules,currentProgramIndex:0,lastSavedAt}));
+      const reopenedNow=!priorOverride&&store.individualEditEnabled&&!isAdmin();
+      if(reopenedNow){
+        resetWorkflowState();
+        loadProfileValuesOnly();
+        renderCurrentProgram();
+        activateViewDirect('perfil');
+      }
+      if(store.individualEditDisabled&&!isAdmin()){
+        clearTimeout(cloudSaveTimer);
+        clearTimeout(cloudRetryTimer);
+        updateCloudStatus('Edición bloqueada por Administración · datos conservados','readonly');
+      }else if(priorDisabled&&!store.individualEditDisabled&&store.syncPending&&sessionCanWrite()){
+        updateCloudStatus('Edición habilitada · cambios locales pendientes de guardado manual','warn');
+      }
+      applyEditState();updateNavState();
+      toast(store.individualEditDisabled
+        ?'Administración deshabilitó temporalmente la edición de su perfil.'
+        :store.individualEditEnabled
+          ?'Administración habilitó la edición únicamente para su perfil.'
+          :(store.submittedPeriod===cfg.periodo?'Perfil finalizado. Edición bloqueada.':'El perfil vuelve a respetar los controles generales.'));
+    }
+  },e=>console.warn('No fue posible escuchar el estado del perfil',e));
+
+  // V92: no existe arbitraje entre dispositivos. El último guardado manual confirmado prevalece.
+  requestSingleDeviceControl().catch(e=>console.warn('No fue posible inicializar el estado local de edición',e));
+}
+async function loadTeachersForExport(){
+  if(!db||!isAdmin()){
+    return [{name:fullName()||'(Profesor sin nombre)',category:store.profile?.categoria||'',answers,programMeta,planningByPeriod,email:currentUser?.email||''}];
+  }
+  const snap=await getDocs(collection(db,'profiles'));
+  const rows=[];
+  snap.forEach(ds=>{
+    const d=ds.data()||{};
+    if(d.deletedByAdmin===true)return;
+    if(!cloudHasTeacherData(d)&&!d.email&&!d.displayName)return;
+    const p=d.profile||{};
+    const cached=previousTeacherAdminCache[ds.id]||teacherAdminCache[ds.id]||{};
+    const name=[p.apPat,p.apMat,p.nombres].filter(Boolean).join(' ')||cached.name||d.displayName||d.email||'(Sin nombre)';
+    rows.push({name,category:p.categoria||cached.categoria||'',answers:d.answers||{},programMeta:d.programMeta||{},planningByPeriod:d.planningByPeriod||{},email:d.email||cached.email||'',uid:ds.id,submittedPeriod:d.submittedPeriod||null,finalizedAtMs:Number(d.finalizedAtMs)||null});
+  });
+  if(!rows.length)throw new Error('Firestore respondió, pero no devolvió perfiles con información. No se generará un Excel vacío.');
+  return rows;
+}
+function teacherAnswer(t,pid,s,c,name){
+  if(isEnglish(name))return {status:'na',origins:[],ideal:false};
+  return (t.answers||{})[key(pid,s,c)]||{status:'pending',origins:[],ideal:false};
+}
+function teacherCoordinator(t,pid,s,c){
+  return !!(((t.programMeta||{})[pid]||{}).coordinators||[]).includes(`${s}|${c}`);
+}
+
+
+function isInstitutional(email){return !!email&&email.toLowerCase().endsWith('@'+allowedDomain)}
+function isAdmin(){return !!currentUser&&currentUser.email&&currentUser.email.toLowerCase()===adminEmail}
+
+
+function showApp(visible){document.querySelector('header').style.display=visible?'block':'none';document.querySelector('.main-nav').style.display=visible?'flex':'none';document.querySelector('main').style.display=visible?'block':'none';document.querySelector('.site-footer').style.display=visible?'block':'none';$('loginGate').classList.toggle('hidden',visible)}
+function institutionalAccessMessage(extra=''){
+  const base =
+    `Acceso institucional UTEQ\n\n`+
+    `Debes ingresar con una cuenta @${allowedDomain}.\n\n`+
+    `Esta plataforma NO solicita ni almacena tu contraseña. `+
+    `Únicamente solicita seleccionar tu cuenta institucional mediante Google. `+
+    `Si Google necesita verificar tu identidad, cualquier contraseña o segundo factor `+
+    `se captura únicamente en la pantalla de Google y nunca en esta página.`;
+  return extra?`${base}\n\n${extra}`:base;
+}
+function showInstitutionalAccessMessage(extra=''){
+  alert(institutionalAccessMessage(extra));
+}
+/* V53 · Google Identity Services directo: evita por completo /__/auth/handler de firebaseapp.com */
+function googleIdentityReady(){
+  return !!(window.google?.accounts?.oauth2?.initTokenClient);
+}
+async function waitForGoogleIdentity(timeoutMs=10000){
+  if(googleIdentityReady())return true;
+  const loaded=await withTimeout(ensureGoogleIdentity(),timeoutMs,false);
+  return !!loaded&&googleIdentityReady();
+}
+function googleAuthErrorMessage(detail=''){
+  const suffix=detail?`\n\n${detail}`:'';
+  return `Acceso institucional UTEQ\n\n`+
+    `Debes ingresar con una cuenta @${allowedDomain}.\n\n`+
+    `Esta plataforma no solicita ni almacena tu contraseña. El acceso se realiza directamente con Google y la sesión se valida en Firebase mediante una credencial de Google; no se utiliza la página de acceso de firebaseapp.com.${suffix}`;
+}
+async function signInWithGoogleIdentity(){
+  if(!googleClientId){
+    alert(
+      'Falta configurar GOOGLE_CLIENT_ID para el acceso institucional.\\n\\n'+
+      'Administración: agregue el Client ID de Google como secreto GOOGLE_CLIENT_ID en GitHub y publique nuevamente.'
+    );
+    return false;
+  }
+  const ready=await waitForGoogleIdentity();
+  if(!ready){
+    alert(googleAuthErrorMessage('No fue posible cargar el servicio de acceso de Google (accounts.google.com). Verifique la conexión o las restricciones de red y vuelva a intentarlo.'));
+    return false;
+  }
+
+
+  return await new Promise(resolve=>{
+    let settled=false;
+    const finish=v=>{if(!settled){settled=true;resolve(v)}};
+    try{
+      const tokenClient=window.google.accounts.oauth2.initTokenClient({
+        client_id:googleClientId,
+        scope:'openid email profile',
+        include_granted_scopes:true,
+        hosted_domain:allowedDomain,
+        prompt:'select_account',
+        callback:async response=>{
+          if(!response||response.error||!response.access_token){
+            console.error('Google OAuth response',response);
+            alert(googleAuthErrorMessage('Google no devolvió una credencial válida. Vuelva a seleccionar su cuenta institucional.'));
+            finish(false);return;
+          }
+          try{
+            const credential=GoogleAuthProvider.credential(null,response.access_token);
+            const result=await signInWithCredential(auth,credential);
+            const email=String(result.user?.email||'').toLowerCase();
+            if(!isInstitutional(email)){
+              await signOut(auth);
+              alert(googleAuthErrorMessage(`La cuenta seleccionada no pertenece al dominio autorizado @${allowedDomain}.`));
+              finish(false);return;
+            }
+            finish(true);
+          }catch(e){
+            console.error('Firebase credential sign-in error',e);
+            const code=e?.code||'';
+            if(code==='auth/network-request-failed'){
+              alert(googleAuthErrorMessage('No fue posible validar la credencial con Firebase. Verifique la conexión y vuelva a intentarlo.'));
+            }else{
+              alert(googleAuthErrorMessage(`No fue posible completar el acceso (${code||'error de autenticación'}).`));
+            }
+            finish(false);
+          }
+        },
+        error_callback:error=>{
+          console.error('Google popup error',error);
+          const type=error?.type||'';
+          if(type==='popup_failed_to_open'){
+            alert(googleAuthErrorMessage('El navegador bloqueó la ventana de Google. Permita ventanas emergentes para igutierrezb.github.io y vuelva a intentarlo.'));
+          }else if(type==='popup_closed'){
+            // El usuario cerró la ventana; no convertirlo en un error técnico.
+          }else{
+            alert(googleAuthErrorMessage('No fue posible abrir el selector de cuenta de Google. Vuelva a intentarlo.'));
+          }
+          finish(false);
+        }
+      });
+      // Debe ejecutarse desde el clic del usuario para que Safari/Chrome no lo bloqueen.
+      tokenClient.requestAccessToken({prompt:'select_account'});
+    }catch(e){
+      console.error('Google Identity Services init error',e);
+      alert(googleAuthErrorMessage('No fue posible iniciar el selector de cuenta de Google.'));
+      finish(false);
+    }
+  });
+}
+
+
+function updateAuthUI(){
+  const gateStatus=$('authStatusGate'),topStatus=$('authStatus');
+  if(authConfigured()){
+    const loadingAuth=!!currentUser&&!authReady;
+    const syncingProfile=!!currentUser&&authReady&&!bootstrapComplete;
+    const userLabel=currentUser?`${currentUser.email}${isAdmin()?' · administrador':''}`:`Sin sesión · use una cuenta @${allowedDomain}`;
+    gateStatus.textContent=loadingAuth
+      ?`${currentUser.email} · preparando acceso…`
+      :(syncingProfile?`${currentUser.email} · perfil disponible · sincronizando…`:userLabel);
+    topStatus.textContent=loadingAuth
+      ?`${currentUser.email} · preparando acceso…`
+      :(syncingProfile?`${currentUser.email} · perfil disponible · sincronizando…`:userLabel);
+    $('btnLogin').classList.toggle('hidden',!!currentUser);
+    $('btnLogout').classList.toggle('hidden',!currentUser);
+    $('btnLoginGate').classList.toggle('hidden',!!currentUser);
+  }else{
+    gateStatus.textContent='Configuración de Firebase incompleta.';
+    topStatus.textContent='Configuración de Firebase incompleta.';
+    $('btnLogin').classList.remove('hidden');
+    $('btnLogout').classList.add('hidden');
+    $('btnLoginGate').classList.remove('hidden');
+  }
+  $('adminTab').classList.toggle('hidden',!isAdmin());
+  showApp(!!currentUser && authReady);
+}
+window.signIn=async function(){
+  if(!authConfigured()){
+    alert('Firebase no está configurado correctamente. Revise apiKey, projectId y appId.');
+    return;
+  }
+  const gateBtn=$('btnLoginGate'),topBtn=$('btnLogin');
+  [gateBtn,topBtn].filter(Boolean).forEach(btn=>{btn.disabled=true;btn.dataset.originalText=btn.textContent;btn.textContent='Abriendo Google…'});
+  try{
+    await authPersistenceReady;
+    const googleReady=await ensureGoogleIdentity();
+    if(!googleReady){
+      alert(googleAuthErrorMessage('No fue posible cargar el servicio de acceso de Google. Revise la conexión y vuelva a intentarlo.'));
+      return false;
+    }
+    return await signInWithGoogleIdentity();
+  }finally{
+    [gateBtn,topBtn].filter(Boolean).forEach(btn=>{btn.disabled=false;btn.textContent=btn.dataset.originalText||'Ingresar con cuenta institucional';delete btn.dataset.originalText});
+  }
+}
+window.signOutApp=async function(){
+  const uid=currentUser?.uid||null;
+  try{
+    if(uid){
+      try{
+        if($('apPat'))store.profile=profileFromInputs();
+        if(planningEnabled()&&$('commissionsBlock')){
+          try{collectPlanning()}catch(_){}
+        }
+        persist({touch:true,schedule:false});
+      }catch(e){
+        console.warn('No fue posible capturar el último estado visual antes del cierre',e);
+      }
+      saveUserBackup();
+
+      // V90: cerrar sesión NO escribe automáticamente el perfil en Firestore.
+      if(teacherHasUnsavedCloudChanges()){
+        const closeAnyway=confirm(
+          'Hay cambios que todavía no se han guardado en la nube. Permanecerán respaldados en este dispositivo, pero no estarán disponibles en otro dispositivo hasta que use “Guardar y continuar”.\n\n¿Desea cerrar sesión de todos modos?'
+        );
+        if(!closeAnyway){
+          updateCloudStatus('Cambios locales pendientes · sesión conservada','warn');
+          return false;
+        }
+      }
+    }
+
+    await releaseSessionIfOwned();
+    if(auth)await signOut(auth);
+
+    // Se elimina sólo la copia de trabajo compartida por privacidad.
+    // Se conservan PAD_UTEQ_PROFILE_<UID> y PAD_UTEQ_GLOBAL_SETTINGS.
+    localStorage.removeItem('PAD_UTEQ');
+    try{
+      [...Object.keys(sessionStorage)]
+        .filter(k=>k.startsWith('PAD_CAPTURE_ORIENTATION_'))
+        .forEach(k=>sessionStorage.removeItem(k));
+    }catch(_){}
+    location.reload();
+    return true;
+  }catch(e){
+    console.error('No fue posible cerrar la sesión',e);
+    toast('No fue posible cerrar la sesión. Intente nuevamente.');
+    return false;
+  }
+}
+
+
+function initAuth(){
+  if(!authConfigured()){updateAuthUI();return}
+  const fbApp=initializeApp(window.FIREBASE_CONFIG);
+  auth=getAuth(fbApp);
+  db=getFirestore(fbApp);
+
+
+  // Se configura al iniciar la aplicación. Así el clic de acceso queda
+  // libre para abrir Google inmediatamente, algo importante en Safari/iOS.
+  authPersistenceReady=setPersistence(auth,browserLocalPersistence).catch(e=>{
+    console.warn('No fue posible establecer persistencia local de Auth',e);
   });
 
-  $('#admin-res-count').textContent =
-    `${rows.length} ${rows.length === 1 ? 'resultado' : 'resultados'}`;
 
-  $('#admin-res-list').innerHTML =
-    rows.length
-      ? rows.map(booking => {
-          const cancelled =
-            bookingStatus(booking) === 'cancelled';
+  onAuthStateChanged(auth,async user=>{
+    currentUser=user;
+    remoteProfileLoaded=false;
+    remoteProfileShadow=null;
+    cloudTeacherFingerprintKnown=false;
+    lastCloudTeacherFingerprint='';
+    bootstrapComplete=false;
+    authReady=false;
+    sessionHasControl=false;
+    sessionActivationBusy=false;
+    sessionTransferRequested=false;
+    sessionTransferModalDismissed=false;
+    stopSessionHeartbeat();
+    clearTimeout(sessionControlRetryTimer);
+    clearTimeout(sessionHandoffRetryTimer);
+    if(sessionDocUnsub){try{sessionDocUnsub()}catch(_){} sessionDocUnsub=null;}
 
-          return `
-            <article class="reservation-admin-row">
-              <div class="reservation-admin-main">
-                <strong>${escape(booking.date)} · ${escape(booking.start)}–${escape(booking.end)}</strong>
-                <span>${escape(roomShort(booking.roomId))} · ${escape(booking.teacher)} · ${escape(booking.group)}</span>
-                <small>${escape(booking.activity)}</small>
-              </div>
+    if(user&&!isInstitutional(user.email||'')){
+      await signOut(auth);
+      currentUser=null;
+      updateAuthUI();
+      showInstitutionalAccessMessage(`La cuenta seleccionada no pertenece al dominio autorizado @${allowedDomain}.`);
+      return;
+    }
 
-              <div class="reservation-admin-meta">
-                <span class="status-pill ${cancelled ? 'cancelled' : 'active'}">
-                  ${cancelled ? 'Cancelada' : 'Activa'}
-                </span>
-                <small>
-                  por ${escape(
-                    booking.createdByLabel ||
-                    booking.createdByEmail ||
-                    '—'
-                  )}
-                </small>
-              </div>
+    if(!currentUser){
+      bootstrapComplete=true;
+      updateAuthUI();
+      updateCountdownUI();
+      return;
+    }
 
-              <div class="reservation-admin-actions">
-                <button type="button" data-admin-booking-view="${escape(booking.id)}">Ver</button>
-                ${cancelled
-                  ? `<button type="button" class="primary" data-admin-booking-restore="${escape(booking.id)}" data-mutation>Restaurar</button>`
-                  : `
-                    <button type="button" data-admin-booking-edit="${escape(booking.id)}" data-mutation>Editar</button>
-                    <button type="button" data-admin-booking-move="${escape(booking.id)}" data-mutation>Mover</button>
-                    <button type="button" data-admin-booking-duplicate="${escape(booking.id)}">Duplicar</button>
-                    <button type="button" class="danger" data-admin-booking-cancel="${escape(booking.id)}" data-mutation>Cancelar</button>
-                  `}
-              </div>
-            </article>
-          `;
-        }).join('')
-      : '<p class="empty-mini">No se encontraron reservaciones para esos filtros.</p>';
+    // V87.1: una copia local dañada o un error de render nunca puede bloquear el acceso.
+    try{
+      restoreUserBackupBeforeCloud();
+    }catch(e){
+      console.error('No fue posible restaurar la copia local; se continuará con la sesión autenticada.',e);
+      updateCloudStatus('Sesión iniciada · recuperación local pendiente','warn');
+    }
+    authReady=true;
+    updateAuthUI();
+    applyEditState();
+    updateNavState();
 
-  updateMutationAvailability();
+    try{
+      await initCloud();
+    }catch(e){
+      console.warn('El arranque en nube quedó pendiente; se conserva el modo local',e);
+      updateCloudStatus('Modo local · guardado manual pendiente','warn');
+      scheduleCloudRetry();
+    }finally{
+      bootstrapComplete=true;
+      updateAuthUI();
+      updateCountdownUI();
+      applyEditState();
+      updateNavState();
+    }
+  });
 }
 
-async function loadAdminReservations() {
-  if (!authService.isOwner(currentUser)) return;
 
-  const defaults = adminDefaultDates();
 
-  if (!$('#admin-res-from').value) {
-    $('#admin-res-from').value = defaults.first;
+
+function updateStepLabels(){
+  if($('profileStepBadge'))$('profileStepBadge').textContent='Paso 1 de 3';
+  if($('captureStepKicker'))$('captureStepKicker').textContent='Paso 2 de 3';
+  if($('reviewStepKicker'))$('reviewStepKicker').textContent='Paso 3 de 3';
+}
+function updatePlanningAvailability(){
+  cfg.planningEnabled=true;
+  const block=$('commissionsBlock');
+  if(block){
+    block.classList.remove('hidden');
+    block.style.display='';
   }
-
-  if (!$('#admin-res-to').value) {
-    $('#admin-res-to').value = defaults.last;
-  }
-
-  $('#admin-res-room').innerHTML = [
-    '<option value="all">Todas las salas</option>',
-    ...state.rooms.map(room => `
-      <option value="${escape(room.id)}">
-        ${escape(defaultRoomShort(room))} · ${escape(room.name)}
-      </option>
-    `)
-  ].join('');
-
-  const from = $('#admin-res-from').value;
-  const to = $('#admin-res-to').value;
-
-  if (!from || !to || to < from) return;
-
-  $('#admin-res-list').innerHTML =
-    '<div class="admin-loading">Consultando reservaciones…</div>';
-
-  try {
-    adminBookings =
-      await repository.queryBookingsRange(from, to);
-
-    renderAdminReservationRows();
-  } catch (error) {
-    $('#admin-res-list').innerHTML =
-      `<p class="form-error">${escape(error.message)}</p>`;
-  }
+  updateStepLabels();
+}
+window.togglePlanningPage=async function(){
+  cfg.planningEnabled=true;
+  updatePlanningAvailability();
+  toast('El apartado de Comisiones permanece habilitado.');
 }
 
-function roomStatusLabel(status) {
-  return ({
-    available: 'Disponible',
-    maintenance: 'Mantenimiento',
-    out_of_service: 'Fuera de servicio'
-  })[status] || 'Disponible';
-}
 
-function roomAdminRow(room, archived = false) {
-  return `
-    <div class="compact-row room-admin-row">
+function renderCommissionScheduleGrid(commission){
+  const selected=new Set(commission.reservedSlots||[]);
+  return `<div id="commissionEditorSchedule" class="commission-schedule-grid ${commission.scheduleRequired==='yes'?'':'hidden'}">
+    <div class="commission-schedule-caption">Horario que debe bloquearse para atender esta comisión</div>
+    <div class="compact-schedule">
+      ${PLANNING_DAYS.map(day=>`<div class="compact-day">
+        <b>${day.label}</b>
+        <div class="compact-slots">
+          ${PLANNING_SLOTS.map(([start,end],slotIndex)=>{
+            const slot=planningSlotKey(day.key,start,end);
+            return `<label class="compact-slot ${slotIndex===PLANNING_SLOTS.length-1?'late':''}" title="${day.label} ${start}-${end}">
+              <input type="checkbox" data-commission-editor-slot="${slot}" ${selected.has(slot)?'checked':''}>
+              <span>${start.replace(':00','')} a ${end.replace(':00','')}</span>
+            </label>`;
+          }).join('')}
+        </div>
+      </div>`).join('')}
+    </div>
+  </div>`;
+}
+function renderCommissionSummary(c,i){
+  const schedule=commissionScheduleSummary(c);
+  const safeSchedule=c.scheduleRequired==='yes'&&schedule?schedule:'Sin bloqueo horario específico';
+  return `<div class="commission-summary-card" data-commission-summary="${i}">
+    <div class="commission-summary-cell commission-summary-name">
+      <span>Comisión</span>
+      <strong>${escapeHtml(c.name||`Comisión ${i+1}`)}</strong>
+    </div>
+    <div class="commission-summary-cell commission-summary-hours">
+      <span>Horas</span>
+      <strong>${escapeHtml(String(c.authorizedHours||'0'))} h</strong>
+    </div>
+    <div class="commission-summary-cell commission-summary-schedule" title="${escapeHtml(safeSchedule)}">
+      <span>Horario bloqueado</span>
+      <strong>${escapeHtml(safeSchedule)}</strong>
+    </div>
+    <div class="commission-summary-actions">
+      <button type="button" class="commission-summary-edit" onclick="editPlanningCommission(${i})">Editar</button>
+      <button type="button" class="commission-summary-delete" onclick="removePlanningCommission(${i})">Eliminar</button>
+    </div>
+  </div>`;
+}
+function renderCommissionEditor(){
+  if(!planningCommissionEditorOpen)return '';
+  const c=planningCommissionDraft||emptyCommission();
+  const editing=Number.isInteger(planningCommissionEditorIndex);
+  return `<div id="commissionEditor" class="commission-entry commission-editor" data-commission-editor="1">
+    <div class="commission-editor-head">
       <div>
-        <strong>${escape(defaultRoomShort(room))} · ${escape(room.name)}</strong>
-        <span>
-          ${escape(room.building || 'Sin edificio')}
-          ${room.floor ? ` · ${escape(room.floor)}` : ''}
-          ${room.capacity ? ` · ${escape(String(room.capacity))} lugares` : ''}
-        </span>
-        <small>${escape(roomStatusLabel(room.status))}</small>
-      </div>
-
-      <div class="row-actions">
-        ${archived
-          ? `<button type="button" class="primary" data-room-enable="${escape(room.id)}" data-mutation>Reactivar</button>`
-          : `
-            <button type="button" data-room-edit="${escape(room.id)}">Editar</button>
-            <button type="button" class="danger" data-room-disable="${escape(room.id)}" data-mutation>Desactivar</button>
-          `}
+        <div class="commission-editor-title">${editing?'Editar comisión':'Agregar comisión'}</div>
+        <div class="commission-editor-subtitle">Capture nombre, horas autorizadas y, solo si corresponde, el horario que debe bloquearse.</div>
       </div>
     </div>
-  `;
+    <div class="commission-entry-top commission-editor-fields">
+      <label class="commission-name-field">Nombre de la comisión
+        <input id="commissionEditorName" value="${escapeHtml(c.name||'')}" placeholder="Ej. Enlace de calidad, tutoría, visitas..." autocomplete="off">
+      </label>
+      <label class="commission-hours-field">Horas autorizadas
+        <input id="commissionEditorHours" type="number" min="0" step="0.5" inputmode="decimal" value="${escapeHtml(String(c.authorizedHours||''))}" placeholder="Ej. 3">
+      </label>
+    </div>
+    <div class="commission-schedule-question">
+      <span>¿Requiere un <b>horario específico que deba bloquearse</b>?</span>
+      <label class="mini-choice yes"><input type="radio" name="commissionEditorSchedule" value="yes" ${c.scheduleRequired==='yes'?'checked':''} onchange="commissionScheduleChanged('yes')"> Sí</label>
+      <label class="mini-choice no"><input type="radio" name="commissionEditorSchedule" value="no" ${c.scheduleRequired!=='yes'?'checked':''} onchange="commissionScheduleChanged('no')"> No</label>
+    </div>
+    ${renderCommissionScheduleGrid(c)}
+    <div class="commission-editor-actions">
+      <button type="button" class="commission-inline-save-btn" onclick="savePlanningCommission()">✓ ${editing?'Actualizar comisión':'Agregar comisión'}</button>
+      <button type="button" class="commission-editor-cancel" onclick="cancelPlanningCommissionEdit()">Cancelar</button>
+    </div>
+  </div>`;
 }
-
-function resetRoomForm() {
-  const form = $('#room-form');
-  form.reset();
-  form.elements.id.value = '';
-  form.elements.status.value = 'available';
-  $('#room-form-title').textContent = 'Agregar sala';
-  $('#room-error').textContent = '';
+function renderPlanningCommissions(){
+  const root=$('planningCommissionList');
+  if(!root)return;
+  const record=currentPlanningRecord(true);
+  record.commissions=(record.commissions||[]).filter(c=>!commissionIsBlank(c));
+  root.innerHTML=`
+    <div class="commission-list-toolbar">
+      <div class="commission-list-toolbar-copy">
+        <strong>Comisiones registradas</strong>
+        <span>${record.commissions.length?`${record.commissions.length} registrada${record.commissions.length===1?'':'s'}`:'Aún no ha agregado ninguna comisión.'}</span>
+      </div>
+      <button type="button" class="commission-inline-add-btn commission-toolbar-add" onclick="addPlanningCommission()">＋ Agregar comisión</button>
+    </div>
+    <div class="commission-summary-list">
+      ${record.commissions.length
+        ?record.commissions.map((c,i)=>renderCommissionSummary(c,i)).join('')
+        :'<div class="commission-summary-empty">Seleccione “Agregar comisión” para capturar nombre, horas y, si aplica, el horario que debe bloquearse.</div>'}
+    </div>
+    ${renderCommissionEditor()}`;
+  requestAnimationFrame(applyPlanningEditState);
 }
+function renderPlanning(){
+  const root=$('commissionsBlock');
+  if(!root)return;
+  const record=currentPlanningRecord(true);
+  cfg.planningEnabled=true;
 
-function populateGeneralBlockFormOptions() {
-  const form = $('#general-block-form');
-  if (!form) return;
+  root.querySelectorAll('input[name="planningCommissionMode"]').forEach(x=>x.checked=x.value===record.commissionMode);
+  root.querySelectorAll('input[name="planningProjectMode"]').forEach(x=>x.checked=x.value===record.projectMode);
 
-  form.elements.roomId.innerHTML = reservableRooms().map(room => `
-    <option value="${escape(room.id)}">
-      ${escape(room.name)} (${escape(defaultRoomShort(room))})
-    </option>
-  `).join('');
+  planningCommissionEditorIndex=null;
+  planningCommissionEditorOpen=false;
+  planningCommissionDraft=emptyCommission();
+  renderPlanningCommissions();
+  if($('planningProjectName'))$('planningProjectName').value=record.projectName||'';
+  if($('planningProjectRole'))$('planningProjectRole').value=record.projectRole||'';
+  if($('planningProjectHours'))$('planningProjectHours').value=record.projectHours||'';
+  if($('planningProjectReference'))$('planningProjectReference').value=record.projectReference||'';
+  if($('planningComments'))$('planningComments').value=record.comments||'';
 
-  form.elements.start.innerHTML = '';
-  form.elements.end.innerHTML = '';
+  updatePlanningConditionalUI();
+  updatePlanningAvailability();
+  applyPlanningEditState();
+}
+function updatePlanningConditionalUI(){
+  const record=currentPlanningRecord(true);
+  if($('planningCommissionsFields'))$('planningCommissionsFields').classList.toggle('hidden',record.commissionMode!=='yes');
+  if($('planningProjectFields'))$('planningProjectFields').classList.toggle('hidden',record.projectMode!=='yes');
+}
+function collectCommissionEditorFromDom(){
+  if(!planningCommissionEditorOpen)return planningCommissionDraft||emptyCommission();
+  const name=$('commissionEditorName')?.value.trim()||'';
+  const authorizedHours=$('commissionEditorHours')?.value.trim()||'';
+  const scheduleRequired=document.querySelector('input[name="commissionEditorSchedule"]:checked')?.value||'no';
+  const reservedSlots=[...document.querySelectorAll('[data-commission-editor-slot]:checked')].map(x=>x.dataset.commissionEditorSlot);
+  planningCommissionDraft={name,authorizedHours,scheduleRequired,reservedSlots};
+  return planningCommissionDraft;
+}
+function collectPlanning(){
+  const record=currentPlanningRecord(true);
+  record.commissionMode=document.querySelector('input[name="planningCommissionMode"]:checked')?.value||record.commissionMode||'';
+  record.projectMode=document.querySelector('input[name="planningProjectMode"]:checked')?.value||record.projectMode||'';
+  record.commissions=(record.commissions||[]).filter(c=>!commissionIsBlank(c));
 
-  for (let value = dayStartMinutes(); value < dayEndMinutes(); value += 30) {
-    form.elements.start.insertAdjacentHTML(
-      'beforeend',
-      `<option value="${timeLabel(value)}">${timeLabel(value)}</option>`
-    );
-  }
-
-  for (let value = dayStartMinutes() + 30; value <= dayEndMinutes(); value += 30) {
-    form.elements.end.insertAdjacentHTML(
-      'beforeend',
-      `<option value="${timeLabel(value)}">${timeLabel(value)}</option>`
-    );
+  record.projectName=$('planningProjectName')?.value.trim()||'';
+  record.projectRole=$('planningProjectRole')?.value.trim()||'';
+  record.projectHours=$('planningProjectHours')?.value.trim()||'';
+  record.projectReference=$('planningProjectReference')?.value.trim()||'';
+  record.comments=$('planningComments')?.value.trim()||'';
+  record.updatedAtMs=Date.now();
+  planningByPeriod[cfg.periodo]=record;
+  store.planningByPeriod=planningByPeriod;
+  return record;
+}
+window.planningModeChanged=function(){
+  const record=collectPlanning();
+  updatePlanningConditionalUI();
+  persist({schedule:false});
+  updateNavState();
+  applyPlanningEditState();
+  if(record.commissionMode==='yes'&&!planningCommissionEditorOpen){
+    requestAnimationFrame(()=>$('planningCommissionList')?.scrollIntoView({behavior:'smooth',block:'nearest'}));
   }
 }
-
-function updateGeneralBlockModeUI() {
-  const form = $('#general-block-form');
-  if (!form) return;
-
-  const mode = form.elements.blockMode?.value || 'hours';
-  const dateToWrap = $('#general-block-date-to-wrap');
-  const timeRow = $('#general-block-time-row');
-
-  if (dateToWrap) dateToWrap.hidden = mode !== 'days';
-  if (timeRow) timeRow.hidden = mode !== 'hours';
-
-  form.elements.dateTo.required = mode === 'days';
-
-  if (mode !== 'days') {
-    form.elements.dateTo.value = form.elements.date.value;
+window.commissionScheduleChanged=function(value){
+  if(!planningCommissionEditorOpen)return;
+  collectCommissionEditorFromDom();
+  planningCommissionDraft.scheduleRequired=value;
+  if(value!=='yes'){
+    planningCommissionDraft.reservedSlots=[];
+    document.querySelectorAll('[data-commission-editor-slot]').forEach(x=>x.checked=false);
   }
-
-  if (mode !== 'hours') {
-    form.elements.start.value = settings().startTime;
-    form.elements.end.value = settings().endTime;
-  }
+  $('commissionEditorSchedule')?.classList.toggle('hidden',value!=='yes');
 }
-
-function openGeneralBlock(values = {}) {
-  const form = $('#general-block-form');
-  if (!form) return;
-
-  form.reset();
-  $('#general-block-error').textContent = '';
-  populateGeneralBlockFormOptions();
-
-  const days = enabledDates();
-  const defaultDate = dateKey(days[selectedDay] || days[0] || new Date());
-
-  form.elements.blockMode.value = values.blockMode || 'hours';
-  form.elements.roomId.value = values.roomId || (
-    selectedRoom !== 'all' && reservableRooms().some(room => room.id === selectedRoom)
-      ? selectedRoom
-      : reservableRooms()[0]?.id || ''
+window.savePlanningCommission=function(){
+  if(!planningEditingAllowed()){toast('La edición está cerrada.');return false}
+  if(!planningCommissionEditorOpen){toast('Seleccione “Agregar comisión”.');return false}
+  const draft=collectCommissionEditorFromDom();
+  if(!String(draft.name||'').trim()){
+    $('commissionEditorName')?.focus();
+    toast('Capture el nombre de la comisión.');
+    return false;
+  }
+  if(String(draft.authorizedHours||'').trim()===''){
+    $('commissionEditorHours')?.focus();
+    toast('Capture las horas autorizadas.');
+    return false;
+  }
+  const numericHours=Number(draft.authorizedHours);
+  if(!Number.isFinite(numericHours)||numericHours<0){
+    $('commissionEditorHours')?.focus();
+    toast('Capture una cantidad válida de horas autorizadas.');
+    return false;
+  }
+  if(draft.scheduleRequired==='yes'&&!draft.reservedSlots.length){
+    toast('Seleccione al menos un día y horario para el bloqueo específico.');
+    return false;
+  }
+  const record=currentPlanningRecord(true);
+  record.commissionMode='yes';
+  record.commissions=(record.commissions||[]).filter(c=>!commissionIsBlank(c));
+  if(Number.isInteger(planningCommissionEditorIndex) && record.commissions[planningCommissionEditorIndex]){
+    record.commissions[planningCommissionEditorIndex]=JSON.parse(JSON.stringify(draft));
+  }else{
+    record.commissions.push(JSON.parse(JSON.stringify(draft)));
+  }
+  record.updatedAtMs=Date.now();
+  planningByPeriod[cfg.periodo]=record;
+  planningCommissionEditorIndex=null;
+  planningCommissionEditorOpen=false;
+  planningCommissionDraft=emptyCommission();
+  persist({schedule:false});
+  renderPlanningCommissions();
+  updateNavState();
+  toast('Comisión guardada.');
+  return true;
+}
+window.addPlanningCommission=function(){
+  if(!planningEditingAllowed()){toast('La edición está cerrada.');return false}
+  if(planningCommissionEditorOpen){
+    const draft=collectCommissionEditorFromDom();
+    if(!commissionIsBlank(draft)){
+      const discard=confirm('Hay datos sin guardar. ¿Desea descartarlos y capturar una nueva comisión?');
+      if(!discard)return false;
+    }
+  }
+  planningCommissionEditorIndex=null;
+  planningCommissionEditorOpen=true;
+  planningCommissionDraft=emptyCommission();
+  renderPlanningCommissions();
+  requestAnimationFrame(()=>{
+    $('commissionEditor')?.scrollIntoView({behavior:'smooth',block:'nearest'});
+    $('commissionEditorName')?.focus({preventScroll:true});
+  });
+  return true;
+}
+window.editPlanningCommission=function(index){
+  if(!planningEditingAllowed()){toast('La edición está cerrada.');return false}
+  const record=currentPlanningRecord(true);
+  const c=record.commissions?.[index];
+  if(!c)return false;
+  planningCommissionEditorIndex=Number(index);
+  planningCommissionEditorOpen=true;
+  planningCommissionDraft=JSON.parse(JSON.stringify(c));
+  renderPlanningCommissions();
+  requestAnimationFrame(()=>{
+    $('commissionEditor')?.scrollIntoView({behavior:'smooth',block:'nearest'});
+    $('commissionEditorName')?.focus({preventScroll:true});
+  });
+  return true;
+}
+window.cancelPlanningCommissionEdit=function(){
+  planningCommissionEditorIndex=null;
+  planningCommissionEditorOpen=false;
+  planningCommissionDraft=emptyCommission();
+  renderPlanningCommissions();
+}
+window.removePlanningCommission=function(index){
+  if(!planningEditingAllowed()){toast('La edición está cerrada.');return false}
+  const record=currentPlanningRecord(true);
+  const c=record.commissions?.[index];
+  if(!c)return false;
+  if(!confirm(`¿Eliminar la comisión “${c.name||'seleccionada'}”?`))return false;
+  record.commissions.splice(index,1);
+  // Mantener commissionMode='yes' preserva la elección del profesor y permite agregar otra
+  // sin cambiar el radio. La validación impedirá continuar mientras no exista al menos una.
+  record.updatedAtMs=Date.now();
+  planningByPeriod[cfg.periodo]=record;
+  planningCommissionEditorIndex=null;
+  planningCommissionEditorOpen=false;
+  planningCommissionDraft=emptyCommission();
+  persist({schedule:false});
+  renderPlanningCommissions();
+  updateNavState();
+  toast('Comisión eliminada. Puede agregar otra cuando lo requiera.');
+  return true;
+}
+function clearPlanningValidation(){
+  document.querySelectorAll('#commissionsBlock .planning-question-error').forEach(x=>x.classList.remove('planning-question-error'));
+}
+function commissionHasCapturedData(record){
+  const commissions=Array.isArray(record?.commissions)?record.commissions:[];
+  return record?.commissionMode==='yes' && commissions.some(c=>
+    String(c?.name||'').trim() ||
+    String(c?.authorizedHours??'').trim() ||
+    (Array.isArray(c?.reservedSlots)&&c.reservedSlots.length)
   );
-  form.elements.date.value = values.date || defaultDate;
-  form.elements.dateTo.value = values.dateTo || form.elements.date.value;
-  form.elements.start.value = values.start || settings().startTime;
-  form.elements.end.value = values.end || timeLabel(
-    Math.min(dayEndMinutes(), minutes(settings().startTime) + 60)
-  );
-  form.elements.reason.value = values.reason || '';
+}
+function validatePlanningForAdvance(opts={}){
+  if(!planningEnabled())return {ok:true,errors:[],firstCard:null,record:currentPlanningRecord(true)};
+  const record=opts.record||collectPlanning();
+  const errors=[];
+  let firstCard=null;
+  const mark=(id,msg)=>{
+    errors.push(msg);
+    if(!firstCard)firstCard=$(id);
+    if(opts.visual&&$(id))$(id).classList.add('planning-question-error');
+  };
+  if(opts.visual)clearPlanningValidation();
 
-  updateGeneralBlockModeUI();
-  $('#general-block-dialog').showModal();
+  // Comisiones son opcionales. Solo se validan como bloque obligatorio si el profesor indicó que sí tiene.
+  if(record.commissionMode==='yes'){
+    const commissions=(record.commissions||[]);
+    if(!commissions.length)mark('planningCommissionsCard','Agregue al menos una comisión autorizada.');
+    commissions.forEach((c,i)=>{
+      if(!String(c.name||'').trim())mark('planningCommissionsCard',`Comisión ${i+1}: capture el nombre.`);
+      if(String(c.authorizedHours||'').trim()==='')mark('planningCommissionsCard',`Comisión ${i+1}: capture las horas autorizadas.`);
+      if(c.scheduleRequired==='yes' && !(c.reservedSlots||[]).length){
+        mark('planningCommissionsCard',`Comisión ${i+1}: seleccione al menos un día y horario específico.`);
+      }
+    });
+  }
+
+  // El proyecto conserva las reglas vigentes de V80/V81.
+  if(!['yes','na'].includes(record.projectMode)){
+    mark('planningProjectCard','Indique si participa en un proyecto avalado por la Universidad o seleccione No aplica.');
+  }else if(record.projectMode==='yes'){
+    if(!record.projectName)mark('planningProjectCard','Capture el nombre del proyecto.');
+    if(!record.projectRole)mark('planningProjectCard','Capture la responsabilidad que ocupa en el proyecto.');
+    if(String(record.projectHours||'').trim()==='')mark('planningProjectCard','Capture las horas autorizadas para el proyecto.');
+  }
+
+  if(opts.visual&&firstCard){
+    requestAnimationFrame(()=>firstCard.scrollIntoView({behavior:'smooth',block:'center'}));
+  }
+  return {ok:!errors.length,errors,firstCard,record};
+}
+function validatePlanning(opts={}){
+  if(!planningEnabled())return {ok:true,errors:[],firstCard:null};
+  const record=opts.collect===false?currentPlanningRecord(true):collectPlanning();
+  const errors=[];
+  let firstCard=null;
+  const mark=(id,msg)=>{
+    errors.push(msg);
+    if(!firstCard)firstCard=$(id);
+    if(opts.visual&&$(id))$(id).classList.add('planning-question-error');
+  };
+  if(opts.visual)clearPlanningValidation();
+
+
+  if(!['yes','na'].includes(record.commissionMode)){
+    mark('planningCommissionsCard','Indique si tiene comisiones autorizadas por la Dirección o seleccione No aplica.');
+  }else if(record.commissionMode==='yes'){
+    const commissions=(record.commissions||[]);
+    if(!commissions.length)mark('planningCommissionsCard','Agregue al menos una comisión autorizada.');
+    commissions.forEach((c,i)=>{
+      if(!String(c.name||'').trim())mark('planningCommissionsCard',`Comisión ${i+1}: capture el nombre.`);
+      if(String(c.authorizedHours||'').trim()==='')mark('planningCommissionsCard',`Comisión ${i+1}: capture las horas autorizadas.`);
+      if(c.scheduleRequired==='yes' && !(c.reservedSlots||[]).length){
+        mark('planningCommissionsCard',`Comisión ${i+1}: seleccione al menos un día y horario específico.`);
+      }
+    });
+  }
+
+
+  if(!['yes','na'].includes(record.projectMode)){
+    mark('planningProjectCard','Indique si participa en un proyecto avalado por la Universidad o seleccione No aplica.');
+  }else if(record.projectMode==='yes'){
+    if(!record.projectName)mark('planningProjectCard','Capture el nombre del proyecto.');
+    if(!record.projectRole)mark('planningProjectCard','Capture la responsabilidad que ocupa en el proyecto.');
+    if(String(record.projectHours||'').trim()==='')mark('planningProjectCard','Capture las horas autorizadas para el proyecto.');
+  }
+
+
+  if(opts.visual&&firstCard){
+    requestAnimationFrame(()=>firstCard.scrollIntoView({behavior:'smooth',block:'center'}));
+  }
+  return {ok:!errors.length,errors,firstCard};
+}
+window.savePlanning=async function(show=false){
+  if(!planningEnabled()){toast('El apartado de Comisiones está deshabilitado.');return false}
+  if(!planningEditingAllowed()){toast('La edición está cerrada.');return false}
+  const v=validatePlanning({visual:true});
+  if(!v.ok){
+    if($('planningErrors'))$('planningErrors').innerHTML=statusBox(v.errors,'Complete la información obligatoria de Comisiones.');
+    return false;
+  }
+  const record=currentPlanningRecord(true);
+  record.completedAtMs=Date.now();
+  record.updatedAtMs=Date.now();
+  planningByPeriod[cfg.periodo]=record;
+  persist({schedule:false});
+
+  const saved=await saveTeacherChangesNow('guardado manual de Comisiones');
+  if(!saved.ok){
+    if($('planningErrors'))$('planningErrors').innerHTML='<div class="status-box bad"><b>No se confirmó el guardado en nube.</b><br>La información permanece conservada en este dispositivo. Inténtelo nuevamente antes de avanzar.</div>';
+    return false;
+  }
+
+  if($('planningErrors'))$('planningErrors').innerHTML='<div class="status-box ok"><b>Comisiones guardadas.</b><br>La información queda disponible para consulta y para el concentrado administrativo.</div>';
+  updateNavState();
+  if(show)toast(saved.wrote?'Comisiones guardadas en nube.':'Sin cambios nuevos; no fue necesaria otra escritura.');
+  Promise.resolve(writeAudit('Comisiones y consideraciones académicas guardadas'))
+    .catch(e=>console.warn('Auditoría de Comisiones pendiente',e));
+  return true;
 }
 
-function updateBlockModeUI() {
-  const form = $('#block-form');
-  if (!form) return;
 
-  const mode = form.elements.blockMode?.value || 'hours';
-  const dateToWrap = $('#block-date-to-wrap');
-  const timeRow = $('#block-time-row');
 
-  if (dateToWrap) dateToWrap.hidden = mode !== 'days';
-  if (timeRow) timeRow.hidden = mode !== 'hours';
 
-  if (form.elements.dateTo) {
-    form.elements.dateTo.required = mode === 'days';
+function captureOrientationSessionKey(){
+  return `PAD_CAPTURE_ORIENTATION_${currentUser?.uid||'guest'}_${String(cfg.periodo||'').replace(/\s+/g,'_')}`;
+}
+function shouldShowCaptureOrientation(){
+  if(isAdmin()||(submissionLockedForCurrentPeriod()&&!individualEditOverride()))return false;
+  try{return sessionStorage.getItem(captureOrientationSessionKey())!=='1'}catch(_){return true}
+}
+function showCaptureOrientationIfNeeded(force=false){
+  if(!force&&!shouldShowCaptureOrientation())return;
+  const modal=$('captureOrientationModal');
+  if(!modal)return;
+  modal.classList.remove('hidden');
+  document.body.classList.add('capture-orientation-open');
+}
+window.acceptCaptureOrientation=function(){
+  try{sessionStorage.setItem(captureOrientationSessionKey(),'1')}catch(_){}
+  const modal=$('captureOrientationModal');
+  if(modal)modal.classList.add('hidden');
+  document.body.classList.remove('capture-orientation-open');
+}
 
-    if (mode !== 'days') {
-      form.elements.dateTo.value = form.elements.date.value;
+
+window.go=function(id,force=false){
+  if(id==='admin'&&!isAdmin()){
+    toast('Administración disponible únicamente para ivan.gutierrez@uteq.edu.mx');
+    return false;
+  }
+
+  const sequential=sequentialProfessorMode();
+
+  if(id==='captura'&&sequential&&!workflowState.profileConfirmed){
+    activateViewDirect('perfil');
+    const p=validateProfile({visual:true,focusFirst:false});
+    if($('profileErrors')&&!p.ok){
+      $('profileErrors').innerHTML=statusBox(p.errors,'Confirme primero los datos del profesor.');
+    }
+    toast('Confirme primero Datos del profesor con el botón inferior.');
+    updateNavState();
+    return false;
+  }
+
+  if(id==='revision'&&sequential){
+    const v=validateAll();
+    if(!workflowState.reviewUnlocked||!v.ok){
+      if(!v.ok)showCaptureErrors(v.errors);
+      else toast('Concluya el recorrido de todos los programas antes de pasar a Revisión.');
+      updateNavState();
+      return false;
     }
   }
 
-  if (mode !== 'hours') {
-    form.elements.start.value = settings().startTime;
-    form.elements.end.value = settings().endTime;
+  if(id==='captura'&&!force&&!sequential){
+    const p=validateProfile({visual:true,focusFirst:true});
+    if(!p.ok){
+      $('profileErrors').innerHTML=statusBox(p.errors,'Complete los datos obligatorios antes de continuar.');
+      return false;
+    }
   }
+
+  if(id==='revision'&&!force&&!sequential){
+    const v=validateAll();
+    if(!reviewAvailable()){
+      showCaptureErrors(v.errors);
+      return false;
+    }
+  }
+
+  if(id==='perfil'&&sequential){
+    workflowState.profileConfirmed=false;
+    workflowState.expectedProgramIndex=0;
+    workflowState.reviewUnlocked=false;
+    currentProgramIndex=0;
+  }else if(id==='captura'&&sequential){
+    workflowState.expectedProgramIndex=currentProgramIndex;
+    workflowState.reviewUnlocked=false;
+  }
+
+  activateViewDirect(id);
+  if(id==='revision'){buildPrint();updateReviewFinalizeUI();}
+  if(id==='admin')renderAdmin();
+  if(id==='captura')requestAnimationFrame(showCaptureOrientationIfNeeded);
+  updateNavState();
+  return true;
+};
+
+document.querySelectorAll('.main-nav button').forEach(b=>b.onclick=()=>{
+  const id=b.dataset.view;
+  if(sequentialProfessorMode()&&['perfil','captura','revision'].includes(id)){
+    toast('Durante la edición avance con los botones inferiores para conservar la secuencia.');
+    return;
+  }
+  window.go(id);
+});
+
+function profileLooksComplete(){
+  return validateProfile().ok;
+}
+function updateReviewReadiness(metrics=null){
+  const el=$('reviewReadiness');if(!el)return;
+  let m=metrics;
+  if(!m){
+    const profile=validateProfile();
+    const stats=overallStats();
+    const capture=validateCapture(stats);
+    const all=validateAll(profile,capture);
+    const ps=programs();
+    m={profile,capture,all,stats,completePrograms:ps.filter(pr=>programStats(pr).missing===0).length,totalPrograms:ps.length};
+  }
+  const resolvedSubjects=Math.max(0,m.stats.total-m.stats.remainingUnique-m.stats.invalid);
+  el.innerHTML=`<div class="readiness-title">Verificación previa</div>
+    <div class="readiness-grid">
+      <span class="${m.profile.ok?'ok':'pending'}">${m.profile.ok?'✓':'○'} Datos generales</span>
+      <span class="${m.completePrograms===m.totalPrograms?'ok':'pending'}">${m.completePrograms===m.totalPrograms?'✓':'○'} Programas ${m.completePrograms}/${m.totalPrograms}</span>
+      <span class="${m.capture.ok?'ok':'pending'}">${m.capture.ok?'✓':'○'} Materias ${resolvedSubjects}/${m.stats.total}</span>
+      <span class="${m.all.ok?'ok':'pending'}">${m.all.ok?'✓':'○'} ${m.all.ok?'Sin pendientes':'Pendientes por resolver'}</span>
+    </div>`;
+}
+function updateNavState(){
+  const pBtn=document.querySelector('.main-nav button[data-view="perfil"]');
+  const cBtn=document.querySelector('.main-nav button[data-view="captura"]');
+  const rBtn=document.querySelector('.main-nav button[data-view="revision"]');
+
+  // Un solo recorrido global por actualización de etapa.
+  const profile=validateProfile();
+  const stats=overallStats();
+  const capture=validateCapture(stats);
+  const all=validateAll(profile,capture);
+  const ps=programs();
+  const completePrograms=ps.filter(pr=>programStats(pr).missing===0).length;
+
+  if(pBtn)pBtn.classList.toggle('complete',profile.ok);
+  if(cBtn)cBtn.classList.toggle('complete',capture.ok);
+  if(rBtn){
+    rBtn.classList.toggle('complete',all.ok);
+    rBtn.classList.toggle('readable',reviewAvailable(all.ok)&&!all.ok);
+  }
+
+  const sequential=sequentialProfessorMode();
+  const bootstrapLocked=!!currentUser&&!bootstrapComplete;
+  const indicatorOnly=sequential||bootstrapLocked;
+  updateReviewReadiness({profile,capture,all,stats,completePrograms,totalPrograms:ps.length});
+  [pBtn,cBtn,rBtn].forEach(btn=>{
+    if(!btn)return;
+    btn.disabled=indicatorOnly;
+    btn.classList.toggle('flow-indicator-only',indicatorOnly);
+    btn.classList.toggle('locked',indicatorOnly);
+    btn.setAttribute('aria-disabled',indicatorOnly?'true':'false');
+    btn.title=indicatorOnly
+      ?'Indicador de avance. Durante la edición use los botones inferiores.'
+      :'';
+  });
 }
 
-function buildRoomBlocks(form) {
-  const data = new FormData(form);
-  const mode = String(data.get('blockMode') || 'hours');
-  const roomId = String(data.get('roomId') || '');
-  const from = String(data.get('date') || '');
-  const reason = String(data.get('reason') || '').trim();
+const PROFILE_ROW_CONFIG={
+  formation:{base:7,max:11,prefix:'f',suffixes:['a','b']},
+  docencia:{base:4,max:10,prefix:'d',suffixes:['a','c']},
+  laboral:{base:5,max:10,prefix:'l',suffixes:['a','b','c']}
+};
+function clampProfileRowCount(value,base,max){
+  return Math.max(base,Math.min(max,Number(value)||base));
+}
+function lastUsedProfileRow(extra,prefix,suffixes,max){
+  let last=0;
+  for(let i=1;i<=max;i++){
+    if(suffixes.some(s=>String(extra?.[`${prefix}${i}${s}`]||'').trim()))last=i;
+  }
+  return last;
+}
+function normalizedProfileRowCounts(profile=store.profile||{}){
+  const extra=profile.extra||{};
+  const saved=profile.rowCounts||{};
+  const out={};
+  Object.entries(PROFILE_ROW_CONFIG).forEach(([kind,cfgRow])=>{
+    const used=lastUsedProfileRow(extra,cfgRow.prefix,cfgRow.suffixes,cfgRow.max);
+    out[kind]=clampProfileRowCount(Math.max(Number(saved[kind])||0,used,cfgRow.base),cfgRow.base,cfgRow.max);
+  });
+  return out;
+}
+function visibleProfileRowCounts(){
+  const fallback=normalizedProfileRowCounts();
+  return {
+    formation:document.querySelectorAll('#formacion [data-profile-row-kind="formation"]').length||fallback.formation,
+    docencia:document.querySelectorAll('#docencia [data-profile-row-kind="docencia"]').length||fallback.docencia,
+    laboral:document.querySelectorAll('#laboral [data-profile-row-kind="laboral"]').length||fallback.laboral
+  };
+}
+function profileRowDeleteButton(kind,index){
+  const cfgRow=PROFILE_ROW_CONFIG[kind];
+  if(!cfgRow||index<=cfgRow.base)return '';
+  return `<button type="button" class="profile-row-delete" onclick="removeProfileRow('${kind}',${index})" aria-label="Eliminar este renglón">Eliminar</button>`;
+}
+function buildProfileRows(){
+  const counts=normalizedProfileRowCounts();
+  store.profile=store.profile||{};
+  store.profile.rowCounts=counts;
 
-  if (!roomId || !from || !reason) {
-    throw new Error('Completa la sala, la fecha y el motivo del bloqueo.');
+  $('formacion').innerHTML=Array.from({length:counts.formation},(_,n)=>{
+    const i=n+1;
+    const label=i===1?'Licenciatura o TSU':`Posgrado ${i-1}`;
+    const added=i>PROFILE_ROW_CONFIG.formation.base;
+    return `<div class="form-row two profile-data-row ${added?'profile-added-row':''}" data-profile-row-kind="formation" data-profile-row-index="${i}">
+      <div class="row-label">${label}${i===1?' *':''}</div>
+      <input placeholder="${i===1?'Ej. Licenciatura en Ingeniería Industrial':'Ej. Maestría en Educación'}" data-g="f${i}a">
+      <input placeholder="Ej. Universidad Tecnológica de Querétaro" data-g="f${i}b">
+      ${profileRowDeleteButton('formation',i)}
+    </div>`;
+  }).join('');
+
+  $('docencia').innerHTML=Array.from({length:counts.docencia},(_,n)=>{
+    const i=n+1;
+    const added=i>PROFILE_ROW_CONFIG.docencia.base;
+    return `<div class="form-row two profile-data-row ${added?'profile-added-row':''}" data-profile-row-kind="docencia" data-profile-row-index="${i}">
+      <div class="row-label">Institución ${i}${i===1?' *':''}</div>
+      <input placeholder="Ej. UTEQ" data-g="d${i}a">
+      <input placeholder="Ej. 2023 - 2025" data-g="d${i}c">
+      ${profileRowDeleteButton('docencia',i)}
+    </div>`;
+  }).join('');
+
+  $('laboral').innerHTML=Array.from({length:counts.laboral},(_,n)=>{
+    const i=n+1;
+    const added=i>PROFILE_ROW_CONFIG.laboral.base;
+    return `<div class="form-row profile-data-row ${added?'profile-added-row':''}" data-profile-row-kind="laboral" data-profile-row-index="${i}">
+      <div class="row-label">Organización ${i}${i===1?' *':''}</div>
+      <input placeholder="Ej. Empresa / institución" data-g="l${i}a">
+      <input placeholder="Ej. Jefe de área" data-g="l${i}b">
+      <input placeholder="Ej. 2020 - 2023" data-g="l${i}c">
+      ${profileRowDeleteButton('laboral',i)}
+    </div>`;
+  }).join('');
+  updateProfileRowControls();
+}
+function updateProfileRowControls(){
+  const counts=normalizedProfileRowCounts();
+  const formBtn=$('addFormationRowBtn');
+  const teachBtn=$('addTeachingRowBtn');
+  const workBtn=$('addWorkRowBtn');
+  if(formBtn){
+    const atMax=counts.formation>=PROFILE_ROW_CONFIG.formation.max;
+    formBtn.dataset.limitReached=atMax?'1':'0';
+    formBtn.disabled=atMax||!editingAllowed();
+    formBtn.textContent=atMax?'Máximo de 10 posgrados alcanzado':`＋ Agregar Posgrado ${counts.formation}`;
+  }
+  if(teachBtn){
+    const atMax=counts.docencia>=PROFILE_ROW_CONFIG.docencia.max;
+    teachBtn.dataset.limitReached=atMax?'1':'0';
+    teachBtn.disabled=atMax||!editingAllowed();
+    teachBtn.textContent=atMax?'Máximo de 10 instituciones alcanzado':`＋ Agregar experiencia docente ${counts.docencia+1}`;
+  }
+  if(workBtn){
+    const atMax=counts.laboral>=PROFILE_ROW_CONFIG.laboral.max;
+    workBtn.dataset.limitReached=atMax?'1':'0';
+    workBtn.disabled=atMax||!editingAllowed();
+    workBtn.textContent=atMax?'Máximo de 10 organizaciones alcanzado':`＋ Agregar experiencia laboral ${counts.laboral+1}`;
+  }
+}
+function loadProfileValuesOnly(){
+  if($('gradoAcademico'))$('gradoAcademico').value=store.profile?.gradoAcademico||'';
+  const p=store.profile||{};
+  ['apPat','apMat','nombres','categoria'].forEach(x=>{if($(x))$(x).value=p[x]||''});
+  document.querySelectorAll('[data-g]').forEach(x=>x.value=(p.extra||{})[x.dataset.g]||'');
+  updateProfileRowControls();
+}
+function loadProfile(){
+  if(!$('categoria').options.length)CATEGORIES.forEach(c=>$('categoria').add(new Option(c,c)));
+  buildProfileRows();
+  loadProfileValuesOnly();
+}
+function profileFromInputs(){
+  const extra={};
+  document.querySelectorAll('[data-g]').forEach(x=>extra[x.dataset.g]=x.value.trim());
+  // Conserva campos superiores heredados que no forman parte de la interfaz actual.
+  // Los campos visibles y extra se reemplazan de forma controlada con lo capturado.
+  return {
+    ...cloneTeacherData(store.profile||{}),
+    apPat:$('apPat')?.value.trim()||'',
+    apMat:$('apMat')?.value.trim()||'',
+    nombres:$('nombres')?.value.trim()||'',
+    categoria:$('categoria')?.value||'',
+    gradoAcademico:$('gradoAcademico')?.value||'',
+    rowCounts:visibleProfileRowCounts(),
+    extra
+  };
+}
+function collectProfile(){
+  store.profile=profileFromInputs();
+  persist();
+  return store.profile;
+}
+window.addProfileRow=function(kind){
+  if(!requireEditing())return false;
+  const cfgRow=PROFILE_ROW_CONFIG[kind];
+  if(!cfgRow)return false;
+  const profile=profileFromInputs();
+  const counts=normalizedProfileRowCounts(profile);
+  if(counts[kind]>=cfgRow.max){
+    toast('Ya alcanzó el máximo permitido para este apartado.');
+    return false;
+  }
+  counts[kind]++;
+  profile.rowCounts=counts;
+  store.profile=profile;
+  buildProfileRows();
+  loadProfileValuesOnly();
+  persist();
+  requestAnimationFrame(()=>{
+    const row=document.querySelector(`[data-profile-row-kind="${kind}"][data-profile-row-index="${counts[kind]}"]`);
+    row?.scrollIntoView({behavior:'smooth',block:'center'});
+    row?.querySelector('input')?.focus({preventScroll:true});
+  });
+  return true;
+};
+window.removeProfileRow=function(kind,index){
+  if(!requireEditing())return false;
+  const cfgRow=PROFILE_ROW_CONFIG[kind];
+  if(!cfgRow||index<=cfgRow.base)return false;
+  const profile=profileFromInputs();
+  const counts=normalizedProfileRowCounts(profile);
+  if(index>counts[kind])return false;
+  const keys=cfgRow.suffixes.map(s=>`${cfgRow.prefix}${index}${s}`);
+  const hasData=keys.some(k=>String(profile.extra?.[k]||'').trim());
+  if(hasData&&!confirm('Este renglón contiene información. ¿Desea eliminarlo?'))return false;
+
+  for(let i=index;i<counts[kind];i++){
+    cfgRow.suffixes.forEach(s=>{
+      const to=`${cfgRow.prefix}${i}${s}`;
+      const from=`${cfgRow.prefix}${i+1}${s}`;
+      profile.extra[to]=profile.extra[from]||'';
+    });
+  }
+  cfgRow.suffixes.forEach(s=>delete profile.extra[`${cfgRow.prefix}${counts[kind]}${s}`]);
+  counts[kind]--;
+  profile.rowCounts=counts;
+  store.profile=profile;
+  buildProfileRows();
+  loadProfileValuesOnly();
+  persist();
+  toast('Renglón eliminado.');
+  return true;
+};
+function captureProfileLocallyWithoutCloud(){
+  if(!currentUser||!editingAllowed())return;
+
+  const before=JSON.stringify({
+    profile:store.profile||{},
+    planningByPeriod:planningByPeriod||{}
+  });
+
+  store.profile=profileFromInputs();
+  if(planningEnabled()){
+    try{collectPlanning()}catch(_){}
   }
 
-  const start = mode === 'hours'
-    ? String(data.get('start') || '')
-    : settings().startTime;
+  const after=JSON.stringify({
+    profile:store.profile||{},
+    planningByPeriod:planningByPeriod||{}
+  });
 
-  const end = mode === 'hours'
-    ? String(data.get('end') || '')
-    : settings().endTime;
+  const now=Date.now();
+  store.answers=answers;
+  store.programMeta=programMeta;
+  store.planningByPeriod=planningByPeriod;
+  store.lastSavedAt=now;
+  store.currentProgramIndex=0;
 
-  if (mode === 'hours' || mode === 'day') {
-    return [{ roomId, date: from, start, end, reason }];
+  if(before!==after){
+    store.localUpdatedAt=now;
+    store.dataRevision=(Number(store.dataRevision)||0)+1;
+    store.syncPending=true;
   }
 
-  const to = String(data.get('dateTo') || '');
+  try{
+    localStorage.setItem('PAD_UTEQ',JSON.stringify(store));
+    saveUserBackup();
+  }catch(_){}
+}
 
-  if (!to) {
-    throw new Error('Selecciona la fecha final del bloqueo.');
+function requiredProfileChecks(p,e){
+  const counts=normalizedProfileRowCounts(p);
+  const checks=[
+    {el:$('apPat'),missing:!p.apPat,msg:'Capture el apellido paterno.'},
+    {el:$('apMat'),missing:!p.apMat,msg:'Capture el apellido materno.'},
+    {el:$('nombres'),missing:!p.nombres,msg:'Capture los nombres.'},
+    {el:$('categoria'),missing:!p.categoria,msg:'Seleccione la categoría.'},
+    {el:document.querySelector('[data-g="f1a"]'),missing:!e.f1a,msg:'Capture el grado / estudio de la primera línea de Formación profesional.'},
+    {el:document.querySelector('[data-g="f1b"]'),missing:!e.f1b,msg:'Capture la institución de la primera línea de Formación profesional.'},
+    {el:document.querySelector('[data-g="d1a"]'),missing:!e.d1a,msg:'Capture la institución de la primera línea de Experiencia docente.'},
+    {el:document.querySelector('[data-g="d1c"]'),missing:!e.d1c,msg:'Capture el periodo de la primera línea de Experiencia docente.'},
+    {el:document.querySelector('[data-g="l1a"]'),missing:!e.l1a,msg:'Capture la organización de la primera línea de Experiencia laboral.'},
+    {el:document.querySelector('[data-g="l1b"]'),missing:!e.l1b,msg:'Capture el cargo de la primera línea de Experiencia laboral.'},
+    {el:document.querySelector('[data-g="l1c"]'),missing:!e.l1c,msg:'Capture el periodo de la primera línea de Experiencia laboral.'}
+  ];
+
+  for(let i=2;i<=counts.formation;i++){
+    const study=String(e[`f${i}a`]||'').trim();
+    const institution=String(e[`f${i}b`]||'').trim();
+    const explicitlyAdded=i>PROFILE_ROW_CONFIG.formation.base;
+    if(!explicitlyAdded&&!(study||institution))continue;
+    checks.push(
+      {el:document.querySelector(`[data-g="f${i}a"]`),missing:!study,msg:`Posgrado ${i-1}: capture el nombre del estudio o posgrado.`},
+      {el:document.querySelector(`[data-g="f${i}b"]`),missing:!institution,msg:`Posgrado ${i-1}: capture la institución.`}
+    );
   }
 
-  if (to < from) {
-    throw new Error('La fecha final no puede ser anterior a la inicial.');
+  for(let i=2;i<=counts.docencia;i++){
+    const institution=String(e[`d${i}a`]||'').trim();
+    const period=String(e[`d${i}c`]||'').trim();
+    const explicitlyAdded=i>PROFILE_ROW_CONFIG.docencia.base;
+    if(!explicitlyAdded&&!(institution||period))continue;
+    checks.push(
+      {el:document.querySelector(`[data-g="d${i}a"]`),missing:!institution,msg:`Experiencia docente ${i}: capture la institución.`},
+      {el:document.querySelector(`[data-g="d${i}c"]`),missing:!period,msg:`Experiencia docente ${i}: capture el periodo.`}
+    );
   }
 
-  const enabledDays = new Set(settings().enabledDays);
-  const blocks = [];
-  let cursor = parseDate(from);
-  const finalDate = parseDate(to);
+  for(let i=2;i<=counts.laboral;i++){
+    const a=String(e[`l${i}a`]||'').trim();
+    const b=String(e[`l${i}b`]||'').trim();
+    const c=String(e[`l${i}c`]||'').trim();
+    const explicitlyAdded=i>PROFILE_ROW_CONFIG.laboral.base;
+    if(!explicitlyAdded&&!(a||b||c))continue;
+    checks.push(
+      {el:document.querySelector(`[data-g="l${i}a"]`),missing:!a,msg:`Experiencia laboral ${i}: capture la organización.`},
+      {el:document.querySelector(`[data-g="l${i}b"]`),missing:!b,msg:`Experiencia laboral ${i}: capture el puesto o cargo.`},
+      {el:document.querySelector(`[data-g="l${i}c"]`),missing:!c,msg:`Experiencia laboral ${i}: capture el periodo.`}
+    );
+  }
+  return checks;
+}
+function clearRequiredHighlights(){
+  document.querySelectorAll('#perfil .required-field-error').forEach(el=>el.classList.remove('required-field-error'));
+  document.querySelectorAll('#perfil .required-wrap-error').forEach(el=>el.classList.remove('required-wrap-error'));
+}
+function highlightRequired(checks,focusFirst=false){
+  clearRequiredHighlights();
+  const missing=checks.filter(x=>x.missing&&x.el);
+  missing.forEach(x=>{
+    x.el.classList.add('required-field-error');
+    const wrap=x.el.closest('label,.form-row');
+    if(wrap)wrap.classList.add('required-wrap-error');
+  });
+  if(focusFirst&&missing.length){
+    const el=missing[0].el;
+    el.scrollIntoView({behavior:'smooth',block:'center'});
+    setTimeout(()=>{try{el.focus({preventScroll:true})}catch(_){el.focus()}},320);
+  }
+}
+function validateProfile(opts={}){
+  const p=profileFromInputs(),e=p.extra||{},checks=requiredProfileChecks(p,e);
+  const errors=checks.filter(x=>x.missing).map(x=>x.msg);
+  if(opts.visual)highlightRequired(checks,!!opts.focusFirst);
+  return{ok:!errors.length,errors,checks}
+}
 
-  while (cursor <= finalDate) {
-    if (enabledDays.has(cursor.getDay())) {
-      blocks.push({
-        roomId,
-        date: dateKey(cursor),
-        start: settings().startTime,
-        end: settings().endTime,
-        reason
+window.saveSection=async function(){
+  if(!requireEditing())return false;
+  collectProfile();
+  const saved=await saveTeacherChangesNow('guardado manual de Datos del profesor');
+  if(!saved.ok)return false;
+  writeAudit('Sección de perfil guardada');
+  toast(saved.wrote?'Datos guardados en nube.':'Sin cambios nuevos; no fue necesaria otra escritura.');
+  return true;
+}
+window.continueToCapture=async function(){
+  if(!requireEditing())return false;
+  try{document.activeElement?.blur()}catch(_){}
+
+  const v=validateProfile({visual:true,focusFirst:false});
+  const errorBox=$('profileErrors');
+  if(errorBox)errorBox.innerHTML=v.ok?'':statusBox(v.errors,'Complete los datos obligatorios antes de continuar.');
+
+  if(!v.ok){
+    const missing=v.checks.filter(x=>x.missing&&x.el);
+    const first=missing[0]?.el;
+    if(first){
+      const mobile=window.matchMedia('(max-width: 780px)').matches;
+      if(mobile){
+        document.querySelectorAll('#perfil .mobile-required-focus').forEach(el=>el.classList.remove('mobile-required-focus'));
+        first.classList.add('mobile-required-focus');
+        const wrap=first.closest('label,.form-row,.section-card')||first;
+        requestAnimationFrame(()=>{
+          wrap.scrollIntoView({behavior:'smooth',block:'center'});
+          setTimeout(()=>{try{first.focus({preventScroll:true})}catch(_){try{first.focus()}catch(__){}}},420);
+        });
+      }else{
+        first.scrollIntoView({behavior:'smooth',block:'center'});
+        setTimeout(()=>{try{first.focus({preventScroll:true})}catch(_){first.focus()}},320);
+      }
+    }
+    toast('Hay datos pendientes. Se marcó en rojo exactamente dónde falta información.');
+    return false;
+  }
+
+  if(planningEnabled()){
+    const record=collectPlanning();
+    const hasCommission=commissionHasCapturedData(record);
+    if(record.commissionMode!=='yes'&&!hasCommission){
+      const proceed=confirm('No tiene ninguna comisión capturada. ¿Está seguro de continuar al Perfil por programa sin registrar alguna comisión?');
+      if(!proceed){
+        $('planningCommissionsCard')?.scrollIntoView({behavior:'smooth',block:'center'});
+        return false;
+      }
+      if(!record.commissionMode){
+        record.commissionMode='na';
+        const noCommission=document.querySelector('input[name="planningCommissionMode"][value="na"]');
+        if(noCommission)noCommission.checked=true;
+        updatePlanningConditionalUI();
+      }
+    }
+
+    const planningCheck=validatePlanningForAdvance({visual:true,record});
+    if(!planningCheck.ok){
+      if($('planningErrors'))$('planningErrors').innerHTML=statusBox(
+        planningCheck.errors,
+        'Complete únicamente la información que haya indicado como aplicable antes de continuar.'
+      );
+      toast('Hay información iniciada que todavía está incompleta.');
+      return false;
+    }
+
+    record.completedAtMs=Date.now();
+    record.updatedAtMs=Date.now();
+    planningByPeriod[cfg.periodo]=record;
+    if($('planningErrors'))$('planningErrors').innerHTML='';
+  }
+
+  // V90: consolidar el estado local; todavía NO se cambia de pantalla.
+  store.profile=profileFromInputs();
+  persist({schedule:false});
+
+  // Guardado manual obligatorio. Si no hubo cambios reales, se omite la escritura.
+  const saved=await saveTeacherChangesNow('Guardar y continuar: Datos del profesor');
+  if(!saved.ok)return false;
+
+  clearRequiredHighlights();
+  document.querySelectorAll('#perfil .mobile-required-focus').forEach(el=>el.classList.remove('mobile-required-focus'));
+  workflowState.profileConfirmed=true;
+  workflowState.expectedProgramIndex=0;
+  workflowState.reviewUnlocked=false;
+  currentProgramIndex=0;
+  store.currentProgramIndex=0;
+  persist({touch:false,schedule:false});
+  renderCurrentProgram();
+  activateViewDirect('captura');
+
+  const capture=$('captura');
+  requestAnimationFrame(()=>{
+    const top=(capture?.offsetTop||0)-48;
+    window.scrollTo({top:Math.max(0,top),behavior:'smooth'});
+  });
+
+  updateNavState();
+  requestAnimationFrame(()=>{
+    try{sessionStorage.removeItem(captureOrientationSessionKey())}catch(_){}
+    showCaptureOrientationIfNeeded(true);
+  });
+
+  withTimeout(writeAudit('Datos del profesor y Comisiones confirmados al continuar'),1200,false)
+    .catch(e=>console.warn('Auditoría pendiente',e));
+  toast(saved.wrote?'Cambios guardados. Continúe con Programa 1.':'Sin cambios nuevos. Continúe con Programa 1.');
+  return true;
+}
+
+function originCode(a){return(a.origins||[]).join('')}
+function originTooltip(code){
+  const labels={
+    '1':'1 = Formación académica',
+    '2':'2 = Experiencia docente',
+    '3':'3 = Experiencia laboral',
+    '12':'12 = Formación académica + Experiencia docente',
+    '13':'13 = Formación académica + Experiencia laboral',
+    '23':'23 = Experiencia docente + Experiencia laboral',
+    '123':'123 = Formación académica + Experiencia docente + Experiencia laboral'
+  };
+  return labels[String(code)]||String(code);
+}
+function normalizeOrigins(code){return String(code).split('').map(Number)}
+function courseRowElement(pid,s,c){
+  return document.querySelector(`[data-course-key="${pid}|${s}|${c}"]`);
+}
+function refreshCourseRowDom(pid,s,c,name){
+  const row=courseRowElement(pid,s,c);
+  if(!row)return false;
+  const a=getAns(pid,s,c,name);
+  const off=a.status==='off';
+  const pending=a.status==='pending';
+  const enabled=!['off','na'].includes(a.status);
+  const needsArea=enabled&&['X','XX'].includes(a.status)&&!(a.origins||[]).length;
+  row.classList.toggle('off',off);
+  row.classList.toggle('pending',pending);
+  row.classList.toggle('reviewed',enabled&&!pending&&!needsArea);
+  row.classList.toggle('needs-attention',enabled&&(pending||needsArea));
+  row.classList.toggle('fast-off',off);
+  const toggle=row.querySelector('.toggle input');
+  if(toggle)toggle.checked=enabled;
+  const toggleText=row.querySelector('.toggle span:last-child');
+  if(toggleText)toggleText.textContent=enabled?'Sí':'No';
+  const comp=[...row.querySelectorAll('.comp-buttons .mini')];
+  if(enabled&&!comp.length)return false;
+  comp.forEach(btn=>btn.classList.toggle('on',btn.textContent.trim()===a.status));
+  row.querySelectorAll('.area-buttons .mini.area').forEach(btn=>{
+    btn.disabled=!['X','XX'].includes(a.status);
+    btn.classList.toggle('on',btn.textContent.trim()===originCode(a));
+  });
+  const coord=row.querySelector('.coord-row-check');
+  const coordInput=coord?.querySelector('input');
+  if(coordInput){
+    coordInput.disabled=!rowCoordinatorEnabled(pid,s,c,name);
+    coordInput.checked=rowCoordinatorChecked(pid,s,c);
+  }
+  if(coord)coord.classList.toggle('on',rowCoordinatorChecked(pid,s,c));
+  const fav=row.querySelector('.ideal-btn');
+  if(fav){
+    fav.classList.toggle('on',!!a.ideal);
+    fav.textContent=a.ideal?'★':'☆';
+    fav.setAttribute('aria-label',a.ideal?'Quitar de favoritas':'Marcar como favorita');
+  }
+  return true;
+}
+function refreshVisibleLinkedCourseRows(pid,s,c,name){
+  const seen=new Set([`${pid}|${s}|${c}`]);
+  const locs=[{pid,s,c,name},...linkedCourseLocations(pid,s,c,name)];
+  locs.forEach(loc=>{
+    const id=`${loc.pid}|${loc.s}|${loc.c}`;
+    if(seen.has(id)&&id!==`${pid}|${s}|${c}`)return;
+    seen.add(id);
+    refreshCourseRowDom(loc.pid,loc.s,loc.c,loc.name);
+  });
+  updateProgress();
+  if(captureErrorModeActive)refreshCaptureErrorState();
+}
+window.setEnabled=function(pid,s,c,name,on){
+  if(!requireEditing())return;
+  if(isEnglish(name))return;
+  let r=getAns(pid,s,c,name);
+  if(!on){
+    r.status='off';r.origins=[];r.ideal=false;
+    answers[key(pid,s,c)]=r;
+    setCoordinatorValue(pid,s,c,false);
+    persist();
+    if(!refreshCourseRowDom(pid,s,c,name))renderCurrentProgram();
+    else updateProgress();
+    return;
+  }
+  if(r.status==='off'){
+    const peer=bestLinkedAnswer(pid,s,c,name);
+    if(peer){
+      const source=getAns(peer.pid,peer.s,peer.c,peer.name);
+      r={status:source.status==='off'?'pending':source.status,origins:[...(source.origins||[])],ideal:!!source.ideal};
+      setCoordinatorValue(pid,s,c,coordinatorValue(peer.pid,peer.s,peer.c));
+    }else{
+      r={status:'pending',origins:[],ideal:false};
+      setCoordinatorValue(pid,s,c,false);
+    }
+  }
+  answers[key(pid,s,c)]=r;
+  replicateCommon(pid,s,c,r);
+  replicateLinkedAnswer(pid,s,c,name,r);
+  replicateLinkedCoordinator(pid,s,c,name,coordinatorValue(pid,s,c));
+  persist();
+  // Una fila renderizada como apagada contiene placeholders; al reactivarla se reconstruye una sola vez.
+  if(!refreshCourseRowDom(pid,s,c,name))renderCurrentProgram();
+  else refreshVisibleLinkedCourseRows(pid,s,c,name);
+}
+window.setCompetence=function(pid,s,c,name,level){
+  if(!requireEditing())return;
+  const r=getAns(pid,s,c,name);if(['off','na'].includes(r.status))return;
+  r.status=level;r.origins=[];answers[key(pid,s,c)]=r;
+  replicateCommon(pid,s,c,r);replicateLinkedAnswer(pid,s,c,name,r);persist();
+  refreshVisibleLinkedCourseRows(pid,s,c,name);
+}
+window.setOriginCode=function(pid,s,c,name,code){
+  if(!requireEditing())return;
+  const r=getAns(pid,s,c,name);if(!['X','XX'].includes(r.status))return;
+  r.origins=normalizeOrigins(code);answers[key(pid,s,c)]=r;
+  replicateCommon(pid,s,c,r);replicateLinkedAnswer(pid,s,c,name,r);persist();
+  refreshVisibleLinkedCourseRows(pid,s,c,name);
+}
+window.toggleIdeal=function(pid,s,c,name){
+  if(!requireEditing())return;
+  const r=getAns(pid,s,c,name);
+  if(!['X','XX'].includes(r.status)||(r.origins||[]).length===0){toast('Primero seleccione competencia y área de conocimiento.');return}
+  r.ideal=!r.ideal;answers[key(pid,s,c)]=r;
+  replicateCommon(pid,s,c,r);replicateLinkedAnswer(pid,s,c,name,r);persist();
+  refreshVisibleLinkedCourseRows(pid,s,c,name);
+}
+function replicateCommon(pid,s,c,r){
+  const source=allPrograms().find(x=>x.id===pid);
+  const sourceName=source?.semesters?.[s]?.[c];
+  const rule=commonRuleFor(pid,s);
+  if(!source||!sourceName||!rule)return 0;
+  const normalized=normalizeSubjectName(sourceName);
+  let synced=0;
+  (rule.programIds||[]).forEach(other=>{
+    if(other===pid)return;
+    const target=allPrograms().find(x=>x.id===other);
+    const targetSem=target?.semesters?.[s]||[];
+    const tc=targetSem.findIndex(n=>normalizeSubjectName(n)===normalized);
+    if(tc<0)return;
+    const current=getAns(other,s,tc,targetSem[tc]);
+    if(current.status==='off')return;
+    answers[key(other,s,tc)]={status:r.status,origins:[...(r.origins||[])],ideal:!!r.ideal};
+    synced++;
+  });
+  return synced;
+}
+
+
+
+
+function strictSubjectKey(name){
+  return String(name||'').trim().replace(/\s+/g,' ').toLocaleLowerCase('es-MX');
+}
+function isProjectIntegrator(name){
+  return /^proyecto integrador(?:\s|$)/i.test(String(name||'').trim());
+}
+function courseLocation(pid,s,c){
+  const pr=allPrograms().find(x=>x.id===pid);
+  const name=pr?.semesters?.[s]?.[c];
+  return name===undefined?null:{pid,s,c,name};
+}
+function automaticSameNameLocations(pid,s,c,name){
+  if(!name||isProjectIntegrator(name))return [];
+  const wanted=strictSubjectKey(name),found=[];
+  allPrograms().forEach(pr=>pr.semesters.forEach((sem,ss)=>sem.forEach((n,cc)=>{
+    if(isProjectIntegrator(n))return;
+    if(strictSubjectKey(n)===wanted && !(pr.id===pid&&ss===s&&cc===c)){
+      found.push({pid:pr.id,s:ss,c:cc,name:n});
+    }
+  })));
+  return found;
+}
+function normalizeTransversalEndpoint(ep){
+  if(!ep||typeof ep!=='object')return null;
+  const pid=String(ep.pid||'');
+  const s=Number(ep.s),c=Number(ep.c);
+  if(!pid||!Number.isInteger(s)||!Number.isInteger(c))return null;
+  return courseLocation(pid,s,c);
+}
+function explicitTransversalPeers(pid,s,c,name){
+  if(isProjectIntegrator(name))return [];
+  const peers=[];
+  transversalRules.forEach(rule=>{
+    if(rule.source&&rule.target){
+      const a=normalizeTransversalEndpoint(rule.source);
+      const b=normalizeTransversalEndpoint(rule.target);
+      if(!a||!b||isProjectIntegrator(a.name)||isProjectIntegrator(b.name))return;
+      if(a.pid===pid&&a.s===s&&a.c===c)peers.push(b);
+      else if(b.pid===pid&&b.s===s&&b.c===c)peers.push(a);
+      return;
+    }
+
+
+    // Compatibilidad con las reglas creadas en V59.
+    if(rule.subjectNormalized){
+      const ids=[rule.sourceProgramId,...(rule.targetProgramIds||[])];
+      if(!ids.includes(pid) || normalizeSubjectName(name)!==rule.subjectNormalized)return;
+      ids.forEach(id=>{
+        if(id===pid)return;
+        const pr=allPrograms().find(x=>x.id===id);
+        pr?.semesters?.forEach((sem,ss)=>sem.forEach((n,cc)=>{
+          if(!isProjectIntegrator(n)&&normalizeSubjectName(n)===rule.subjectNormalized){
+            peers.push({pid:id,s:ss,c:cc,name:n});
+          }
+        }));
       });
     }
-
-    cursor = addDays(cursor, 1);
-  }
-
-  if (!blocks.length) {
-    throw new Error('El periodo seleccionado no contiene días habilitados.');
-  }
-
-  return blocks;
+  });
+  return peers;
+}
+function linkedCourseLocations(pid,s,c,name){
+  if(isProjectIntegrator(name))return [];
+  const seen=new Set(),out=[];
+  [...automaticSameNameLocations(pid,s,c,name),...explicitTransversalPeers(pid,s,c,name)].forEach(loc=>{
+    const k=`${loc.pid}|${loc.s}|${loc.c}`;
+    if(k===`${pid}|${s}|${c}`||seen.has(k))return;
+    seen.add(k);out.push(loc);
+  });
+  return out;
+}
+function setCoordinatorValue(pid,s,c,checked){
+  programMeta[pid]=programMeta[pid]||{};
+  let arr=programMeta[pid].coordinators||[];
+  const id=`${s}|${c}`;
+  arr=checked?[...new Set([...arr,id])]:arr.filter(x=>x!==id);
+  programMeta[pid].coordinators=arr;
+}
+function coordinatorValue(pid,s,c){
+  return !!(((programMeta[pid]||{}).coordinators||[]).includes(`${s}|${c}`));
+}
+function bestLinkedAnswer(pid,s,c,name){
+  const peers=linkedCourseLocations(pid,s,c,name);
+  const complete=peers.find(loc=>{
+    const a=getAns(loc.pid,loc.s,loc.c,loc.name);
+    return ['X','XX'].includes(a.status)&&(a.origins||[]).length;
+  });
+  if(complete)return complete;
+  return peers.find(loc=>getAns(loc.pid,loc.s,loc.c,loc.name).status!=='off')||null;
+}
+function replicateLinkedAnswer(pid,s,c,name,r){
+  if(isProjectIntegrator(name))return 0;
+  let synced=0;
+  linkedCourseLocations(pid,s,c,name).forEach(loc=>{
+    const current=getAns(loc.pid,loc.s,loc.c,loc.name);
+    // Una materia deshabilitada intencionalmente queda independiente.
+    if(current.status==='off')return;
+    answers[key(loc.pid,loc.s,loc.c)]={
+      status:r.status,
+      origins:[...(r.origins||[])],
+      ideal:!!r.ideal
+    };
+    synced++;
+  });
+  return synced;
+}
+function replicateLinkedCoordinator(pid,s,c,name,checked){
+  if(isProjectIntegrator(name))return 0;
+  let synced=0;
+  linkedCourseLocations(pid,s,c,name).forEach(loc=>{
+    const current=getAns(loc.pid,loc.s,loc.c,loc.name);
+    if(current.status==='off')return;
+    setCoordinatorValue(loc.pid,loc.s,loc.c,checked);
+    synced++;
+  });
+  return synced;
+}
+function courseTransversalBadge(pid,s,c,name){
+  if(isProjectIntegrator(name))return '';
+  const peers=linkedCourseLocations(pid,s,c,name);
+  if(!peers.length)return '';
+  const labels=[...new Set(peers.map(loc=>{
+    const pr=allPrograms().find(x=>x.id===loc.pid);
+    return pr?`${programAcronym(pr)} · ${loc.s+1}.°`:loc.pid;
+  }))];
+  return `<span class="transversal-course-badge" title="Respuesta vinculada con: ${escapeHtml(labels.join(', '))}">↔ Transversal</span>`;
 }
 
-function populateBlockFormOptions() {
-  const form = $('#block-form');
 
-  form.elements.roomId.innerHTML =
-    activeRooms().map(room => `
-      <option value="${escape(room.id)}">
-        ${escape(defaultRoomShort(room))} · ${escape(room.name)}
-      </option>
-    `).join('');
+function programStats(p){
+  let total=0,resolved=0,selected=0,disabled=0,missing=0;
+  p.semesters.forEach((sem,s)=>sem.forEach((name,c)=>{
+    total++;
+    if(isEnglish(name)){
+      disabled++;
+      resolved++;
+      return;
+    }
+    const a=getAns(p.id,s,c,name);
+    if(['off','na'].includes(a.status)){
+      disabled++;
+      resolved++;
+      return;
+    }
+    if(['X','XX'].includes(a.status)&&(a.origins||[]).length){
+      selected++;
+      resolved++;
+      return;
+    }
+    missing++;
+  }));
+  return {total,done:resolved,resolved,selected,disabled,missing,pct:total?Math.round(resolved/total*100):0};
+}
+function overallStats(){
+  let total=0,done=0,invalid=0,pending=[];
+  const pendingLogical=new Map();
+  programs().forEach((p,pi)=>p.semesters.forEach((sem,s)=>sem.forEach((name,c)=>{
+    if(isEnglish(name))return;
+    total++;
+    const a=getAns(p.id,s,c,name);
+    if(a.status!=='pending')done++;
+    else{
+      const item={pi,pid:p.id,programName:p.name,exit:p.exit,s,c,name};
+      pending.push(item);
+      const logical=logicalCourseKey(p.id,s,c,name);
+      if(!pendingLogical.has(logical))pendingLogical.set(logical,item);
+    }
+    if(['X','XX'].includes(a.status)&&!(a.origins||[]).length)invalid++;
+  })));
+  return{total,done,invalid,pending,pendingUnique:[...pendingLogical.values()],remainingUnique:pendingLogical.size};
+}
+function captureIssues(){
+  const issues=[];
+  programs().forEach((p,pi)=>p.semesters.forEach((sem,s)=>sem.forEach((name,c)=>{
+    if(isEnglish(name))return;
+    const a=getAns(p.id,s,c,name);
+    if(a.status==='pending'){
+      issues.push({
+        type:'competence',
+        pi,pid:p.id,programName:p.name,exit:p.exit,s,c,name,
+        message:'Seleccione el nivel de competencia X o XX, o deshabilite la materia si no puede impartirla.'
+      });
+    }else if(['X','XX'].includes(a.status)&&!(a.origins||[]).length){
+      issues.push({
+        type:'area',
+        pi,pid:p.id,programName:p.name,exit:p.exit,s,c,name,
+        message:'Seleccione de dónde proviene el conocimiento: 1, 2, 3, 12, 13, 23 o 123.'
+      });
+    }
+  })));
+  return issues;
+}
+let captureErrorModeActive=false;
+let captureValidationEmphasis=false;
 
-  const start = dayStartMinutes();
-  const end = dayEndMinutes();
 
-  form.elements.start.innerHTML = '';
-  form.elements.end.innerHTML = '';
-
-  for (let value = start; value < end; value += 30) {
-    form.elements.start.insertAdjacentHTML(
-      'beforeend',
-      `<option value="${timeLabel(value)}">${timeLabel(value)}</option>`
-    );
+function captureIssuePanel(issues){
+  const grouped=new Map();
+  issues.forEach(issue=>{
+    const key=`${issue.pi}|${issue.s}`;
+    if(!grouped.has(key))grouped.set(key,{...issue,items:[]});
+    grouped.get(key).items.push(issue);
+  });
+  const groups=[...grouped.values()];
+  return `<div class="capture-error-panel">
+    <div class="capture-error-title"><span class="capture-error-icon">!</span><div><b>No puede pasar a revisión todavía</b><span>Complete los campos señalados. La alerta desaparecerá automáticamente cuando quede corregido.</span></div></div>
+    <div class="capture-error-groups">
+      ${groups.map(g=>`<button type="button" class="capture-error-group" onclick="goToCaptureIssue(${g.pi},${g.s},${g.items[0].c},'${g.items[0].type}')">
+        <strong>${escapeHtml(g.programName)}</strong>
+        <span>${g.s+1}.° cuatrimestre · ${g.items.length} pendiente${g.items.length===1?'':'s'}</span>
+        <small>${g.items.slice(0,3).map(x=>escapeHtml(subjectCase(x.name))).join(' · ')}${g.items.length>3?' · …':''}</small>
+      </button>`).join('')}
+    </div>
+  </div>`;
+}
+function clearCaptureAttention(){
+  document.querySelectorAll('.attention-target').forEach(x=>x.classList.remove('attention-target'));
+  document.querySelectorAll('.course.needs-attention').forEach(x=>x.classList.remove('needs-attention'));
+}
+function focusExactCaptureIssue(issue){
+  if(!issue)return;
+  const row=document.querySelector(`[data-course-loc="${issue.pi}|${issue.s}|${issue.c}"]`);
+  if(!row)return;
+  row.scrollIntoView({behavior:'smooth',block:'center'});
+  const target=issue.type==='area'?row.querySelector('.area-buttons'):row.querySelector('.comp-buttons');
+  target?.classList.add('attention-target');
+  row.classList.add('needs-attention');
+}
+window.goToCaptureIssue=function(pi,s,c,type='competence'){
+  currentProgramIndex=pi;
+  workflowState.expectedProgramIndex=pi;
+  workflowState.reviewUnlocked=false;
+  persist({touch:false,schedule:false});
+  activateViewDirect('captura');
+  renderCurrentProgram();
+  requestAnimationFrame(()=>focusExactCaptureIssue({pi,s,c,type}));
+};
+function refreshCaptureErrorState(){
+  if(!captureErrorModeActive)return;
+  const root=$('captureErrors');
+  if(!root)return;
+  const issues=captureIssues();
+  const profileCheck=validateProfile();
+  if(!issues.length&&profileCheck.ok){
+    root.innerHTML='';
+    captureErrorModeActive=false;
+    captureValidationEmphasis=false;
+    toast('Captura corregida. Ya puede continuar a revisión.');
+    return;
   }
-
-  for (let value = start + 30; value <= end; value += 30) {
-    form.elements.end.insertAdjacentHTML(
-      'beforeend',
-      `<option value="${timeLabel(value)}">${timeLabel(value)}</option>`
-    );
+  if(issues.length){
+    root.innerHTML=captureIssuePanel(issues);
+  }else{
+    root.innerHTML=statusBox(profileCheck.errors,'Complete los datos del profesor.');
   }
+}
+function currentProgramFavoriteCount(p){
+  let total=0;
+  p?.semesters?.forEach((sem,s)=>sem.forEach((name,c)=>{
+    if(getAns(p.id,s,c,name).ideal)total++;
+  }));
+  return total;
+}
+function updateProgress(){
+  const p=currentProgram();
+  if(!p)return;
+  const x=programStats(p);
+  $('progressText').textContent=`${x.resolved} de ${x.total} asignaturas revisadas (${x.pct}%)`;
+  $('progressBar').style.width=x.pct+'%';
+  $('idealCounter').textContent=`Seleccionadas/configuradas: ${x.selected} · Deshabilitadas o No aplica: ${x.disabled} · Favoritas: ${currentProgramFavoriteCount(p)}`;
+  if($('programCounter'))$('programCounter').textContent=x.missing
+    ?`Pendientes en este programa: ${x.missing}`
+    :'Programa completo · puede continuar';
+}
+function currentProgram(){return programs()[currentProgramIndex]}
+function eligibleCourses(p){const opts=[];p.semesters.forEach((sem,s)=>sem.forEach((name,c)=>{const a=getAns(p.id,s,c,name);if(['X','XX'].includes(a.status)&&(a.origins||[]).length)opts.push({id:`${s}|${c}`,text:`${s+1}.° · ${subjectCase(name)}`})}));return opts}
+window.toggleCoordinatorMode=function(pid,on){
+  if(!requireEditing())return;
+  programMeta[pid]=programMeta[pid]||{};
+  programMeta[pid].coordinatorEnabled=!!on;
+  if(!on)programMeta[pid].coordinators=[];
+  persist();renderCurrentProgram();
+}
+window.toggleCoordinator=function(pid,id,checked){
+  if(!requireEditing())return;
+  const [s,c]=String(id).split('|').map(Number);
+  const pr=allPrograms().find(x=>x.id===pid);
+  const name=pr?.semesters?.[s]?.[c]||'';
+  setCoordinatorValue(pid,s,c,checked);
+  replicateLinkedCoordinator(pid,s,c,name,checked);
+  persist();
+  refreshVisibleLinkedCourseRows(pid,s,c,name);
+}
+function renderCoordinator(p){ return ''; }
 
-  if (!form.elements.date.value) {
-    form.elements.date.value = dateKey(new Date());
+
+function currentProgramIssues(){
+  const p=currentProgram();
+  if(!p)return [];
+  const issues=[];
+  p.semesters.forEach((sem,s)=>sem.forEach((name,c)=>{
+    if(isEnglish(name))return;
+    const a=getAns(p.id,s,c,name);
+    if(a.status==='off')return;
+    if(a.status==='pending'){
+      issues.push({type:'competence',s,c,name,message:'Seleccione X o XX, o deshabilite la materia si no puede impartirla.'});
+      return;
+    }
+    if(['X','XX'].includes(a.status)&&!(a.origins||[]).length){
+      issues.push({type:'area',s,c,name,message:'Seleccione el área de conocimiento.'});
+    }
+  }));
+  return issues;
+}
+function showCurrentProgramBlock(issues){
+  if(!issues?.length)return;
+  captureErrorModeActive=true;
+  captureValidationEmphasis=true;
+  const p=currentProgram();
+  const mapped=issues.map(x=>({
+    ...x,
+    pi:currentProgramIndex,
+    pid:p.id,
+    programName:p.name,
+    exit:p.exit
+  }));
+  $('captureErrors').innerHTML=captureIssuePanel(mapped);
+  renderCurrentProgram();
+  requestAnimationFrame(()=>focusExactCaptureIssue(mapped[0]));
+  toast('Complete primero las materias habilitadas de este programa.');
+}
+function canLeaveCurrentProgram(){
+  const issues=currentProgramIssues();
+  if(issues.length){
+    showCurrentProgramBlock(issues);
+    return false;
   }
-
-  if (form.elements.dateTo && !form.elements.dateTo.value) {
-    form.elements.dateTo.value = form.elements.date.value;
-  }
-
-  updateBlockModeUI();
+  return true;
 }
 
-function renderAdminRoomLists() {
-  adminRooms = [...state.rooms].sort((a, b) =>
-    String(a.name || '').localeCompare(String(b.name || ''), 'es')
-  );
 
-  const active = adminRooms.filter(room => room.active !== false);
-  const archived = adminRooms.filter(room => room.active === false);
 
-  $('#rooms-active-list').innerHTML = active.length
-    ? active.map(room => roomAdminRow(room, false)).join('')
-    : '<p class="empty-mini">No hay salas activas.</p>';
 
-  $('#rooms-archived-list').innerHTML = archived.length
-    ? archived.map(room => roomAdminRow(room, true)).join('')
-    : '<p class="empty-mini">No hay salas archivadas.</p>';
-
-  populateBlockFormOptions();
+function rowCoordinatorChecked(pid,s,c){
+  return !!(((programMeta[pid]||{}).coordinators||[]).includes(`${s}|${c}`));
+}
+function rowCoordinatorEnabled(pid,s,c,name){
+  const a=getAns(pid,s,c,name);
+  return !isEnglish(name) && !/no\s+aplica/i.test(name) && a.status!=='off' && ['X','XX'].includes(a.status);
 }
 
-async function loadAdminRoomBlocks() {
-  if (!authService.isOwner(currentUser)) return;
 
-  const now = new Date();
-  const from = dateKey(new Date(now.getFullYear(), now.getMonth(), 1, 12));
-  const to = dateKey(addDays(now, 90));
-  const blocks = (await repository.queryBlocksRange(from, to))
-    .filter(block => block.active !== false);
-
-  $('#blocks-list').innerHTML = blocks.length
-    ? blocks.map(block => `
-        <div class="compact-row">
-          <div>
-            <strong>${escape(block.date)} · ${escape(block.start)}–${escape(block.end)}</strong>
-            <span>${escape(roomShort(block.roomId))}</span>
-            <small>${escape(block.reason || 'Mantenimiento')}</small>
-          </div>
-          <button
-            type="button"
-            class="danger"
-            data-block-remove="${escape(block.id)}"
-            data-mutation>
-            Quitar
-          </button>
+const PROGRAM_CAPTURE_THEMES={
+  ind_procesos:{bg:'#fff0ea',border:'#efb6a5',accent:'#d05e43',strong:'#9d3f2b'},
+  ind_plasticos:{bg:'#f4efff',border:'#cdbdeb',accent:'#8a67c3',strong:'#624395'},
+  mec_auto:{bg:'#edf6ff',border:'#b9d7ef',accent:'#4a8fc4',strong:'#2c6794'},
+  mec_ind:{bg:'#eaf7f4',border:'#afd9d1',accent:'#3b9185',strong:'#276a62'},
+  mec_moldes:{bg:'#fff6df',border:'#e9cf8e',accent:'#c18a2b',strong:'#8a611d'},
+  auto_diseno:{bg:'#eaf8fb',border:'#acd9e2',accent:'#3f95a5',strong:'#2b6d79'},
+  mantenimiento:{bg:'#eef8e8',border:'#bfddb0',accent:'#6e9f4f',strong:'#4f7538'},
+  nano:{bg:'#fff0f5',border:'#e7bdd0',accent:'#c56f90',strong:'#914e68'}
+};
+const PROGRAM_CAPTURE_FALLBACKS=[
+  {bg:'#eef4f9',border:'#bfd2e0',accent:'#5685a5',strong:'#38617e'},
+  {bg:'#f7efe7',border:'#dfc8b0',accent:'#a97a50',strong:'#7e5837'},
+  {bg:'#edf6f0',border:'#bddbc7',accent:'#5f9872',strong:'#467253'},
+  {bg:'#f2effa',border:'#cec3e4',accent:'#7c69aa',strong:'#5d4d84'}
+];
+function captureThemeForProgram(p,index=currentProgramIndex){
+  return PROGRAM_CAPTURE_THEMES[p?.id]||PROGRAM_CAPTURE_FALLBACKS[Math.abs(index)%PROGRAM_CAPTURE_FALLBACKS.length];
+}
+function captureGuideHtml(){
+  return `<div class="instruction-band card capture-guide-band capture-guide-current">
+    <div class="instruction-title">Cómo capturar cada asignatura</div>
+    <div class="instruction-grid-five">
+      <div class="capture-help-card">
+        <b>1. Asignaturas habilitadas</b>
+        <span><strong>Revise cada materia</strong> y márquela como <strong>apagada</strong> si usted no puede impartir esa asignatura. <strong>Al imprimir, la asignatura quedará vacía en el formato.</strong> Si usted puede impartirla, <strong>déjela habilitada</strong> y seleccione su <strong>nivel de competencia</strong> y su <strong>área de conocimiento</strong>.</span>
+      </div>
+      <div class="capture-help-card">
+        <b>2. Competencia</b>
+        <span>Seleccione el <strong>nivel que posee para impartir la asignatura</strong>.</span>
+        <div class="competence-key-lines">
+          <strong class="help-x">X = Competencia media</strong>
+          <strong class="help-xx">XX = Competencia alta</strong>
         </div>
-      `).join('')
-    : '<p class="empty-mini">No hay bloqueos próximos.</p>';
+      </div>
+      <div class="capture-help-card">
+        <b>3. Área de conocimiento</b>
+        <span>Seleccione una opción según corresponda al <strong>área de la cual proviene su conocimiento</strong>: <strong>1, 2 o 3</strong>, o una combinación de ellas.</span>
+        <div class="knowledge-key knowledge-key-inline single-line-key"><b>1</b> Formación académica · <b>2</b> Experiencia docente · <b>3</b> Experiencia laboral</div>
+      </div>
+      <div class="capture-help-card reference-help-card">
+        <b><span class="help-alert">!</span> 4. Coordinación</b>
+        <span>De forma <strong>opcional</strong>, marque <strong class="help-check">✓</strong> solo si <strong>ha coordinado previamente esa asignatura</strong>. <strong>No aparece en la impresión</strong>; es una referencia para el coordinador.</span>
+      </div>
+      <div class="capture-help-card reference-help-card">
+        <b><span class="help-alert">!</span> 5. Favorita</b>
+        <span>De forma <strong>opcional</strong>, marque <strong class="help-star">★</strong> si considera que esa asignatura es <strong>ideal para impartir de acuerdo con su perfil profesional</strong>. <strong>No aparece en la impresión</strong>.</span>
+      </div>
+    </div>
+  </div>`;
 }
 
-async function loadAdminRooms() {
-  if (!authService.isOwner(currentUser)) return;
 
-  try {
-    // V6.5: las salas ya están en memoria desde loadStatic(); no se vuelven a leer.
-    renderAdminRoomLists();
-    await loadAdminRoomBlocks();
-    updateMutationAvailability();
-  } catch (error) {
-    $('#room-error').textContent = error.message;
+function adjustSemesterColumnWidths(){
+  document.querySelectorAll('.semester-card').forEach(card=>{
+    card.classList.remove('needs-wide-subjects');
+    const names=[...card.querySelectorAll('.course .name')].filter(el=>!el.closest('.na-clean'));
+    const needsMore=names.some(el=>{
+      const cs=getComputedStyle(el);
+      const lh=parseFloat(cs.lineHeight)||parseFloat(cs.fontSize)*1.15||12;
+      return el.scrollHeight>(lh*2.12);
+    });
+    if(needsMore)card.classList.add('needs-wide-subjects');
+  });
+}
+function renderCurrentProgram(){
+  const totalPrograms=programs().length;
+  if(!totalPrograms)return;
+
+  if(currentProgramIndex<0||currentProgramIndex>=totalPrograms){
+    currentProgramIndex=0;
   }
-}
 
-async function loadAdminUsers() {
-  if (!authService.isOwner(currentUser)) return;
+  if(workflowState.expectedProgramIndex<0||workflowState.expectedProgramIndex>totalPrograms){
+    workflowState.expectedProgramIndex=currentProgramIndex;
+    workflowState.reviewUnlocked=false;
+  }
 
-  try {
-    adminUsers =
-      await repository.listAuthorizedUsers();
+  const p=currentProgram();if(!p)return;
+  $('programStep').textContent=`Programa ${currentProgramIndex+1} de ${programs().length}`;
+  $('programFlowName').innerHTML=`<span class="program-focus-label">Salida lateral / TSU que está capturando</span><strong class="program-exit-focus">${escapeHtml(p.exit||p.name)}</strong><span class="program-degree-context">${p.exit?`Programa educativo de referencia · ${escapeHtml(p.name)}`:escapeHtml(p.name)}</span>`;
+  const st=programStats(p);
+  const theme=captureThemeForProgram(p,currentProgramIndex);
+  const header=document.querySelector('.program-header-flow');
+  if(header){
+    header.style.setProperty('--program-bg',theme.bg);
+    header.style.setProperty('--program-border',theme.border);
+    header.style.setProperty('--program-accent',theme.accent);
+    header.style.setProperty('--program-strong',theme.strong);
+  }
+  const prevBtn=$('flowPrevBtn');
+  if(prevBtn)prevBtn.textContent=currentProgramIndex===0?'← Volver a Datos del profesor':'← Anterior';
 
-    $('#users-list').innerHTML =
-      adminUsers.map(user => {
-        const active = user.active !== false;
-        const isOwner = user.email === OWNER_EMAIL;
 
-        return `
-          <div class="user-row">
-            <div>
-              <strong>${escape(user.name || user.email)}</strong>
-              <span>${escape(user.email)}</span>
-              <small class="status-text ${active ? 'active' : 'inactive'}">
-                ${isOwner
-                  ? 'Administrador principal'
-                  : active
-                    ? 'Acceso activo'
-                    : 'Acceso revocado'}
-              </small>
-            </div>
+  const guideSteps=[
+    '1. Habilita la asignatura que puedes impartir',
+    '2. Selecciona tu nivel de competencia: X = media · XX = alta',
+    '3. Señala el origen del conocimiento: 1 formación · 2 experiencia docente · 3 experiencia laboral · o sus combinaciones 12, 13, 23, 123',
+    '4. Opcional: marca ✓ si ya has coordinado esa asignatura',
+    '5. Opcional: marca ★ si es una de tus asignaturas favoritas'
+  ];
+  const guideText=`Guía rápida: ${guideSteps.join(' · ')}`;
+  const guideTrack=guideSteps.map(step=>`<span class="guide-step">${step}</span>`).join('');
 
-            ${isOwner
-              ? '<span class="owner-badge">Administrador</span>'
-              : active
-                ? `<button type="button" class="danger" data-user-revoke="${escape(user.email)}" data-mutation>Revocar acceso</button>`
-                : `<button type="button" class="primary" data-user-enable="${escape(user.email)}" data-mutation>Reactivar</button>`
-            }
+
+  let h=`<article class="program">
+    ${captureGuideHtml()}
+    <div class="capture-marquee" aria-label="${guideText}">
+      <div class="capture-marquee-track"><div class="guide-sequence">${guideTrack}</div><div class="guide-sequence" aria-hidden="true">${guideTrack}</div></div>
+    </div>
+    ${commonNoticeHtml(p.id)}
+    ${renderCoordinator(p)}
+    <div class="program-scroll-wrap">
+      <div class="scroll-hint">↔ Si la pantalla es más angosta, desplácese horizontalmente para ver todas las columnas.</div>
+      <div class="semesters-grid">`;
+
+
+  p.semesters.forEach((sem,s)=>{
+    h+=`<div class="semester-card">
+      <h4>${s+1}.° cuatrimestre <span>${sem.length} asignaturas</span></h4>
+      <div class="coord-fav-inline-note">
+        <span class="coord-note-line">✓ Si ya la coordinaste</span>
+        <span class="fav-note-line">★ Si es favorita</span>
+      </div>
+      <div class="course-columns">
+        <span>Asignatura</span>
+        <span>Habilitar</span>
+        <span>Competencia</span>
+        <span class="area-head">Área de conocimiento</span>
+        <span class="coord-head">¿Coordinador?</span>
+        <span class="fav-head">Favorita</span>
+      </div>`;
+
+
+    sem.forEach((name,c)=>{
+      const a=getAns(p.id,s,c,name);
+      const na=isEnglish(name);
+      const enc=encodeURIComponent(name);
+      const enabled=!['off','na'].includes(a.status);
+      const pending=a.status==='pending';
+      const reviewed=!pending&&!na;
+      const needsCompetence=!na&&enabled&&pending;
+      const needsArea=!na&&enabled&&['X','XX'].includes(a.status)&&!(a.origins||[]).length;
+      const needsAttention=needsCompetence||needsArea;
+      const loc=`${currentProgramIndex}|${s}|${c}`;
+
+
+      h+=`<div class="course ${pending?'pending':''} ${a.status==='off'?'off':''} ${reviewed&&a.status!=='off'?'reviewed':''} ${na?'na na-clean':''} ${needsAttention?'needs-attention':''} ${captureValidationEmphasis&&needsAttention?'validation-pending':''}" data-course-loc="${loc}" data-course-key="${p.id}|${s}|${c}">
+        <div class="name">${subjectCase(name)}${subjectHours(p.id,s,c)?` <small class="course-hours">(${subjectHours(p.id,s,c)} h)</small>`:''}${na?' · NO APLICA':''}${!na?courseTransversalBadge(p.id,s,c,name):''}</div>`;
+
+
+      if(na){
+        h+=`<div class="control-placeholder"></div><div class="control-placeholder"></div><div class="control-placeholder"></div><div class="control-placeholder"></div><div class="control-placeholder"></div>`;
+      }else{
+        h+=`<label class="toggle">
+          <input type="checkbox" ${enabled?'checked':''} onchange="setEnabled('${p.id}',${s},${c},decodeURIComponent('${enc}'),this.checked)">
+          <span class="switch"></span><span>${enabled?'Sí':'No'}</span>
+        </label>`;
+
+
+        if(enabled){
+          h+=`<div class="comp-buttons ${needsCompetence?'attention-target':''}">
+            <button class="mini ${a.status==='X'?'on':''}" aria-label="Competencia media X" title="X = competencia media" onclick="setCompetence('${p.id}',${s},${c},decodeURIComponent('${enc}'),'X')">X</button>
+            <button class="mini ${a.status==='XX'?'on':''}" aria-label="Competencia alta XX" title="XX = competencia alta" onclick="setCompetence('${p.id}',${s},${c},decodeURIComponent('${enc}'),'XX')">XX</button>
           </div>
-        `;
-      }).join('');
-
-    updateMutationAvailability();
-  } catch (error) {
-    $('#user-error').textContent = error.message;
-  }
-}
-
-function auditActionLabel(action) {
-  const labels = {
-    CREATE_BOOKING: 'Creó reservación',
-    UPDATE_BOOKING: 'Editó reservación',
-    MOVE_BOOKING: 'Movió reservación',
-    CANCEL_BOOKING: 'Canceló reservación',
-    RESTORE_BOOKING: 'Restauró reservación',
-    CREATE_SERIES: 'Creó serie',
-    CANCEL_SERIES: 'Canceló serie',
-    ROOM_CREATED: 'Creó sala',
-    ROOM_UPDATED: 'Editó sala',
-    ROOM_DISABLED: 'Desactivó sala',
-    ROOM_ENABLED: 'Reactivó sala',
-    USER_GRANTED: 'Autorizó usuario',
-    USER_REVOKED: 'Revocó usuario',
-    USER_REACTIVATED: 'Reactivó usuario',
-    SETTINGS_UPDATED: 'Cambió configuración',
-    ROOM_BLOCK_CREATED: 'Creó bloqueo',
-    ROOM_BLOCK_SERIES_CREATED: 'Creó bloqueo de varios días',
-    ROOM_BLOCK_UPDATED: 'Editó bloqueo',
-    ROOM_BLOCK_REMOVED: 'Quitó bloqueo'
-  };
-
-  return labels[action] || action;
-}
-
-async function loadAuditLogs() {
-  if (!authService.isOwner(currentUser)) return;
-
-  const defaults = adminDefaultDates();
-
-  if (!$('#audit-from').value) {
-    $('#audit-from').value = defaults.first;
-  }
-
-  if (!$('#audit-to').value) {
-    $('#audit-to').value = defaults.last;
-  }
-
-  $('#audit-list').innerHTML =
-    '<div class="admin-loading">Consultando historial…</div>';
-
-  try {
-    const logs = await repository.listAuditLogs(
-      $('#audit-from').value,
-      $('#audit-to').value
-    );
-
-    $('#audit-list').innerHTML =
-      logs.length
-        ? logs.map(log => {
-            const date =
-              log.createdAt?.toDate?.()
-                ?.toLocaleString('es-MX') ||
-              log.createdDate ||
-              '—';
-
-            let detail = '';
-
-            if (log.action === 'MOVE_BOOKING' &&
-                log.before &&
-                log.after) {
-              detail =
-                `Antes: ${roomShort(log.before.roomId)} · ${log.before.date} · ${log.before.start}–${log.before.end} | ` +
-                `Después: ${roomShort(log.after.roomId)} · ${log.after.date} · ${log.after.start}–${log.after.end}`;
-            } else if (log.targetEmail) {
-              detail = log.targetEmail;
-            } else if (log.bookingId) {
-              detail = `Reservación ${log.bookingId}`;
-            } else if (log.roomId) {
-              detail = roomShort(log.roomId);
-            }
-
-            return `
-              <article class="audit-row">
-                <div>
-                  <strong>${escape(auditActionLabel(log.action))}</strong>
-                  <span>${escape(log.actorLabel || log.actorEmail || '—')}</span>
-                  ${detail ? `<small>${escape(detail)}</small>` : ''}
-                </div>
-                <time>${escape(date)}</time>
-              </article>
-            `;
-          }).join('')
-        : '<p class="empty-mini">No hay movimientos registrados en este periodo.</p>';
-  } catch (error) {
-    $('#audit-list').innerHTML =
-      `<p class="form-error">${escape(error.message)}</p>`;
-  }
-}
-
-function renderSettingsForm() {
-  if (!authService.isOwner(currentUser)) return;
-
-  const form = $('#settings-form');
-  const value = settings();
-
-  form.elements.startTime.value = value.startTime;
-  form.elements.endTime.value = value.endTime;
-  form.elements.blockMinutes.value =
-    String(value.blockMinutes);
-
-  form.elements.repeatLimitDays.value =
-    String(
-      [90, 180, 365, 730].includes(value.repeatLimitDays)
-        ? value.repeatLimitDays
-        : 365
-    );
-
-  for (const checkbox of form.querySelectorAll('[name="enabledDays"]')) {
-    checkbox.checked =
-      value.enabledDays.includes(Number(checkbox.value));
-  }
-
-  $('#settings-error').textContent = '';
-}
-
-function openAdmin() {
-  const owner = authService.isOwner(currentUser);
-
-  $('#admin-title').textContent =
-    owner
-      ? 'Panel de administración'
-      : 'Reportes';
-
-  setupReportDefaults();
-  renderReportRoomOptions();
-
-  $('#admin-dialog').showModal();
-
-  openAdminTab(owner ? 'summary' : 'report');
-}
-
-function realtimeError(error) {
-  setOnlineState(false);
-  notice(
-    error?.message ||
-    'No se pudo sincronizar con Firebase.'
-  );
-}
-
-// V6.5 · Presencia y señalización salen de Firestore.
-// Un fallo de Realtime Database nunca bloquea la agenda ni la autenticación.
-function collaborationError(error) {
-  console.warn('Sincronización multiusuario no disponible:', error);
-  collaborationAvailable = false;
-  activePeerCount = 0;
-  localPresenceActive = false;
-  updateRealtimeStatus();
-}
-
-function currentVisibleDateKeys() {
-  return Array.from({ length: 6 }, (_, index) => dateKey(addDays(week, index)));
-}
-
-function signalSuccessfulAgendaMutation(signal) {
-  if (!signal?.id || !signal?.date) return;
-  void collaboration.broadcast(signal);
-}
-
-function updateRealtimeStatus() {
-  if (!isOnline) {
-    $('#sync-status').textContent = '● Sin conexión · modo consulta';
-    $('#sync-status').classList.remove('online');
-    return;
-  }
-
-  if (!collaborationAvailable) {
-    $('#sync-status').textContent = '● Modo eficiente · agenda disponible';
-    $('#sync-status').classList.remove('online');
-    return;
-  }
-
-  if (!localPresenceActive) {
-    $('#sync-status').textContent = '● Modo eficiente · sincronización pausada';
-    $('#sync-status').classList.remove('online');
-    return;
-  }
-
-  if (activePeerCount > 0) {
-    $('#sync-status').textContent = `● Multiusuario · ${activePeerCount + 1} activos · cambios puntuales`;
-    $('#sync-status').classList.add('online');
-    return;
-  }
-
-  $('#sync-status').textContent = '● Modo eficiente · 1 usuario activo';
-  $('#sync-status').classList.add('online');
-}
-
-function dateInVisibleRange(value) {
-  const range = visibleRange();
-  return value >= range.from && value <= range.to;
-}
-
-function upsertBookingLocal(booking) {
-  if (!booking?.id) return;
-  state.bookings = state.bookings.filter(item => item.id !== booking.id);
-  if (dateInVisibleRange(booking.date)) state.bookings.push(booking);
-}
-
-function upsertBlockLocal(block) {
-  if (!block?.id) return;
-  state.blocks = state.blocks.filter(item => item.id !== block.id);
-  if (block.active !== false && dateInVisibleRange(block.date)) state.blocks.push(block);
-}
-
-function upsertRoomLocal(room) {
-  if (!room?.id) return;
-  state.rooms = state.rooms.filter(item => item.id !== room.id);
-  state.rooms.push(room);
-  state.rooms.sort((a, b) => {
-    const rank = value => {
-      const text = `${value?.id || ''} ${value?.name || ''} ${value?.short || ''}`.toLocaleLowerCase('es-MX');
-      if (text.includes('planta baja') || text.includes('baja-f') || /\bpb\b/.test(text)) return 0;
-      if (text.includes('planta alta') || text.includes('alta-f') || /\bpa\b/.test(text)) return 1;
-      return 2;
-    };
-    return rank(a) - rank(b) || String(a.name || '').localeCompare(String(b.name || ''), 'es');
-  });
-}
-
-async function applyRemoteSignal(signal) {
-  if (!currentUser || !signal?.entity || !signal?.id) return;
-
-  try {
-    if (signal.entity === 'booking') {
-      const booking = await repository.getBooking(signal.id);
-      if (booking) upsertBookingLocal(booking);
-      else state.bookings = state.bookings.filter(item => item.id !== signal.id);
-    } else if (signal.entity === 'roomBlock') {
-      const block = await repository.getRoomBlock(signal.id);
-      if (block) upsertBlockLocal(block);
-      else state.blocks = state.blocks.filter(item => item.id !== signal.id);
-    } else {
-      return;
-    }
-
-    render();
-  } catch (error) {
-    console.warn('No se pudo aplicar un cambio puntual:', error);
-  }
-}
-
-async function startCollaboration(user) {
-  collaborationAvailable = collaboration.available();
-  if (!collaborationAvailable) {
-    updateRealtimeStatus();
-    return;
-  }
-
-  try {
-    const started = await collaboration.start(user, {
-      onPeerCount(count) {
-        activePeerCount = count;
-        updateRealtimeStatus();
-      },
-      onActiveChange(active) {
-        localPresenceActive = active;
-        updateRealtimeStatus();
-      },
-      onSignal(signal) {
-        void applyRemoteSignal(signal);
-      },
-      onError(error) {
-        console.warn('Realtime Database:', error);
-      }
-    });
-
-    if (!started) {
-      collaborationAvailable = false;
-      localPresenceActive = false;
-      activePeerCount = 0;
-      updateRealtimeStatus();
-      return;
-    }
-
-    localPresenceActive = collaboration.isActive();
-    activePeerCount = collaboration.peerCount();
-    collaboration.setVisibleDates(currentVisibleDateKeys(), { fresh: true });
-    updateRealtimeStatus();
-  } catch (error) {
-    collaborationError(error);
-  }
-}
-
-async function refreshVisibleRange() {
-  if (!currentUser) return;
-
-  const requested = visibleRange();
-  $('#sync-status').textContent = '● Cargando semana';
-  $('#sync-status').classList.remove('online');
-
-  try {
-    const nextState = await repository.loadRange(requested);
-    const current = visibleRange();
-    if (requested.from !== current.from || requested.to !== current.to) return;
-
-    state = {
-      ...state,
-      bookings: nextState.bookings,
-      blocks: nextState.blocks
-    };
-
-    setOnlineState(navigator.onLine);
-    updateRealtimeStatus();
-    render();
-    collaboration.setVisibleDates(currentVisibleDateKeys(), { fresh: true });
-
-    if ($('#admin-dialog').open && activeAdminTab === 'report') {
-      renderReportRoomOptions();
-    }
-  } catch (error) {
-    realtimeError(error);
-  }
-}
-
-async function startRealtime() {
-  // V6.5: Firestore carga únicamente datos estáticos + semana visible.
-  // La presencia se gestiona fuera de Firestore mediante Realtime Database.
-  $('#sync-status').textContent = '● Cargando datos';
-  $('#sync-status').classList.remove('online');
-
-  const staticState = await repository.loadStatic();
-  state = {
-    ...state,
-    rooms: staticState.rooms,
-    settings: normalizeSettings(staticState.settings)
-  };
-
-  await refreshVisibleRange();
-  updateRealtimeStatus();
-  render();
-}
-
-function showAuth(message, denied = false) {
-  document.body.classList.add('auth-pending');
-  $('#auth-screen').hidden = false;
-  $('#auth-message').textContent = message;
-  $('#sign-in').hidden = denied;
-  $('#auth-sign-out').hidden = !denied;
-}
-
-function showApp(user) {
-  currentUser = user;
-  document.body.classList.remove('auth-pending');
-  $('#auth-screen').hidden = true;
-  $('#user-chip').textContent = authService.username(user);
-  $('#block-room').hidden = false;
-
-  $('#manage').textContent =
-    authService.isOwner(user)
-      ? 'Administración'
-      : 'Reportes';
-}
-
-function clearCurrentGestures() {
-  dragState = null;
-
-  if (bookingDragState?.element) {
-    bookingDragState.element.classList.remove('being-dragged');
-  }
-
-  bookingDragState = null;
-  clearDragSelection();
-  clearBookingDropPreview();
-}
-
-
-// ---------------------------------------------------------
-// EVENTOS GENERALES
-// ---------------------------------------------------------
-
-document.addEventListener('click', event => {
-  const close = event.target.closest('[data-close]');
-  if (close) close.closest('dialog')?.close();
-});
-
-window.addEventListener('offline', () => {
-  setOnlineState(false);
-  notice('Sin conexión · modo consulta');
-});
-
-window.addEventListener('online', () => {
-  setOnlineState(true);
-  updateRealtimeStatus();
-  notice('Conexión recuperada.');
-});
-
-// V6.5: la actividad del usuario solo mantiene la presencia en Realtime Database.
-// No genera lecturas ni escrituras de Firestore. Si pasan 2 min 30 s sin actividad,
-// se pausa la sincronización puntual hasta que el usuario vuelva a interactuar.
-let lastActivityPulse = 0;
-function noteLocalActivity() {
-  const now = Date.now();
-  if (now - lastActivityPulse < 10000) return;
-  lastActivityPulse = now;
-  collaboration.noteActivity();
-}
-
-document.addEventListener('pointerdown', noteLocalActivity, { capture: true, passive: true });
-document.addEventListener('pointermove', noteLocalActivity, { capture: true, passive: true });
-document.addEventListener('keydown', noteLocalActivity, { capture: true });
-
-$('#new').onclick = () => {
-  if (!isOnline) {
-    notice('Sin conexión: no se pueden crear reservaciones.');
-    return;
-  }
-  openBooking();
-};
-
-$('#room-tabs').onclick = event => {
-  const button =
-    event.target.closest('[data-room]');
-
-  if (!button) return;
-
-  selectedRoom = button.dataset.room;
-  render();
-};
-
-$('#quick-filters').onclick = event => {
-  const button =
-    event.target.closest('[data-view]');
-
-  if (!button) return;
-
-  quickView = button.dataset.view;
-
-  if (quickView === 'today' || quickView === 'week') {
-    const targetWeek = monday(new Date());
-    const sameWeek = dateKey(targetWeek) === dateKey(week);
-    week = targetWeek;
-    selectedDay = 0;
-    if (sameWeek) render();
-    else refreshVisibleRange();
-  } else {
-    render();
-  }
-};
-
-$('#day-picker').onclick = event => {
-  const button =
-    event.target.closest('[data-day]');
-
-  if (!button) return;
-
-  selectedDay = Number(button.dataset.day);
-  quickView = 'week';
-  render();
-};
-
-$('#calendar').onclick = event => {
-  const booking =
-    event.target.closest('[data-booking]');
-
-  if (!booking) return;
-
-  if (suppressBookingClick) {
-    event.preventDefault();
-    return;
-  }
-
-  details(booking.dataset.booking);
-};
-
-
-// ---------------------------------------------------------
-// ARRASTRAR RESERVACIÓN EXISTENTE
-// ---------------------------------------------------------
-
-$('#calendar').addEventListener('pointerdown', event => {
-  const bookingElement =
-    event.target.closest('.booking');
-
-  if (!bookingElement ||
-      event.button !== 0 ||
-      !isOnline) {
-    return;
-  }
-
-  const booking =
-    state.bookings.find(item =>
-      item.id === bookingElement.dataset.booking
-    );
-
-  if (!booking ||
-      bookingStatus(booking) !== 'active') {
-    return;
-  }
-
-  const rect =
-    bookingElement.getBoundingClientRect();
-
-  bookingDragState = {
-    pointerId: event.pointerId,
-    booking,
-    element: bookingElement,
-    originX: event.clientX,
-    originY: event.clientY,
-    grabOffsetY:
-      Math.max(0, event.clientY - rect.top),
-    moved: false,
-    target: null,
-    targetLane: null,
-    conflict: null
-  };
-
-  bookingElement.setPointerCapture?.(
-    event.pointerId
-  );
-});
-
-$('#calendar').addEventListener('pointermove', event => {
-  if (!bookingDragState ||
-      event.pointerId !== bookingDragState.pointerId) {
-    return;
-  }
-
-  const active = bookingDragState;
-
-  const distance = Math.hypot(
-    event.clientX - active.originX,
-    event.clientY - active.originY
-  );
-
-  if (!active.moved && distance < 6) return;
-
-  active.moved = true;
-  event.preventDefault();
-  active.element.classList.add('being-dragged');
-
-  const lane = laneUnderPointer(
-    event.clientX,
-    event.clientY,
-    active.element
-  );
-
-  if (!lane?.dataset.room ||
-      !lane?.dataset.date) {
-    active.target = null;
-    active.targetLane = null;
-    clearBookingDropPreview();
-    return;
-  }
-
-  const room = roomById(lane.dataset.room);
-
-  if (!room ||
-      room.active === false ||
-      room.status === 'maintenance' ||
-      room.status === 'out_of_service') {
-    active.target = null;
-    active.targetLane = null;
-    clearBookingDropPreview();
-    return;
-  }
-
-  const target = bookingDropTarget(
-    lane,
-    event.clientY,
-    active.booking,
-    active.grabOffsetY
-  );
-
-  if (!target) return;
-
-  const conflict =
-    conflictFor(
-      target.roomId,
-      target.date,
-      target.start,
-      target.end,
-      active.booking.id
-    );
-
-  active.target = target;
-  active.targetLane = lane;
-  active.conflict = conflict || null;
-
-  paintBookingDropPreview(
-    lane,
-    target,
-    active.booking,
-    Boolean(conflict)
-  );
-
-  updateAvailabilityStatus(
-    target.roomId,
-    target.date,
-    target.start,
-    target.end,
-    active.booking.id
-  );
-});
-
-window.addEventListener('pointerup', async event => {
-  if (!bookingDragState ||
-      event.pointerId !== bookingDragState.pointerId) {
-    return;
-  }
-
-  const active = bookingDragState;
-  bookingDragState = null;
-
-  active.element.classList.remove('being-dragged');
-
-  if (!active.moved) {
-    clearBookingDropPreview();
-    return;
-  }
-
-  suppressBookingClick = true;
-
-  setTimeout(() => {
-    suppressBookingClick = false;
-  }, 0);
-
-  const target = active.target;
-  const conflict = active.conflict;
-
-  clearBookingDropPreview();
-
-  if (!target) {
-    notice('Movimiento cancelado: suelta la reservación dentro de una sala disponible.');
-    return;
-  }
-
-  if (conflict) {
-    notice(
-      conflict.type === 'block'
-        ? `No se puede mover: existe un bloqueo ${conflict.start}–${conflict.end}.`
-        : `No se puede mover: ${conflict.label} ya ocupa ${conflict.start}–${conflict.end}.`
-    );
-    return;
-  }
-
-  const unchanged =
-    target.roomId === active.booking.roomId &&
-    target.date === active.booking.date &&
-    target.start === active.booking.start &&
-    target.end === active.booking.end;
-
-  if (unchanged) {
-    notice('La reservación quedó en el mismo lugar.');
-    return;
-  }
-
-  try {
-    ensureOnline();
-
-    const result = await repository.saveBooking(
-      {
-        ...active.booking,
-        roomId: target.roomId,
-        date: target.date,
-        start: target.start,
-        end: target.end
-      },
-      currentUser?.email,
-      state.settings
-    );
-    upsertBookingLocal(result.booking);
-    signalSuccessfulAgendaMutation({
-      entity: 'booking',
-      id: result.booking.id,
-      date: result.booking.date,
-      previousDate: result.before?.date || '',
-      action: 'move',
-      roomId: result.booking.roomId
-    });
-    render();
-
-    notice(
-      `Reservación movida a ${roomShort(target.roomId)} · ${target.date} · ${target.start}–${target.end}.`
-    );
-  } catch (error) {
-    notice(
-      error.message ||
-      'No se pudo mover la reservación.'
-    );
-  }
-});
-
-window.addEventListener('pointercancel', event => {
-  if (!bookingDragState ||
-      event.pointerId !== bookingDragState.pointerId) {
-    return;
-  }
-
-  bookingDragState.element?.classList.remove('being-dragged');
-  bookingDragState = null;
-  clearBookingDropPreview();
-});
-
-
-// ---------------------------------------------------------
-// SELECCIÓN DE NUEVO HORARIO
-// ---------------------------------------------------------
-
-$('#calendar').addEventListener('pointerdown', event => {
-  const slot = event.target.closest('.slot');
-
-  if (!slot ||
-      event.target.closest('.booking') ||
-      event.button !== 0 ||
-      !isOnline ||
-      slot.disabled) {
-    return;
-  }
-
-  event.preventDefault();
-
-  const lane = slot.closest('.lane');
-  const slots = Array.from(
-    lane.querySelectorAll('.slot')
-  );
-
-  const index = slots.indexOf(slot);
-
-  dragState = {
-    pointerId: event.pointerId,
-    lane,
-    slots,
-    startIndex: index,
-    endIndex: index,
-    moved: false,
-    roomId: slot.dataset.room,
-    date: slot.dataset.date
-  };
-
-  slot.setPointerCapture?.(event.pointerId);
-  paintDragSelection();
-
-  const start =
-    timeLabel(
-      dayStartMinutes() +
-      index * slotMinutesValue()
-    );
-
-  const end =
-    timeLabel(
-      Math.min(
-        dayEndMinutes(),
-        minutes(start) +
-        Math.max(60, slotMinutesValue())
-      )
-    );
-
-  updateAvailabilityStatus(
-    dragState.roomId,
-    dragState.date,
-    start,
-    end
-  );
-});
-
-$('#calendar').addEventListener('pointermove', event => {
-  if (!dragState ||
-      event.pointerId !== dragState.pointerId) {
-    return;
-  }
-
-  const target =
-    document
-      .elementFromPoint(
-        event.clientX,
-        event.clientY
-      )
-      ?.closest?.('.slot');
-
-  if (!target ||
-      target.closest('.lane') !== dragState.lane) {
-    return;
-  }
-
-  const index =
-    dragState.slots.indexOf(target);
-
-  if (index < 0 ||
-      index === dragState.endIndex) {
-    return;
-  }
-
-  dragState.endIndex = index;
-  dragState.moved =
-    dragState.moved ||
-    index !== dragState.startIndex;
-
-  paintDragSelection();
-
-  const [from, to] = [
-    dragState.startIndex,
-    dragState.endIndex
-  ].sort((a, b) => a - b);
-
-  const start =
-    timeLabel(
-      dayStartMinutes() +
-      from * slotMinutesValue()
-    );
-
-  const end =
-    timeLabel(
-      Math.min(
-        dayEndMinutes(),
-        dayStartMinutes() +
-        (to + 1) * slotMinutesValue()
-      )
-    );
-
-  updateAvailabilityStatus(
-    dragState.roomId,
-    dragState.date,
-    start,
-    end
-  );
-});
-
-window.addEventListener('pointerup', event => {
-  if (!dragState ||
-      event.pointerId !== dragState.pointerId) {
-    return;
-  }
-
-  const active = dragState;
-
-  const [from, to] = [
-    active.startIndex,
-    active.endIndex
-  ].sort((a, b) => a - b);
-
-  const start =
-    timeLabel(
-      dayStartMinutes() +
-      from * slotMinutesValue()
-    );
-
-  const end = active.moved
-    ? timeLabel(
-        Math.min(
-          dayEndMinutes(),
-          dayStartMinutes() +
-          (to + 1) * slotMinutesValue()
-        )
-      )
-    : timeLabel(
-        Math.min(
-          dayEndMinutes(),
-          dayStartMinutes() +
-          from * slotMinutesValue() +
-          Math.max(60, slotMinutesValue())
-        )
-      );
-
-  const conflict =
-    updateAvailabilityStatus(
-      active.roomId,
-      active.date,
-      start,
-      end
-    );
-
-  dragState = null;
-  clearDragSelection();
-
-  if (conflict) {
-    notice(
-      conflict.type === 'block'
-        ? 'Ese horario está bloqueado administrativamente.'
-        : `Ese horario ya está ocupado por ${conflict.label} (${conflict.start}–${conflict.end}).`
-    );
-    return;
-  }
-
-  openBooking({
-    roomId: active.roomId,
-    date: active.date,
-    start,
-    end
-  });
-});
-
-
-// ---------------------------------------------------------
-// NAVEGACIÓN DE SEMANA
-// ---------------------------------------------------------
-
-$('#previous').onclick = () => {
-  week = addDays(week, -7);
-  quickView = 'week';
-  selectedDay = 0;
-  refreshVisibleRange();
-};
-
-$('#next').onclick = () => {
-  week = addDays(week, 7);
-  quickView = 'week';
-  selectedDay = 0;
-  refreshVisibleRange();
-};
-
-$('#current-week').onclick = () => {
-  const targetWeek = monday(new Date());
-  const sameWeek = dateKey(targetWeek) === dateKey(week);
-  week = targetWeek;
-  quickView = 'week';
-  selectedDay = 0;
-  if (sameWeek) render();
-  else refreshVisibleRange();
-};
-
-
-// ---------------------------------------------------------
-// FORMULARIO DE RESERVACIÓN
-// ---------------------------------------------------------
-
-$('#booking-form').elements.start.onchange = event => {
-  const end = $('#booking-form').elements.end;
-
-  if (minutes(end.value) <=
-      minutes(event.target.value)) {
-    end.value =
-      timeLabel(
-        Math.min(
-          minutes(event.target.value) +
-          Math.max(60, slotMinutesValue()),
-          dayEndMinutes()
-        )
-      );
-  }
-};
-
-$('#booking-form').elements.date.onchange = event => {
-  setDefaultRepeatUntil(event.target.value);
-
-  if ($('#booking-form').elements.repeatEnabled.checked) {
-    ensureRepeatWeekday();
-  }
-};
-
-$('#repeat-enabled').onchange =
-  toggleRepeatOptions;
-
-$('#booking-color-palette').onclick = event => {
-  const button =
-    event.target.closest('[data-color-key]');
-
-  if (!button) return;
-
-  selectBookingColor(
-    button.dataset.colorKey
-  );
-};
-
-$('#booking-form').onsubmit = async event => {
-  event.preventDefault();
-
-  const form = event.currentTarget;
-  const button =
-    form.querySelector('[type=submit]');
-
-  button.disabled = true;
-
-  try {
-    ensureOnline();
-
-    const bookings =
-      createBookingSeries(form);
-
-    const base = bookings[0];
-
-
-    if (bookings.length > 1) {
-      const result = await repository.saveBookings(
-        bookings,
-        currentUser?.email,
-        state.settings
-      );
-      for (const booking of result.bookings) {
-        upsertBookingLocal(booking);
-        signalSuccessfulAgendaMutation({
-          entity: 'booking',
-          id: booking.id,
-          date: booking.date,
-          action: 'create',
-          roomId: booking.roomId
-        });
-      }
-    } else {
-      const result = await repository.saveBooking(
-        base,
-        currentUser?.email,
-        state.settings
-      );
-      upsertBookingLocal(result.booking);
-      signalSuccessfulAgendaMutation({
-        entity: 'booking',
-        id: result.booking.id,
-        date: result.booking.date,
-        previousDate: result.before?.date || '',
-        action: result.before ? 'update' : 'create',
-        roomId: result.booking.roomId
-      });
-    }
-
-    const rangeBeforeSave = visibleRange();
-
-    week = monday(
-      parseDate(base.date)
-    );
-
-    const rangeAfterSave = visibleRange();
-    const changedVisibleRange =
-      rangeBeforeSave.from !== rangeAfterSave.from ||
-      rangeBeforeSave.to !== rangeAfterSave.to;
-
-    quickView = 'week';
-    selectedRoom = 'all';
-
-    $('#booking-dialog').close();
-
-    notice(
-      bookings.length > 1
-        ? `${bookings.length} reservaciones guardadas.`
-        : 'Reservación guardada.'
-    );
-
-    if (changedVisibleRange) {
-      refreshVisibleRange();
-    } else {
-      render();
-    }
-  } catch (error) {
-    $('#booking-error').textContent =
-      error.message;
-  } finally {
-    button.disabled = false;
-  }
-};
-
-$('#duplicate-booking').onclick = () => {
-  if (!currentBooking) return;
-
-  const copy = {
-    id: '',
-    roomId: currentBooking.roomId,
-    date: currentBooking.date,
-    start: currentBooking.start,
-    end: currentBooking.end,
-    teacher: currentBooking.teacher,
-    group: currentBooking.group,
-    activity: currentBooking.activity,
-    colorKey:
-      currentBooking.colorKey ||
-      defaultColorKey(
-        currentBooking.createdByEmail ||
-        currentUser?.email
-      )
-  };
-
-  $('#detail-dialog').close();
-  $('#admin-dialog').close();
-
-  openBooking(copy);
-  $('#booking-title').textContent =
-    'Duplicar reservación';
-};
-
-$('#edit-booking').onclick = () => {
-  if (!currentBooking) return;
-
-  $('#detail-dialog').close();
-  $('#admin-dialog').close();
-
-  openBooking(currentBooking);
-};
-
-$('#cancel-booking').onclick = () => {
-  if (!currentBooking) return;
-
-  confirmActionDialog(
-    '¿Cancelar esta reservación?',
-    `${currentBooking.teacher} · ${currentBooking.start}–${currentBooking.end}. El horario volverá a quedar disponible, pero el historial se conservará.`,
-    async () => {
-      ensureOnline();
-
-        const result = await repository.cancelBooking(
-        currentBooking.id,
-        currentUser?.email
-      );
-      upsertBookingLocal(result.booking);
-      signalSuccessfulAgendaMutation({
-        entity: 'booking',
-        id: result.booking.id,
-        date: result.booking.date,
-        action: 'cancel',
-        roomId: result.booking.roomId
-      });
-      render();
-
-      $('#detail-dialog').close();
-      notice('Reservación cancelada.');
-    },
-    'Cancelar reservación'
-  );
-};
-
-$('#cancel-series').onclick = () => {
-  if (!currentBooking?.seriesId) return;
-
-  confirmActionDialog(
-    '¿Cancelar toda la serie?',
-    'Se cancelarán las reservaciones activas de esta serie y se liberarán sus horarios. El historial permanecerá en Firestore.',
-    async () => {
-      ensureOnline();
-
-        const result = await repository.cancelSeries(
-        currentBooking.seriesId,
-        currentUser?.email
-      );
-      for (const booking of result.bookings || []) {
-        upsertBookingLocal(booking);
-        signalSuccessfulAgendaMutation({
-          entity: 'booking',
-          id: booking.id,
-          date: booking.date,
-          action: 'cancel',
-          roomId: booking.roomId
-        });
-      }
-      render();
-
-      $('#detail-dialog').close();
-      notice('Serie cancelada.');
-    },
-    'Cancelar serie'
-  );
-};
-
-$('#restore-booking').onclick = () => {
-  if (!currentBooking) return;
-
-  confirmActionDialog(
-    '¿Restaurar esta reservación?',
-    'Se comprobará nuevamente que la sala y el horario estén disponibles.',
-    async () => {
-      ensureOnline();
-
-        const result = await repository.restoreBooking(
-        currentBooking.id,
-        currentUser?.email
-      );
-      upsertBookingLocal(result.booking);
-      signalSuccessfulAgendaMutation({
-        entity: 'booking',
-        id: result.booking.id,
-        date: result.booking.date,
-        action: 'restore',
-        roomId: result.booking.roomId
-      });
-      render();
-
-      $('#detail-dialog').close();
-      notice('Reservación restaurada.');
-
-      if ($('#admin-dialog').open) {
-        await loadAdminReservations();
-      }
-    },
-    'Restaurar'
-  );
-};
-
-
-// ---------------------------------------------------------
-// CONFIRMACIÓN
-// ---------------------------------------------------------
-
-$('#cancel-confirm').onclick = () =>
-  $('#confirm-dialog').close();
-
-$('#confirm-action').onclick = async event => {
-  const button = event.currentTarget;
-  button.disabled = true;
-
-  try {
-    await confirmAction?.();
-    $('#confirm-dialog').close();
-  } catch (error) {
-    $('#confirm-error').textContent =
-      error.message;
-  } finally {
-    button.disabled = false;
-  }
-};
-
-
-// ---------------------------------------------------------
-// ADMINISTRACIÓN
-// ---------------------------------------------------------
-
-$('#block-room').onclick = () => {
-  if (!currentUser) return;
-
-  if (!isOnline) {
-    notice('Sin conexión: no se pueden bloquear salas.');
-    return;
-  }
-
-  openGeneralBlock();
-};
-
-$('#manage').onclick = openAdmin;
-
-$('#admin-tabs').onclick = event => {
-  const button =
-    event.target.closest('[data-admin-tab]');
-
-  if (!button) return;
-
-  openAdminTab(button.dataset.adminTab);
-};
-
-$('#admin-res-load').onclick =
-  loadAdminReservations;
-
-$('#admin-res-search').oninput =
-  renderAdminReservationRows;
-
-$('#admin-res-room').onchange =
-  renderAdminReservationRows;
-
-$('#admin-res-status').onchange =
-  renderAdminReservationRows;
-
-$('#admin-res-list').onclick = async event => {
-  const view =
-    event.target.closest('[data-admin-booking-view]');
-
-  const edit =
-    event.target.closest('[data-admin-booking-edit]');
-
-  const move =
-    event.target.closest('[data-admin-booking-move]');
-
-  const duplicate =
-    event.target.closest('[data-admin-booking-duplicate]');
-
-  const cancel =
-    event.target.closest('[data-admin-booking-cancel]');
-
-  const restore =
-    event.target.closest('[data-admin-booking-restore]');
-
-  const id =
-    view?.dataset.adminBookingView ||
-    edit?.dataset.adminBookingEdit ||
-    move?.dataset.adminBookingMove ||
-    duplicate?.dataset.adminBookingDuplicate ||
-    cancel?.dataset.adminBookingCancel ||
-    restore?.dataset.adminBookingRestore;
-
-  if (!id) return;
-
-  const booking =
-    adminBookings.find(item =>
-      item.id === id
-    );
-
-  if (!booking) return;
-
-  currentAdminBooking = booking;
-
-  if (view) {
-    showBookingDetails(booking);
-    return;
-  }
-
-  if (edit) {
-    $('#admin-dialog').close();
-    openBooking(booking);
-    return;
-  }
-
-  if (move) {
-    $('#admin-dialog').close();
-    openBooking(booking);
-    $('#booking-title').textContent = 'Mover reservación';
-    return;
-  }
-
-  if (duplicate) {
-    currentBooking = booking;
-    $('#admin-dialog').close();
-    $('#duplicate-booking').click();
-    return;
-  }
-
-  if (cancel) {
-    confirmActionDialog(
-      '¿Cancelar esta reservación?',
-      `${booking.teacher} · ${booking.date} · ${booking.start}–${booking.end}`,
-      async () => {
-        ensureOnline();
-
-            const result = await repository.cancelBooking(
-          booking.id,
-          currentUser?.email
-        );
-        upsertBookingLocal(result.booking);
-        signalSuccessfulAgendaMutation({
-          entity: 'booking',
-          id: result.booking.id,
-          date: result.booking.date,
-          action: 'cancel',
-          roomId: result.booking.roomId
-        });
-        render();
-
-        notice('Reservación cancelada.');
-        await loadAdminReservations();
-      },
-      'Cancelar reservación'
-    );
-    return;
-  }
-
-  if (restore) {
-    confirmActionDialog(
-      '¿Restaurar esta reservación?',
-      'Se comprobará nuevamente que el horario esté disponible.',
-      async () => {
-        ensureOnline();
-
-            const result = await repository.restoreBooking(
-          booking.id,
-          currentUser?.email
-        );
-        upsertBookingLocal(result.booking);
-        signalSuccessfulAgendaMutation({
-          entity: 'booking',
-          id: result.booking.id,
-          date: result.booking.date,
-          action: 'restore',
-          roomId: result.booking.roomId
-        });
-        render();
-
-        notice('Reservación restaurada.');
-        await loadAdminReservations();
-      },
-      'Restaurar'
-    );
-  }
-};
-
-$('#room-form-reset').onclick =
-  resetRoomForm;
-
-$('#room-form').onsubmit = async event => {
-  event.preventDefault();
-
-  const form = event.currentTarget;
-  const button =
-    form.querySelector('[type=submit]');
-
-  button.disabled = true;
-  $('#room-error').textContent = '';
-
-  try {
-    ensureOnline();
-
-    const data = new FormData(form);
-
-    const savedRoom = await repository.saveRoom(
-      String(data.get('id') || ''),
-      {
-        name: data.get('name'),
-        short: data.get('short'),
-        building: data.get('building'),
-        floor: data.get('floor'),
-        capacity: data.get('capacity'),
-        equipment: data.get('equipment'),
-        status: data.get('status'),
-        notes: data.get('notes')
-      },
-      currentUser?.email
-    );
-
-    upsertRoomLocal(savedRoom);
-    resetRoomForm();
-    notice('Sala guardada.');
-    renderAdminRoomLists();
-    render();
-  } catch (error) {
-    $('#room-error').textContent =
-      error.message;
-  } finally {
-    button.disabled = false;
-  }
-};
-
-$('#panel-rooms').onclick = event => {
-  const edit =
-    event.target.closest('[data-room-edit]');
-
-  const disable =
-    event.target.closest('[data-room-disable]');
-
-  const enable =
-    event.target.closest('[data-room-enable]');
-
-  const removeBlock =
-    event.target.closest('[data-block-remove]');
-
-  if (edit) {
-    const room =
-      adminRooms.find(item =>
-        item.id === edit.dataset.roomEdit
-      );
-
-    if (!room) return;
-
-    const form = $('#room-form');
-
-    form.elements.id.value = room.id;
-    form.elements.name.value = room.name || '';
-    form.elements.short.value = defaultRoomShort(room);
-    form.elements.building.value = room.building || '';
-    form.elements.floor.value = room.floor || '';
-    form.elements.capacity.value = room.capacity || '';
-    form.elements.equipment.value =
-      (room.equipment || []).join(', ');
-    form.elements.status.value =
-      room.status || 'available';
-    form.elements.notes.value =
-      room.notes || '';
-
-    $('#room-form-title').textContent =
-      'Editar sala';
-
-    form.scrollIntoView({
-      behavior: 'smooth',
-      block: 'start'
-    });
-
-    return;
-  }
-
-  if (disable) {
-    const id = disable.dataset.roomDisable;
-    const room =
-      adminRooms.find(item => item.id === id);
-
-    confirmActionDialog(
-      '¿Desactivar esta sala?',
-      `${room?.name || 'La sala'} dejará de aceptar nuevas reservaciones, pero todo su historial permanecerá intacto.`,
-      async () => {
-        ensureOnline();
-
-        const savedRoom = await repository.setRoomActive(
-          id,
-          false,
-          currentUser?.email
-        );
-
-        upsertRoomLocal(savedRoom);
-        notice('Sala desactivada.');
-        renderAdminRoomLists();
-        render();
-      },
-      'Desactivar'
-    );
-
-    return;
-  }
-
-  if (enable) {
-    const id = enable.dataset.roomEnable;
-
-    confirmActionDialog(
-      '¿Reactivar esta sala?',
-      'La sala volverá a estar disponible según su estado operativo.',
-      async () => {
-        ensureOnline();
-
-        const savedRoom = await repository.setRoomActive(
-          id,
-          true,
-          currentUser?.email
-        );
-
-        upsertRoomLocal(savedRoom);
-        notice('Sala reactivada.');
-        renderAdminRoomLists();
-        render();
-      },
-      'Reactivar'
-    );
-
-    return;
-  }
-
-  if (removeBlock) {
-    const id = removeBlock.dataset.blockRemove;
-
-    confirmActionDialog(
-      '¿Quitar este bloqueo?',
-      'El horario volverá a estar disponible para reservaciones.',
-      async () => {
-        ensureOnline();
-
-            const removed = await repository.deleteRoomBlock(
-          id,
-          currentUser?.email
-        );
-        state.blocks = state.blocks.filter(item => item.id !== id);
-        if (removed) {
-          signalSuccessfulAgendaMutation({
-            entity: 'roomBlock',
-            id: removed.id,
-            date: removed.date,
-            action: 'remove',
-            roomId: removed.roomId
-          });
+          <div class="area-buttons ${needsArea?'attention-target':''}">
+            ${['1','2','3','12','13','23','123'].map(code=>`<button class="mini area ${originCode(a)===code?'on':''}" aria-label="Área de conocimiento ${code}" title="${originTooltip(code)}" ${!['X','XX'].includes(a.status)?'disabled':''} onclick="setOriginCode('${p.id}',${s},${c},decodeURIComponent('${enc}'),'${code}')">${code}</button>`).join('')}
+          </div>
+          <label class="coord-row-check ${rowCoordinatorChecked(p.id,s,c)?'on':''}" title="Marque únicamente si ya coordinó esta materia.">
+            <input type="checkbox" aria-label="¿Has coordinado ${subjectCase(name)}?" ${rowCoordinatorChecked(p.id,s,c)?'checked':''} ${rowCoordinatorEnabled(p.id,s,c,name)?'':'disabled'} onchange="toggleCoordinator('${p.id}','${s}|${c}',this.checked)">
+            <span>✓</span>
+          </label>
+          <button class="ideal-btn ${a.ideal?'on':''}" aria-label="${a.ideal?'Quitar de favoritas':'Marcar como favorita'}" title="${a.ideal?'Materia favorita':'Marcar como favorita'}" onclick="toggleIdeal('${p.id}',${s},${c},decodeURIComponent('${enc}'))">${a.ideal?'★':'☆'}</button>`;
+        }else{
+          h+=`<div class="control-placeholder"></div><div class="control-placeholder"></div><div class="control-placeholder"></div><div class="control-placeholder"></div>`;
         }
-        render();
-
-        notice('Bloqueo eliminado.');
-        await loadAdminRoomBlocks();
-      },
-      'Quitar bloqueo'
-    );
-  }
-};
-
-$('#general-block-mode').onchange = updateGeneralBlockModeUI;
-
-$('#general-block-form').elements.date.onchange = event => {
-  const form = $('#general-block-form');
-
-  if (!form.elements.dateTo.value || form.elements.dateTo.value < event.target.value) {
-    form.elements.dateTo.value = event.target.value;
-  }
-};
-
-$('#general-block-form').onsubmit = async event => {
-  event.preventDefault();
-
-  const form = event.currentTarget;
-  const button = form.querySelector('[type=submit]');
-  button.disabled = true;
-  $('#general-block-error').textContent = '';
-
-  try {
-    ensureOnline();
-
-    const blocks = buildRoomBlocks(form);
-
-    if (blocks.length === 1) {
-      const saved = await repository.saveRoomBlock(
-        blocks[0],
-        currentUser?.email
-      );
-      upsertBlockLocal(saved);
-      signalSuccessfulAgendaMutation({
-        entity: 'roomBlock', id: saved.id, date: saved.date,
-        action: 'create', roomId: saved.roomId
-      });
-    } else {
-      const saved = await repository.saveRoomBlocks(
-        blocks,
-        currentUser?.email
-      );
-      for (const block of saved) {
-        upsertBlockLocal(block);
-        signalSuccessfulAgendaMutation({
-          entity: 'roomBlock', id: block.id, date: block.date,
-          action: 'create', roomId: block.roomId
-        });
       }
-    }
-    render();
 
-    $('#general-block-dialog').close();
 
-    notice(
-      blocks.length === 1
-        ? 'Sala bloqueada.'
-        : `${blocks.length} días bloqueados.`
-    );
+      h+=`</div>`;
+    });
+    h+='</div>';
+  });
 
-  } catch (error) {
-    $('#general-block-error').textContent = error.message;
-  } finally {
-    button.disabled = false;
+
+  const lastProgram=currentProgramIndex===programs().length-1;
+  h+=`</div></div>
+    <div class="program-save">
+      <small>${st.missing?'Las filas resaltadas indican información pendiente.':'Programa completo.'}</small>
+      <div class="program-save-actions">
+        <button class="save-btn" onclick="saveAndNextProgram()">${lastProgram?'Guardar y continuar a revisión →':'Guardar y continuar →'}</button>
+      </div>
+    </div>
+  </article>`;
+
+
+  $('programs').innerHTML=h;
+  const flowBtn=$('flowNextBtn');
+  if(flowBtn){
+    flowBtn.textContent=lastProgram?'Guardar y continuar a revisión →':'Guardar y continuar →';
+    flowBtn.onclick=()=>saveAndNextProgram();
   }
+  requestAnimationFrame(adjustSemesterColumnWidths);
+  // En cada clic académico actualizamos solo el programa visible; las validaciones globales
+  // quedan para los cambios de etapa. Esto evita recorridos repetidos de todos los programas.
+  updateProgress();
+  applyEditState();
+  refreshCaptureErrorState();
+}
+window.backToProgramProfile=function(){
+  currentProgramIndex=0;
+  store.currentProgramIndex=0;
+  if(sequentialProfessorMode()){
+    workflowState.profileConfirmed=profileLooksComplete();
+    workflowState.expectedProgramIndex=0;
+    workflowState.reviewUnlocked=false;
+  }
+  persist({touch:false,schedule:false});
+  renderCurrentProgram();
+  activateViewDirect('captura');
+  updateNavState();
+  requestAnimationFrame(()=>window.scrollTo({top:Math.max(0,($('captura')?.offsetTop||0)-55),behavior:'smooth'}));
+  return true;
 };
 
-$('#block-mode').onchange = updateBlockModeUI;
-
-$('#block-form').elements.date.onchange = event => {
-  const form = $('#block-form');
-
-  if (
-    form.elements.dateTo &&
-    (!form.elements.dateTo.value || form.elements.dateTo.value < event.target.value)
-  ) {
-    form.elements.dateTo.value = event.target.value;
-  }
-};
-
-$('#block-form').onsubmit = async event => {
-  event.preventDefault();
-
-  const form = event.currentTarget;
-  const button = form.querySelector('[type=submit]');
-
-  button.disabled = true;
-  $('#block-error').textContent = '';
-
-  try {
-    ensureOnline();
-
-    const blocks = buildRoomBlocks(form);
-
-    if (blocks.length === 1) {
-      const saved = await repository.saveRoomBlock(
-        blocks[0],
-        currentUser?.email
-      );
-      upsertBlockLocal(saved);
-      signalSuccessfulAgendaMutation({
-        entity: 'roomBlock', id: saved.id, date: saved.date,
-        action: 'create', roomId: saved.roomId
-      });
-    } else {
-      const saved = await repository.saveRoomBlocks(
-        blocks,
-        currentUser?.email
-      );
-      for (const block of saved) {
-        upsertBlockLocal(block);
-        signalSuccessfulAgendaMutation({
-          entity: 'roomBlock', id: block.id, date: block.date,
-          action: 'create', roomId: block.roomId
-        });
-      }
-    }
-    render();
-
-    form.reset();
-    populateBlockFormOptions();
-
-    notice(
-      blocks.length === 1
-        ? 'Bloqueo agregado.'
-        : `${blocks.length} días bloqueados.`
-    );
-
-    await loadAdminRoomBlocks();
-  } catch (error) {
-    $('#block-error').textContent = error.message;
-  } finally {
-    button.disabled = false;
-  }
-};
-
-$('#user-form').onsubmit = async event => {
-  event.preventDefault();
-
-  const form = event.currentTarget;
-  const button =
-    form.querySelector('[type=submit]');
-
-  button.disabled = true;
-  $('#user-error').textContent = '';
-
-  try {
-    ensureOnline();
-
-    await repository.saveAuthorizedUser(
-      form.elements.name.value,
-      form.elements.email.value,
-      currentUser?.email
-    );
-
-    form.reset();
-    notice('Usuario autorizado o reactivado.');
-    await loadAdminUsers();
-  } catch (error) {
-    $('#user-error').textContent =
-      error.message;
-  } finally {
-    button.disabled = false;
-  }
-};
-
-$('#users-list').onclick = event => {
-  const revoke =
-    event.target.closest('[data-user-revoke]');
-
-  const enable =
-    event.target.closest('[data-user-enable]');
-
-  if (revoke) {
-    const email =
-      revoke.dataset.userRevoke;
-
-    confirmActionDialog(
-      '¿Revocar acceso?',
-      `La cuenta ${email} dejará de poder entrar, pero su historial se conservará.`,
-      async () => {
-        ensureOnline();
-
-        await repository.setAuthorizedUserActive(
-          email,
-          false,
-          currentUser?.email
-        );
-
-        notice('Acceso revocado.');
-        await loadAdminUsers();
-      },
-      'Revocar acceso'
-    );
-
+window.prevProgram=function(){
+  if(currentProgramIndex<=0){
+    workflowState.profileConfirmed=false;
+    workflowState.expectedProgramIndex=0;
+    workflowState.reviewUnlocked=false;
+    currentProgramIndex=0;
+    window.go('perfil',true);
     return;
   }
 
-  if (enable) {
-    const email =
-      enable.dataset.userEnable;
-
-    confirmActionDialog(
-      '¿Reactivar acceso?',
-      `La cuenta ${email} volverá a poder utilizar la agenda.`,
-      async () => {
-        ensureOnline();
-
-        await repository.setAuthorizedUserActive(
-          email,
-          true,
-          currentUser?.email
-        );
-
-        notice('Acceso reactivado.');
-        await loadAdminUsers();
-      },
-      'Reactivar'
-    );
-  }
-};
-
-$('#report-period-type').onchange =
-  toggleReportPeriodFields;
-
-$('#report-month').onchange =
-  updateReportPreview;
-
-$('#report-year').oninput =
-  updateReportPreview;
-
-$('#report-from').onchange =
-  updateReportPreview;
-
-$('#report-to').onchange =
-  updateReportPreview;
-
-$('#report-all-rooms').onchange =
-  syncReportRoomInputs;
-
-$('#report-room-options').onchange = event => {
-  if (event.target.matches(
-    'input[name="reportRoom"]'
-  )) {
-    updateReportPreview();
-  }
-};
-
-$('#report-form').onsubmit = async event => {
-  event.preventDefault();
-
-  const button =
-    event.currentTarget
-      .querySelector('[type=submit]');
-
-  button.disabled = true;
-  $('#report-error').textContent = '';
-
-  try {
-    await exportReport();
-  } catch (error) {
-    $('#report-error').textContent =
-      error.message;
-  } finally {
-    button.disabled = false;
-  }
-};
-
-$('#audit-load').onclick =
-  loadAuditLogs;
-
-$('#settings-form').onsubmit = async event => {
-  event.preventDefault();
-
-  const form = event.currentTarget;
-  const button =
-    form.querySelector('[type=submit]');
-
-  button.disabled = true;
-  $('#settings-error').textContent = '';
-
-  try {
-    ensureOnline();
-
-    const previousRange = visibleRange();
-    const data = new FormData(form);
-
-    const saved =
-      await repository.saveSettings(
-        {
-          startTime: data.get('startTime'),
-          endTime: data.get('endTime'),
-          blockMinutes: data.get('blockMinutes'),
-          repeatLimitDays: data.get('repeatLimitDays'),
-          enabledDays:
-            data.getAll('enabledDays')
-              .map(Number)
-        },
-        currentUser?.email
-      );
-
-    state.settings = normalizeSettings(saved);
-
-    const nextRange = visibleRange();
-    notice('Configuración actualizada.');
-
-    if (previousRange.from !== nextRange.from || previousRange.to !== nextRange.to) {
-      await refreshVisibleRange();
-    } else {
-      render();
-    }
-  } catch (error) {
-    $('#settings-error').textContent =
-      error.message;
-  } finally {
-    button.disabled = false;
-  }
-};
-
-$('#download-backup').onclick = async event => {
-  const button = event.currentTarget;
-  button.disabled = true;
-  $('#backup-status').textContent =
-    'Preparando respaldo…';
-
-  try {
-    const backup =
-      await repository.downloadBackupData();
-
-    const stamp =
-      new Date().toISOString().slice(0, 10);
-
-    downloadJson(
-      backup,
-      `agenda_audiovisuales_respaldo_${stamp}.json`
-    );
-
-    $('#backup-status').textContent =
-      'Respaldo descargado. Firestore no fue modificado.';
-  } catch (error) {
-    $('#backup-status').textContent =
-      error.message;
-  } finally {
-    button.disabled = false;
-  }
-};
-
-
-// ---------------------------------------------------------
-// AUTENTICACIÓN
-// ---------------------------------------------------------
-
-$('#sign-in').onclick = async () => {
-  const button = $('#sign-in');
-  button.disabled = true;
-
-  $('#auth-message').textContent =
-    'Abriendo inicio de sesión de Google…';
-
-  try {
-    await authService.signIn();
-  } catch (error) {
-    const code =
-      String(error?.code || '');
-
-    const friendly = {
-      'auth/popup-blocked':
-        'El navegador bloqueó la ventana de Google. Permite ventanas emergentes para este sitio y vuelve a intentarlo.',
-      'auth/popup-closed-by-user':
-        'La ventana de Google se cerró antes de terminar. Vuelve a intentarlo.',
-      'auth/cancelled-popup-request':
-        'Ya existe una ventana de inicio de sesión abierta.',
-      'auth/network-request-failed':
-        'No se pudo conectar con Google/Firebase. Revisa la conexión y vuelve a intentarlo.',
-      'auth/unauthorized-domain':
-        'Este dominio todavía no está autorizado en Firebase Authentication.'
-    };
-
-    $('#auth-message').textContent =
-      friendly[code] ||
-      error?.message ||
-      'No se pudo iniciar sesión.';
-  } finally {
-    button.disabled = false;
-  }
-};
-
-async function signOutGracefully() {
-  await collaboration.stop();
-  await authService.signOut();
+  currentProgramIndex--;
+  workflowState.expectedProgramIndex=currentProgramIndex;
+  workflowState.reviewUnlocked=false;
+  persist({touch:false,schedule:false});
+  renderCurrentProgram();
+  updateNavState();
+  scrollTo({top:$('captura').offsetTop-55,behavior:'smooth'});
 }
 
-$('#sign-out').onclick = signOutGracefully;
-$('#auth-sign-out').onclick = signOutGracefully;
+window.saveCurrentProgramProgress=async function(show=true){
+  if(!requireEditing())return false;
+  persist({schedule:false});
+  const saved=await saveTeacherChangesNow('guardado manual del Perfil por programa');
+  if(!saved.ok)return false;
+  updateProgress();
+  lockRevisionNav();
+  writeAudit('Avance de Perfil por programa guardado manualmente');
+  if(show)toast(saved.wrote?'Avances guardados en nube.':'Sin cambios nuevos; no fue necesaria otra escritura.');
+  return true;
+}
 
-setInterval(() => {
-  if (currentUser &&
-      !dragState &&
-      !bookingDragState) {
-    render();
+window.saveAndNextProgram=async function(){
+  if(sequentialProfessorMode()){
+    if(!workflowState.profileConfirmed){
+      window.go('perfil',true);
+      toast('Confirme primero Datos del profesor.');
+      return false;
+    }
+
+    if(currentProgramIndex!==workflowState.expectedProgramIndex){
+      currentProgramIndex=Math.max(0,Math.min(workflowState.expectedProgramIndex,programs().length-1));
+      renderCurrentProgram();
+      toast('La revisión debe continuar en el programa que corresponde al orden de captura.');
+      return false;
+    }
   }
-}, 60000);
 
-$('#new').disabled = true;
-showAuth('Comprobando sesión…');
+  if(!canLeaveCurrentProgram())return false;
 
-authService.onChange(async user => {
-  await collaboration.stop();
-  localPresenceActive = false;
-  activePeerCount = 0;
-  collaborationAvailable = true;
-  currentUser = null;
-  clearCurrentGestures();
+  captureValidationEmphasis=false;
+  persist({schedule:false});
+  const saved=await saveTeacherChangesNow(`Guardar y continuar: Programa ${currentProgramIndex+1}`);
+  if(!saved.ok)return false;
 
-  if (!user) {
-    showAuth(
-      'Inicia sesión con una cuenta autorizada para consultar y modificar la agenda compartida.'
-    );
+  toast(saved.wrote?'Programa guardado en nube.':'Programa sin cambios nuevos; no fue necesaria otra escritura.');
+
+  if(currentProgramIndex>=programs().length-1){
+    const v=validateAll();
+
+    if(!v.ok){
+      workflowState.reviewUnlocked=false;
+      showCaptureErrors(v.errors);
+      toast('Todavía existen datos o materias pendientes.');
+      return false;
+    }
+
+    workflowState.expectedProgramIndex=programs().length;
+    workflowState.reviewUnlocked=true;
+    validateAndReview(true);
+    return true;
+  }
+
+  currentProgramIndex++;
+  workflowState.expectedProgramIndex=currentProgramIndex;
+  workflowState.reviewUnlocked=false;
+  persist({touch:false,schedule:false});
+  renderCurrentProgram();
+  updateNavState();
+  scrollTo({top:$('captura').offsetTop-55,behavior:'smooth'});
+  return true;
+}
+
+function validateCapture(stats=null){
+  const x=stats||overallStats(),errs=[];
+  if(x.remainingUnique){
+    const names=(x.pendingUnique||[]).slice(0,4).map(item=>subjectCase(item.name));
+    errs.push(`Falta${x.remainingUnique===1?'':'n'} ${x.remainingUnique} asignatura${x.remainingUnique===1?'':'s'} por revisar${names.length?`: ${names.join(', ')}${x.remainingUnique>names.length?'…':''}`:'.'}`);
+  }
+  if(x.invalid)errs.push(`${x.invalid} asignatura(s) tienen X/XX pero no tienen área de conocimiento.`);
+  return{ok:!errs.length,errors:errs};
+}
+function validateAll(profileResult=null,captureResult=null){
+  const p=profileResult||validateProfile();
+  const c=captureResult||validateCapture();
+  return{ok:p.ok&&c.ok,errors:[...p.errors,...c.errors]};
+}
+function reviewAvailable(completeOverride=null){
+  const complete=typeof completeOverride==='boolean'?completeOverride:validateAll().ok;
+
+  if(sequentialProfessorMode()){
+    return workflowState.reviewUnlocked && complete;
+  }
+
+  return complete || cfg.editingLocked || deadlinePassed() || individualEditBlocked() || submissionLockedForCurrentPeriod();
+}
+
+function profileFinalizedReadOnly(){
+  return submissionLockedForCurrentPeriod()&&!individualEditOverride();
+}
+function reviewActionMode(){
+  if(profileFinalizedReadOnly())return 'finalized';
+  if(!editingAllowed())return 'draft';
+  return 'finalize';
+}
+function updateReviewFinalizeUI(){
+  const mode=reviewActionMode();
+  document.querySelectorAll('.final-print-btn').forEach(btn=>{
+    btn.textContent=mode==='finalized'
+      ?'Imprimir / guardar PDF'
+      :mode==='draft'
+        ?'Imprimir borrador / guardar PDF'
+        :'Finalizar e imprimir / guardar PDF';
+  });
+  const cue=$('reviewFinalizeCue');
+  if(!cue)return;
+  cue.className=`review-finalize-cue no-print ${mode}`;
+  cue.innerHTML=mode==='finalized'
+    ?'<strong>✓ Perfil concluido</strong><span>Puede revisar el documento y volver a imprimirlo o guardarlo en PDF cuando lo necesite.</span>'
+    :mode==='draft'
+      ?'<strong>⚠ Perfil no concluido</strong><span>La edición está bloqueada. Cualquier impresión llevará la marca de agua <b>DOCUMENTO NO FINALIZADO</b>.</span>'
+      :'<strong>➜ Último paso</strong><span>Revise cuidadosamente el contenido. Cuando todo sea correcto, pulse <b>Finalizar e imprimir / guardar PDF</b> para concluir formalmente el perfil.</span>';
+}
+
+function showCaptureErrors(errs){
+  captureErrorModeActive=true;
+  const profileCheck=validateProfile();
+  const issues=captureIssues();
+
+  if(!profileCheck.ok){
+    workflowState.profileConfirmed=false;
+    workflowState.expectedProgramIndex=0;
+    workflowState.reviewUnlocked=false;
+    currentProgramIndex=0;
+    activateViewDirect('perfil');
+    const v=validateProfile({visual:true,focusFirst:true});
+    if($('profileErrors'))$('profileErrors').innerHTML=statusBox(v.errors,'Complete el dato obligatorio señalado.');
+    updateNavState();
+    toast('Señalamos exactamente el dato que falta completar.');
     return;
   }
 
-  try {
-    if (authService.isOwner(user)) {
-      await repository.bootstrapOwner(
-        user.email
-      );
+  if(issues.length){
+    captureValidationEmphasis=true;
+    currentProgramIndex=issues[0].pi;
+    workflowState.expectedProgramIndex=currentProgramIndex;
+    workflowState.reviewUnlocked=false;
+    persist({touch:false,schedule:false});
+    activateViewDirect('captura');
+    renderCurrentProgram();
+    $('captureErrors').innerHTML=captureIssuePanel(issues);
+    updateNavState();
+    requestAnimationFrame(()=>focusExactCaptureIssue(issues[0]));
+  }else{
+    $('captureErrors').innerHTML=statusBox(errs,'No puede pasar a revisión todavía.');
+  }
+}
+
+window.validateAndReview=function(fromSequentialFlow=false){
+  if(editingAllowed())collectProfile();
+  persist();
+
+  const v=validateAll();
+
+  if(sequentialProfessorMode()){
+    const sequenceFinished=
+      fromSequentialFlow===true &&
+      workflowState.profileConfirmed &&
+      workflowState.expectedProgramIndex===programs().length;
+
+    if(!sequenceFinished||!v.ok){
+      workflowState.reviewUnlocked=false;
+      if(!v.ok)showCaptureErrors(v.errors);
+      else toast('Concluya primero todos los programas en orden.');
+      return false;
     }
 
-    const authorized =
-      await repository.isAuthorized(
-        user.email
-      );
+    workflowState.reviewUnlocked=true;
+  }else if(!reviewAvailable()){
+    showCaptureErrors(v.errors);
+    toast('Complete las materias pendientes.');
+    return false;
+  }
 
-    if (!authorized) {
-      showAuth(
-        `La cuenta ${user.email} no está autorizada o tiene el acceso revocado.`,
-        true
+  $('captureErrors').innerHTML='';
+  $('validation').innerHTML=v.ok
+    ?`<div class="status-box ok"><b>Perfil completo.</b><br>La información puede formalizarse e imprimirse.</div>`
+    :`<div class="status-box info"><b>Consulta en modo solo lectura.</b><br>La edición está cerrada, pero puede revisar e imprimir el perfil capturado.</div>`;
+
+  buildPrint();
+  return window.go('revision',true);
+}
+
+function lockRevisionNav(){
+  const btn=$('navRevision');
+  if(!btn)return;
+
+  const locked=sequentialProfessorMode()
+    ?!workflowState.reviewUnlocked
+    :!reviewAvailable();
+
+  btn.classList.toggle('locked',locked);
+}
+
+window.saveAll=function(show=false){if(!requireEditing())return;collectProfile();persist();updateProgress();lockRevisionNav();writeAudit('Perfil guardado manualmente');if(show)toast('Perfil guardado.')}
+
+
+function formatLocalProfileDateTime(ms){
+  const n=Number(ms)||0;
+  if(!n)return '';
+  return new Intl.DateTimeFormat('es-MX',{day:'2-digit',month:'2-digit',year:'numeric',hour:'2-digit',minute:'2-digit',hour12:true}).format(new Date(n));
+}
+function printHeader(){
+  const closedAt=formatLocalProfileDateTime(store.finalizedAtMs);
+  return `<div class="sheetHead">
+    <div class="brandPrint">
+      <img src="logo-uteq-wordmark.svg" class="print-logo">
+      <div class="printBrandText">UNIVERSIDAD TECNOLÓGICA<br>DE QUERÉTARO</div>
+    </div>
+    <div class="sheetTitle"><h2>PERFIL DEL PROFESOR</h2><b>DIVISIÓN: INDUSTRIAL</b><br><span>PERIODO DE VIGENCIA: ${cfg.periodo}</span></div>
+    <div class="quality-plain"><span>${cfg.codigo}</span><span>${cfg.revision}</span><span>Fecha ${cfg.fechaRevision}</span>${closedAt?`<span class="quality-finalized">Cierre ${closedAt}</span>`:''}</div>
+  </div>`;
+}
+function metaCentered(){return `<div class="meta center compactline"><span><b>Nombre:</b> ${printedProfessorName()}</span><span><b>Categoría:</b> ${store.profile?.categoria||''}</span><span><b>Competencia:</b> X = Medio · XX = Alto</span><span><b>Área de conocimiento:</b> 1 Formación · 2 Docencia · 3 Laboral</span></div>`}
+function signatures(){return `<div class="sign"><div class="signature-line">${printedProfessorName()}<br>Firma del Profesor</div><div class="stamp-box">SELLO</div><div class="signature-line">${cfg.jefe}<br>Jefe de Unidad de Coordinación Académica</div></div>`}
+function preambleSheet(){
+  const p=store.profile||{},e=p.extra||{},counts=normalizedProfileRowCounts(p);
+  const formation=Array.from({length:counts.formation},(_,n)=>n+1);
+  const teaching=Array.from({length:counts.docencia},(_,n)=>n+1);
+  const work=Array.from({length:counts.laboral},(_,n)=>n+1);
+  const expanded=(formation.length+teaching.length+work.length)>18?' expanded-profile':'';
+  return `<div class="sheet profile-first-sheet${expanded}">${printHeader()}<div class="meta center compactline first-profile-meta"><span class="first-meta-item"><b class="first-meta-label">Nombre:</b><strong class="first-meta-value">${printedProfessorName()}</strong></span><span class="first-meta-item"><b class="first-meta-label">Categoría:</b><strong class="first-meta-value">${store.profile?.categoria||''}</strong></span></div><table class="profileTable"><tr><th colspan="4">1. FORMACIÓN PROFESIONAL</th></tr>${formation.map(i=>`<tr><td><b>${i===1?'Licenciatura o TSU':`Posgrado ${i-1}`}</b></td><td>${e[`f${i}a`]||''}</td><td><b>Institución</b></td><td>${e[`f${i}b`]||''}</td></tr>`).join('')}<tr><th colspan="4">2. EXPERIENCIA DOCENTE</th></tr>${teaching.map(i=>`<tr><td><b>Institución ${i}</b></td><td colspan="2">${e[`d${i}a`]||''}</td><td><b>Periodo:</b> ${e[`d${i}c`]||''}</td></tr>`).join('')}<tr><th colspan="4">3. EXPERIENCIA LABORAL</th></tr>${work.map(i=>`<tr><td><b>Organización ${i}</b></td><td>${e[`l${i}a`]||''}</td><td><b>Cargo:</b> ${e[`l${i}b`]||''}</td><td><b>Periodo:</b> ${e[`l${i}c`]||''}</td></tr>`).join('')}</table>${signatures()}</div>`;
+}
+function pastelColor(index){
+  return ['#dcecf8','#f5e3d2','#dfeee2','#e8e1f2','#f8e7d7','#dceff0','#f2dde3','#e1ecd7'][index % 8]
+}
+function printProgram(pr, idx){
+  const max=Math.max(...pr.semesters.map(s=>s.length));
+  const pastel=pastelColor(idx);
+  const nSem=Math.max(1,pr.semesters.length),levelW=1.55,areaW=2.05,subjectW=(100/nSem)-levelW-areaW;
+  const colgroup=`<colgroup>${Array.from({length:nSem},()=>`<col class="subject" style="width:${subjectW}%"><col class="level" style="width:${levelW}%"><col class="area" style="width:${areaW}%">`).join('')}</colgroup>`;
+  const th=pr.semesters.map((s,i)=>`<th colspan="3" style="background:${pastel}">${i+1}.° CUATRIMESTRE</th>`).join('');
+  const sub=pr.semesters.map(()=>`<th style="background:${pastel}">Asignatura</th><th class="vhead" style="background:${pastel}">Nivel</th><th class="area-print-head" style="background:${pastel}"><span>Área</span><span>de</span><span>conoc.</span></th>`).join('');
+  let rows='';
+  for(let r=0;r<max;r++){
+    rows+='<tr>'+pr.semesters.map((sem,s)=>{
+      const name=sem[r]||'';
+      if(!name)return '<td></td><td class="level"></td><td class="area"></td>';
+      const a=getAns(pr.id,s,r,name),comp=['X','XX'].includes(a.status)?a.status:'',area=['X','XX'].includes(a.status)?originCode(a):'';
+      return `<td class="subject">${subjectCase(name)}</td><td class="level">${comp}</td><td class="area">${area}</td>`
+    }).join('')+'</tr>'
+  }
+  return `<div class="print-program" style="--program-pastel:${pastel}"><div class="print-program-title" style="background:${pastel}">${pr.name.toUpperCase()} · SALIDA LATERAL: ${pr.exit.toUpperCase()}</div><table class="currTable">${colgroup}<tr>${th}</tr><tr>${sub}</tr>${rows}</table></div>`
+}
+function buildPrint(collectCurrent=true){
+  if(collectCurrent&&editingAllowed())collectProfile();
+  else if(collectCurrent)store.profile=profileFromInputs();
+  const ps=programs();
+  let html=preambleSheet();
+  for(let i=0;i<ps.length;i+=3){
+    const remaining=Math.min(3,ps.length-i);
+    const isLast=(i+3)>=ps.length;
+    const sheetClass=`sheet program-trio${isLast&&remaining<3?' compact-last':''}`;
+    html+=`<div class="${sheetClass}" data-program-count="${remaining}">${printHeader()}${metaCentered()}${printProgram(ps[i],i)}${ps[i+1]?printProgram(ps[i+1],i+1):''}${ps[i+2]?printProgram(ps[i+2],i+2):''}${signatures()}</div>`
+  }
+  $('printArea').innerHTML=html;
+  const draft=!profileFinalizedReadOnly();
+  document.querySelectorAll('#printArea .sheet').forEach(sheet=>{
+    sheet.classList.toggle('draft-document',draft);
+    sheet.querySelector('.draft-watermark')?.remove();
+    if(draft){
+      const mark=document.createElement('div');
+      mark.className='draft-watermark';
+      mark.innerHTML='<strong>DOCUMENTO NO FINALIZADO</strong><span>BORRADOR</span>';
+      sheet.prepend(mark);
+    }
+  });
+  updateReviewFinalizeUI();
+}
+async function finalizeCurrentProfile(){
+  collectProfile();
+  const releaseEditOverride=individualEditOverride();
+
+  const finalCheck=validateAll();
+  if(!finalCheck.ok){
+    throw new Error('No se puede finalizar un perfil con información pendiente.');
+  }
+
+  if(sequentialProfessorMode()&&!workflowState.reviewUnlocked){
+    throw new Error('No se puede finalizar sin concluir el recorrido secuencial.');
+  }
+
+  // V90: finalizar es una acción manual crítica. Primero debe existir una copia confirmada en nube.
+  persist({schedule:false});
+  const preSyncOk=await syncProfileToCloud({reason:'guardado previo a finalización'});
+  if(!preSyncOk){
+    updateCloudStatus('No se pudo confirmar la nube · el perfil NO fue finalizado','warn');
+    return {preSyncOk:false,finalSyncOk:false,finalized:false};
+  }
+
+  const previousFinalState={
+    submittedPeriod:store.submittedPeriod||null,
+    finalizedAtMs:Number(store.finalizedAtMs)||null,
+    individualEditEnabled:!!store.individualEditEnabled,
+    individualEditDisabled:!!store.individualEditDisabled
+  };
+
+  store.submittedPeriod=cfg.periodo;
+  store.finalizedAtMs=Date.now();
+  store.individualEditEnabled=false;
+  store.individualEditDisabled=false;
+  persist({schedule:false});
+
+  const finalSyncOk=await syncProfileToCloud({reason:'confirmación manual de finalización',releaseEditOverride,force:true});
+  if(!finalSyncOk){
+    // Si la confirmación falla, el cliente no se bloquea como finalizado.
+    store.submittedPeriod=previousFinalState.submittedPeriod;
+    store.finalizedAtMs=previousFinalState.finalizedAtMs;
+    store.individualEditEnabled=previousFinalState.individualEditEnabled;
+    store.individualEditDisabled=previousFinalState.individualEditDisabled;
+    store.finalizationCloudConfirmed=false;
+    store.syncPending=true;
+    persist({schedule:false});
+    updateCloudStatus('No se confirmó la finalización en nube · vuelva a intentarlo','warn');
+    applyEditState();updateNavState();
+    return {preSyncOk:true,finalSyncOk:false,finalized:false};
+  }
+
+  store.finalizationCloudConfirmed=true;
+  store.syncPending=false;
+  persistStoreSnapshot();
+  updateCloudStatus('Perfil finalizado y sincronizado','ok');
+  await writeAudit('Perfil finalizado y sincronizado para impresión/guardado PDF');
+  applyEditState();updateNavState();
+  return {preSyncOk:true,finalSyncOk:true,finalized:true};
+}
+
+function profileDocumentBaseName(){
+  const p=store.profile||{};
+  const surnames=[p.apPat,p.apMat].map(x=>String(x||'').trim()).filter(Boolean).join(' ');
+  return `Perfil Académico Docente · DIN · ${surnames||'Profesor'}`;
+}
+function safeProfilePdfFilename(){
+  return `${profileDocumentBaseName().replace(/[\\/:*?"<>|]+/g,' ').replace(/\s+/g,' ').trim()}.pdf`;
+}
+function mobilePrintClient(){
+  const ua=navigator.userAgent||'';
+  return /iPhone|iPad|iPod|Android|Mobile/i.test(ua)
+    || (window.matchMedia&&window.matchMedia('(max-width: 780px)').matches);
+}
+async function createMobileLandscapePdf(){
+  const libsReady=await ensurePdfLibraries();
+  if(!libsReady||!window.html2canvas||!window.jspdf?.jsPDF)return false;
+  const sheets=[...document.querySelectorAll('#printArea .sheet')];
+  if(!sheets.length)return false;
+
+
+  document.body.classList.add('mobile-pdf-capture');
+  try{
+    const {jsPDF}=window.jspdf;
+    const pageW=355.6; // Legal landscape: 14 in
+    const pageH=215.9; // 8.5 in
+    const margin=4;
+    const pdf=new jsPDF({orientation:'landscape',unit:'mm',format:[pageW,pageH],compress:true});
+
+
+    for(let i=0;i<sheets.length;i++){
+      const sheet=sheets[i];
+      if(i>0)pdf.addPage([pageW,pageH],'landscape');
+      const canvas=await window.html2canvas(sheet,{
+        scale:2,
+        useCORS:true,
+        backgroundColor:'#ffffff',
+        logging:false,
+        scrollX:0,
+        scrollY:0,
+        windowWidth:sheet.scrollWidth,
+        windowHeight:sheet.scrollHeight
+      });
+      const maxW=pageW-(margin*2),maxH=pageH-(margin*2);
+      const ratio=Math.min(maxW/canvas.width,maxH/canvas.height);
+      const w=canvas.width*ratio,h=canvas.height*ratio;
+      const x=(pageW-w)/2,y=(pageH-h)/2;
+      pdf.addImage(canvas.toDataURL('image/jpeg',0.94),'JPEG',x,y,w,h,undefined,'FAST');
+    }
+
+
+    pdf.save(safeProfilePdfFilename());
+    return true;
+  }finally{
+    document.body.classList.remove('mobile-pdf-capture');
+  }
+}
+async function openProfilePrintDialog(){
+  if(mobilePrintClient()){
+    try{
+      const generated=await createMobileLandscapePdf();
+      if(generated){
+        toast('PDF horizontal generado.');
+        return;
+      }
+    }catch(e){
+      console.warn('PDF horizontal móvil no disponible; se usará impresión del navegador.',e);
+    }
+  }
+
+
+  document.body.classList.add('printing-profile');
+  const previousTitle=document.title;
+  document.title=profileDocumentBaseName();
+  const cleanup=()=>{
+    document.body.classList.remove('printing-profile');
+    document.title=previousTitle;
+  };
+  window.addEventListener('afterprint',cleanup,{once:true});
+  requestAnimationFrame(()=>setTimeout(()=>window.print(),80));
+}
+
+
+let finalizeDialogResolver=null;
+function showFinalizeDialog(){
+  const modal=$('finalizeProfileModal');
+  if(!modal)return Promise.resolve(window.confirm('¿Finalizar e imprimir / guardar PDF?\n\nLa edición quedará bloqueada para el periodo actual. Para cualquier modificación posterior deberá solicitar al JUCA la habilitación de edición.'));
+  modal.classList.remove('hidden');
+  document.body.classList.add('modal-open');
+  return new Promise(resolve=>{finalizeDialogResolver=resolve});
+}
+window.resolveFinalizeDialog=function(value){
+  const modal=$('finalizeProfileModal');
+  if(modal)modal.classList.add('hidden');
+  document.body.classList.remove('modal-open');
+  const resolver=finalizeDialogResolver;
+  finalizeDialogResolver=null;
+  if(resolver)resolver(!!value);
+}
+window.printProfile=async function(){
+  const v=validateAll();
+
+  if(sequentialProfessorMode()&&(!workflowState.reviewUnlocked||!v.ok)){
+    toast('Concluya primero Datos del profesor y todos los programas en orden.');
+    if(!v.ok)showCaptureErrors(v.errors);
+    return;
+  }
+  if(!reviewAvailable()){
+    window.go('captura',true);
+    showCaptureErrors(v.errors);
+    return;
+  }
+
+
+  if(planningEnabled()){
+    const pv=validatePlanning({visual:true});
+    if(!pv.ok){
+      if($('planningErrors'))$('planningErrors').innerHTML=statusBox(
+        pv.errors,
+        'Antes de finalizar, complete el apartado de Comisiones o seleccione No aplica donde corresponda.'
       );
+      window.go('perfil',true);
+      requestAnimationFrame(()=>$('commissionsBlock')?.scrollIntoView({behavior:'smooth',block:'start'}));
+      toast('Complete el apartado de Comisiones antes de finalizar.');
       return;
     }
-
-    showApp(user);
-    setOnlineState(navigator.onLine);
-    await startRealtime();
-    await startCollaboration(user);
-  } catch (error) {
-    showAuth(
-      error.message ||
-      'No se pudo validar el acceso.',
-      true
-    );
   }
+
+
+  if(isAdmin()){
+    buildPrint();
+    await openProfilePrintDialog();
+    return;
+  }
+  if(submissionLockedForCurrentPeriod() && !individualEditOverride()){
+    buildPrint();
+    await openProfilePrintDialog();
+    return;
+  }
+  if(!editingAllowed()){
+    buildPrint();
+    toast('Documento en modo consulta. La impresión llevará marca de agua porque el perfil no está finalizado.');
+    await openProfilePrintDialog();
+    return;
+  }
+
+
+  if(!v.ok){
+    const proceed=window.confirm(
+      'El perfil no cumple todavía todas las validaciones. Puede imprimir el estado actual, pero NO se marcará como concluido.\n\n¿Desea continuar con la impresión?'
+    );
+    if(proceed){
+      buildPrint();
+      await openProfilePrintDialog();
+    }
+    return;
+  }
+
+
+  const ok=await showFinalizeDialog();
+  if(!ok){
+    toast('La captura permanece abierta.');
+    return;
+  }
+
+
+  const result=await finalizeCurrentProfile();
+  if(!result.finalized){
+    toast('No se confirmó la finalización en nube. El perfil permanece editable y sus datos están conservados localmente.');
+    return;
+  }
+  buildPrint();
+  updateReviewFinalizeUI();
+  toast('Perfil concluido. La edición quedó bloqueada. Para cualquier modificación posterior, consulte a su JUCA.');
+  await openProfilePrintDialog();
+}
+
+
+function toLocalDateTimeValue(ts){
+  if(!ts)return '';
+  const d=new Date(Number(ts)),pad=n=>String(n).padStart(2,'0');
+  return `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+}
+window.saveDeadline=function(){
+  if(!isAdmin())return;
+  const v=$('captureDeadlineAdmin').value;
+  if(!v){toast('Seleccione fecha y hora.');return}
+  const ts=new Date(v).getTime();
+  if(!Number.isFinite(ts)){toast('Fecha u hora no válida.');return}
+  cfg.captureDeadline=ts;cacheGlobalSettings();persist();updateCountdownUI();saveGlobalSettings('Fecha límite de captura actualizada');toast('Fecha límite guardada.');
+}
+window.closeCaptureNow=function(){
+  if(!isAdmin())return;
+  if(!confirm('¿Cerrar la captura para profesores en este momento?'))return;
+  cfg.captureDeadline=Date.now();persist();updateCountdownUI();saveGlobalSettings('Captura cerrada manualmente');toast('Captura cerrada.');
+}
+window.clearDeadline=function(){
+  if(!isAdmin())return;
+  cfg.captureDeadline=null;cacheGlobalSettings();persist();updateCountdownUI();saveGlobalSettings('Fecha límite eliminada');toast('Fecha límite eliminada.');
+}
+
+
+window.saveAdmin=function(){
+  const previousPeriod=cfg.periodo;
+  cfg.jefe=$('jefe').value.trim()||cfg.jefe;
+  cfg.codigo=$('codigo').value.trim()||cfg.codigo;
+  cfg.revision=$('revisionCal').value.trim()||cfg.revision;
+  cfg.fechaRevision=$('fechaRevision').value.trim()||cfg.fechaRevision;
+  cfg.periodo=$('periodoAdmin').value.trim()||cfg.periodo;
+
+
+  cfg.planningEnabled=true;
+
+
+  // El cambio de periodo nunca borra profile, answers, programMeta ni planeaciones de periodos anteriores.
+  updatePeriodBadges();cacheGlobalSettings();persist();updatePlanningAvailability();renderPlanning();
+  saveGlobalSettings(previousPeriod===cfg.periodo?'Configuración institucional actualizada':`Periodo actualizado de ${previousPeriod} a ${cfg.periodo} sin borrar perfiles`);
+  toast(previousPeriod===cfg.periodo?'Configuración guardada.':'Periodo actualizado. El apartado de Comisiones permanece habilitado.');
+}
+
+
+function timestampToMs(value){
+  if(!value)return 0;
+  if(typeof value==='number')return value;
+  if(value instanceof Date)return value.getTime();
+  if(typeof value.toDate==='function')return value.toDate().getTime();
+  if(Number.isFinite(value.seconds))return Number(value.seconds)*1000 + Math.floor((Number(value.nanoseconds)||0)/1e6);
+  return 0;
+}
+function formatTeacherUpdatedAt(value){
+  const ms=timestampToMs(value);
+  if(!ms)return 'Sin fecha registrada';
+  return new Intl.DateTimeFormat('es-MX',{day:'2-digit',month:'short',year:'numeric',hour:'2-digit',minute:'2-digit',hour12:true}).format(new Date(ms));
+}
+function formatTeacherCompletion(d){
+  if(d.submittedPeriod!==cfg.periodo)return 'Sin concluir';
+  const ms=Number(d.finalizedAtMs)||0;
+  if(!ms)return 'Fecha y hora de conclusión no registradas';
+  return new Intl.DateTimeFormat('es-MX',{
+    weekday:'short',
+    day:'2-digit',
+    month:'short',
+    year:'numeric',
+    hour:'2-digit',
+    minute:'2-digit',
+    hour12:true
+  }).format(new Date(ms));
+}
+
+
+
+
+window.refreshTeacherAdminProgress=async function(){
+  if(!isAdmin())return;
+  const btn=$('refreshTeacherProgressBtn');
+  const previous=btn?.textContent||'↻ Actualizar avance';
+  if(btn){
+    btn.disabled=true;
+    btn.textContent='↻ Actualizando…';
+    btn.classList.add('loading');
+  }
+  try{
+    await renderTeacherAdminList();
+    toast('Avance de profesores actualizado.');
+  }catch(e){
+    console.warn('No fue posible actualizar el avance de profesores',e);
+    toast('No fue posible actualizar el avance.');
+  }finally{
+    if(btn){
+      btn.disabled=false;
+      btn.textContent=previous;
+      btn.classList.remove('loading');
+    }
+  }
+}
+
+
+function teacherCaptureProgress(remoteAnswers={}){
+  let totalSubjects=0,completedSubjects=0,totalPrograms=0,completedPrograms=0;
+
+
+  programs().forEach(pr=>{
+    let programTotal=0,programCompleted=0;
+
+
+    pr.semesters.forEach((sem,s)=>sem.forEach((name,c)=>{
+      if(isEnglish(name))return;
+
+
+      programTotal++;
+      totalSubjects++;
+
+
+      const a=remoteAnswers?.[key(pr.id,s,c)]||{status:'pending',origins:[]};
+      const complete=
+        a.status==='off' ||
+        (['X','XX'].includes(a.status) && Array.isArray(a.origins) && a.origins.length>0);
+
+
+      if(complete){
+        programCompleted++;
+        completedSubjects++;
+      }
+    }));
+
+
+    if(programTotal>0){
+      totalPrograms++;
+      if(programCompleted===programTotal)completedPrograms++;
+    }
+  });
+
+
+  const pct=totalSubjects?Math.round((completedSubjects/totalSubjects)*100):0;
+  return {pct,totalSubjects,completedSubjects,totalPrograms,completedPrograms};
+}
+
+
+async function renderTeacherAdminList(){
+  const root=$('teacherAdminList'),summary=$('teacherAdminSummary');
+  if(!root||!summary||!isAdmin())return;
+  if(!db){root.innerHTML='<div class="teacher-empty">Firestore no está disponible en esta sesión.</div>';summary.textContent='Sin conexión';return}
+  root.innerHTML='<div class="teacher-empty">Cargando profesores…</div>';
+  try{
+    const snap=await getDocs(collection(db,'profiles'));
+    const rows=[];
+    previousTeacherAdminCache={...teacherAdminCache};
+    teacherAdminCache={};
+    snap.forEach(ds=>{
+      const d=ds.data()||{};
+      if(d.deletedByAdmin===true)return;
+      if(!cloudHasTeacherData(d)&&!d.email&&!d.displayName)return;
+      const p=d.profile||{};
+      const cached=previousTeacherAdminCache[ds.id]||{};
+      const name=[p.apPat,p.apMat,p.nombres].filter(Boolean).join(' ')||cached.name||d.displayName||d.email||'(Sin nombre)';
+      const captureProgress=teacherCaptureProgress(d.answers||{});
+      const row={
+        uid:ds.id,
+        name,
+        email:d.email||'',
+        categoria:p.categoria||'',
+        submittedPeriod:d.submittedPeriod||null,
+        finalizedAtMs:Number(d.finalizedAtMs)||0,
+        individualEditEnabled:!!d.individualEditEnabled,
+        individualEditDisabled:!!d.individualEditDisabled,
+        updatedAt:d.updatedAt,
+        profileResetToken:d.profileResetToken||null,
+        captureProgress
+      };
+      rows.push(row);teacherAdminCache[row.uid]=row;
+    });
+    teacherAdminCacheLoaded=true;
+    rows.sort((a,b)=>a.name.localeCompare(b.name,'es',{sensitivity:'base'}));
+    const done=rows.filter(x=>x.submittedPeriod===cfg.periodo).length;
+    summary.innerHTML=`<b>${rows.length}</b> profesor${rows.length===1?'':'es'} con información · <b>${done}</b> concluido${done===1?'':'s'} en ${cfg.periodo}`;
+    if(!rows.length){root.innerHTML='<div class="teacher-empty">Aún no hay perfiles de profesores guardados.</div>';return}
+    const tableHeader=`<div class="teacher-admin-table-head" aria-hidden="true">
+      <span>Profesor</span>
+      <span>Avance de captura</span>
+      <span>Estado</span>
+      <span>Acciones</span>
+    </div>`;
+    root.innerHTML=tableHeader+rows.map(r=>{
+      const doneNow=r.submittedPeriod===cfg.periodo;
+      const override=!!r.individualEditEnabled;
+      const individuallyDisabled=!!r.individualEditDisabled;
+      const statusTitle=individuallyDisabled
+        ?'Edición individual deshabilitada'
+        :override
+          ?'Edición individual habilitada'
+          :(doneNow?'Concluido':'En captura / sin concluir');
+      const lastCompletion=doneNow?formatTeacherCompletion(r):'';
+      const lastEdit=formatTeacherUpdatedAt(r.updatedAt);
+      const statusText=individuallyDisabled
+        ?`Última edición: ${lastEdit} · Edición deshabilitada por Administración`
+        :override
+          ?(doneNow
+            ?`Última edición: ${lastEdit} · Última finalización: ${lastCompletion} · Edición individual habilitada`
+            :`Última edición: ${lastEdit} · Edición individual habilitada`)
+          :(doneNow
+            ?`Última edición: ${lastEdit} · Finalizó y envió: ${lastCompletion}`
+            :`Última edición: ${lastEdit}`);
+      return `<div class="teacher-admin-row ${individuallyDisabled?'individual-disabled':override?'individual-open':doneNow?'finished':'open'}" data-teacher-uid="${escapeHtml(r.uid)}">
+        <div class="teacher-admin-main">
+          <b>${escapeHtml(r.name)}</b>
+          <span>${escapeHtml(r.email||'Sin correo registrado')}${r.categoria?` · ${escapeHtml(r.categoria)}`:''}</span>
+        </div>
+        <div class="teacher-admin-progress" title="${r.captureProgress.completedSubjects} de ${r.captureProgress.totalSubjects} asignaturas revisadas">
+          <div class="teacher-progress-top">
+            <strong>${r.captureProgress.pct}%</strong>
+            <span>${r.captureProgress.completedSubjects}/${r.captureProgress.totalSubjects} asignaturas</span>
+          </div>
+          <div class="teacher-progress-track"><i style="width:${r.captureProgress.pct}%"></i></div>
+          <small>${r.captureProgress.completedPrograms}/${r.captureProgress.totalPrograms} programas completos</small>
+        </div>
+        <div class="teacher-admin-status ${individuallyDisabled?'individual-disabled':override?'individual-open':doneNow?'finished':'open'}">
+          <strong>${escapeHtml(statusTitle)}</strong>
+          <span>${escapeHtml(statusText)}</span>
+        </div>
+        <div class="teacher-admin-actions">
+          ${(()=>{
+            const enableNext=individuallyDisabled || (doneNow && !override);
+            const label=enableNext?'Habilitar edición':'Deshabilitar edición';
+            return `<button class="teacher-reopen-btn ${enableNext?'':'active'}" onclick="setTeacherEditAccess('${r.uid}',${enableNext?'true':'false'})">${label}</button>`;
+          })()}
+          <button class="teacher-print-profile-btn" onclick="printTeacherProfile('${r.uid}')">Imprimir perfil</button>
+          <button class="teacher-reset-program-btn" onclick="resetTeacherProgramProfile('${r.uid}')">🔒 Eliminar asignaturas capturadas</button>
+          <button class="teacher-delete-btn" onclick="deleteTeacherProfile('${r.uid}')">🔒 Eliminar perfil completo</button>
+        </div>
+      </div>`;
+    }).join('');
+  }catch(e){
+    console.warn('No fue posible cargar profesores para Administración',e);
+    root.innerHTML='<div class="teacher-empty">No fue posible cargar la lista de profesores. Revise las reglas de Firestore.</div>';
+    summary.textContent='Lista no disponible';
+  }
+}
+function escapeHtml(value){
+  return String(value??'').replace(/[&<>"']/g,ch=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#039;'}[ch]));
+}
+
+
+window.printTeacherProfile=async function(uid){
+  if(!isAdmin()||!db)return;
+  const cached=teacherAdminCache[uid]||{};
+  try{
+    const snap=await getDoc(doc(db,'profiles',uid));
+    if(!snap.exists()){
+      alert('El perfil seleccionado ya no existe.');
+      return;
+    }
+    const d=snap.data()||{};
+
+
+    const previousProfile=store.profile;
+    const previousAnswers=answers;
+    const previousProgramMeta=programMeta;
+    const previousFinalizedAtMs=store.finalizedAtMs;
+    const previousSubmittedPeriod=store.submittedPeriod;
+
+
+    try{
+      store.profile=JSON.parse(JSON.stringify(d.profile||{}));
+      answers=JSON.parse(JSON.stringify(d.answers||{}));
+      programMeta=JSON.parse(JSON.stringify(d.programMeta||{}));
+      store.finalizedAtMs=Number(d.finalizedAtMs)||null;
+      store.submittedPeriod=d.submittedPeriod||null;
+
+
+      buildPrint(false);
+      await openProfilePrintDialog();
+      await writeAudit(`Perfil impreso por Administración: ${d.email||cached.email||uid}`);
+    }finally{
+      store.profile=previousProfile;
+      answers=previousAnswers;
+      programMeta=previousProgramMeta;
+      store.finalizedAtMs=previousFinalizedAtMs;
+      store.submittedPeriod=previousSubmittedPeriod;
+    }
+  }catch(e){
+    console.error('No fue posible imprimir el perfil del profesor',e);
+    alert('No fue posible preparar el perfil para impresión. Revise la conexión con Firestore.');
+  }
+}
+
+
+function updateTeacherAdminRowVisual(uid){
+  const r=teacherAdminCache[uid];
+  if(!r)return;
+  const row=document.querySelector(`[data-teacher-uid="${CSS.escape(uid)}"]`);
+  if(!row)return;
+  const doneNow=r.submittedPeriod===cfg.periodo;
+  const override=!!r.individualEditEnabled;
+  const individuallyDisabled=!!r.individualEditDisabled;
+  row.classList.remove('individual-disabled','individual-open','finished','open');
+  row.classList.add(individuallyDisabled?'individual-disabled':override?'individual-open':doneNow?'finished':'open');
+
+  const status=row.querySelector('.teacher-admin-status');
+  if(status){
+    status.className=`teacher-admin-status ${individuallyDisabled?'individual-disabled':override?'individual-open':doneNow?'finished':'open'}`;
+    const strong=status.querySelector('strong');
+    const span=status.querySelector('span');
+    if(strong)strong.textContent=individuallyDisabled?'Edición individual deshabilitada':override?'Edición individual habilitada':doneNow?'Concluido':'En captura / sin concluir';
+    if(span){
+      const lastEdit=formatTeacherUpdatedAt(r.updatedAt);
+      span.textContent=individuallyDisabled
+        ?`Última edición: ${lastEdit} · Edición deshabilitada por Administración`
+        :override
+          ?`Última edición: ${lastEdit} · Edición individual habilitada`
+          :doneNow?`Última edición: ${lastEdit} · Perfil concluido`:`Última edición: ${lastEdit}`;
+    }
+  }
+
+  const btn=row.querySelector('.teacher-reopen-btn');
+  if(btn){
+    const enableNext=individuallyDisabled || (doneNow && !override);
+    btn.textContent=enableNext?'Habilitar edición':'Deshabilitar edición';
+    btn.classList.toggle('active',!enableNext);
+    btn.disabled=false;
+    btn.classList.remove('is-busy');
+    btn.onclick=()=>window.setTeacherEditAccess(uid,enableNext);
+  }
+}
+
+window.setTeacherEditAccess=async function(uid,enable){
+  if(!isAdmin()||!db)return;
+  const r=teacherAdminCache[uid]||{};
+  const who=r.name||r.email||'este profesor';
+  const question=enable
+    ?`¿Habilitar la edición para ${who}?\n\nNo se modificará ni eliminará ningún dato del perfil. Únicamente se permitirá que el profesor vuelva a editar su información.`
+    :`¿Deshabilitar la edición para ${who}?\n\nNo se modificará ni eliminará ningún dato. El profesor podrá consultar e imprimir su perfil, pero no podrá cambiar registros hasta que Administración lo habilite nuevamente.`;
+  if(!confirm(question))return;
+  if(navigator.onLine===false){
+    alert('No hay conexión a Internet. El permiso no se modificó. Conéctese y vuelva a intentarlo.');
+    return;
+  }
+
+  const row=document.querySelector(`[data-teacher-uid="${CSS.escape(uid)}"]`);
+  const btn=row?.querySelector('.teacher-reopen-btn');
+  if(btn){
+    btn.disabled=true;
+    btn.classList.add('is-busy');
+    btn.textContent=enable?'Habilitando…':'Deshabilitando…';
+  }
+
+  const ref=doc(db,'profiles',uid);
+  const timeoutToken='__PAD_ADMIN_WRITE_TIMEOUT__';
+  try{
+    // V92: setDoc+merge es tolerante a documentos parcialmente creados y no toca información académica.
+    const writeResult=await withTimeout(setDoc(ref,{
+      individualEditEnabled:!!enable,
+      individualEditDisabled:!enable,
+      reopenedAt:enable?serverTimestamp():null,
+      reopenedBy:enable?(currentUser.email||''):null,
+      individualEditUpdatedAt:serverTimestamp()
+    },{merge:true}),ADMIN_PERMISSION_WRITE_TIMEOUT_MS,timeoutToken);
+
+    if(writeResult===timeoutToken){
+      const err=new Error('Firestore no confirmó la operación dentro de 10 segundos.');
+      err.code='deadline-exceeded';
+      throw err;
+    }
+
+    // Confirmación contra servidor: el botón sólo informa éxito cuando el permiso realmente quedó aplicado.
+    const verified=await withTimeout(getDocFromServer(ref),ADMIN_PERMISSION_VERIFY_TIMEOUT_MS,null);
+    if(!verified||!verified.exists()){
+      const err=new Error('No fue posible verificar el permiso directamente en Firestore.');
+      err.code='verification-failed';
+      throw err;
+    }
+    const fresh=verified.data()||{};
+    if(!!fresh.individualEditEnabled!==!!enable || !!fresh.individualEditDisabled===!!enable){
+      const err=new Error('Firestore respondió, pero el estado de edición no coincide con la operación solicitada.');
+      err.code='verification-mismatch';
+      throw err;
+    }
+
+    r.individualEditEnabled=!!fresh.individualEditEnabled;
+    r.individualEditDisabled=!!fresh.individualEditDisabled;
+    r.updatedAt=fresh.updatedAt||r.updatedAt||new Date();
+    teacherAdminCache[uid]=r;
+    updateTeacherAdminRowVisual(uid);
+    toast(enable?'Edición habilitada y confirmada en Firestore.':'Edición deshabilitada y confirmada en Firestore.');
+  }catch(e){
+    console.error('Error de edición individual',e);
+    const code=e?.code||'sin código';
+    const extra=code==='permission-denied'
+      ?'\n\nLa cuenta administrativa fue reconocida por la página, pero Firestore rechazó la operación. Publique las reglas V92 incluidas en el paquete.'
+      :code==='deadline-exceeded'
+        ?'\n\nLa operación tardó demasiado y el botón fue liberado para evitar que quede procesando indefinidamente. Revise conexión y reglas de Firestore.'
+        :'';
+    alert(`No fue posible ${enable?'habilitar':'deshabilitar'} la edición individual.\n\nCódigo: ${code}${extra}\n\nNo se eliminó ni modificó información académica.`);
+  }finally{
+    if(btn){
+      btn.disabled=false;
+      btn.classList.remove('is-busy');
+    }
+    updateTeacherAdminRowVisual(uid);
+  }
+}
+window.toggleTeacherEditOverride=function(uid,enable){return window.setTeacherEditAccess(uid,enable)}
+
+
+window.reopenTeacherProfile=function(uid){return window.toggleTeacherEditOverride(uid,true)}
+
+
+function confirmAdministrativeDeletion(firstMessage,secondLabel){
+  if(!confirm(firstMessage))return false;
+  const typed=prompt(
+    `SEGUNDO CANDADO DE SEGURIDAD\n\nPara confirmar ${secondLabel}, escriba exactamente:\n\nELIMINAR`
+  );
+  if(String(typed||'').trim().toUpperCase()!=='ELIMINAR'){
+    if(typed!==null)toast('Eliminación cancelada: no se escribió ELIMINAR.');
+    return false;
+  }
+  return true;
+}
+
+
+window.resetTeacherProgramProfile=async function(uid){
+  if(!isAdmin()||!db)return;
+  const r=teacherAdminCache[uid]||{};
+  const who=r.name||r.email||'este profesor';
+
+
+  const ok=confirmAdministrativeDeletion(
+    `¿CONFIRMAR eliminación de las asignaturas capturadas de ${who}?\n\n`+
+    `Se borrarán respuestas por asignatura, niveles X/XX, áreas de conocimiento, coordinaciones, favoritas y el estado de finalización.\n\n`+
+    `Se conservarán los datos del profesor, pero la edición quedará habilitada para corregirlos y comenzar desde cero el Perfil por programa.\n\n`+
+    `Esta acción no se puede deshacer desde esta pantalla.`,
+    'la eliminación de las asignaturas capturadas'
+  );
+  if(!ok)return;
+
+
+  try{
+    await archiveTeacherProfileBeforeChange(uid,'Antes de reiniciar asignaturas capturadas');
+    const resetToken=`${Date.now()}-${uid}`;
+    await updateDoc(doc(db,'profiles',uid),{
+      answers:{},
+      programMeta:{},
+      submittedPeriod:null,
+      finalizedAtMs:null,
+      individualEditEnabled:true,
+      individualEditDisabled:false,
+      profileResetToken:resetToken,
+      programProfileResetAt:serverTimestamp(),
+      programProfileResetBy:currentUser?.email||'',
+      updatedAt:serverTimestamp()
+    });
+    await writeAudit(`Asignaturas capturadas eliminadas por Administración: ${r.email||uid}`);
+    toast('Asignaturas eliminadas. El profesor iniciará nuevamente el Perfil por programa.');
+    await renderTeacherAdminList();
+  }catch(e){
+    console.error(e);
+    alert('No fue posible eliminar las asignaturas capturadas. Verifique la conexión y las reglas de Firestore.');
+  }
+}
+
+
+window.deleteTeacherProfile=async function(uid){
+  if(!isAdmin()||!db)return;
+  const r=teacherAdminCache[uid]||{};
+  const who=r.name||r.email||'este profesor';
+
+  const ok=confirmAdministrativeDeletion(
+    `¿CONFIRMAR retiro del perfil activo de ${who}?\n\n`+
+    `REGLA DE ORO V88: la información capturada NO se borrará. Antes del retiro se creará una copia íntegra en profileArchives y el documento original conservará sus datos académicos.\n\n`+
+    `El profesor dejará de aparecer como perfil activo hasta que se restaure administrativamente.`,
+    'el retiro del perfil activo'
+  );
+  if(!ok)return;
+
+  try{
+    await archiveTeacherProfileBeforeChange(uid,'Antes de retirar perfil activo');
+    const deletionToken=`DEL-${Date.now()}-${uid}`;
+    await updateDoc(doc(db,'profiles',uid),{
+      deletedByAdmin:true,
+      profileDeletionToken:deletionToken,
+      deletedAt:serverTimestamp(),
+      deletedBy:currentUser?.email||'',
+      individualEditEnabled:false,
+      individualEditDisabled:true,
+      updatedAt:serverTimestamp()
+    });
+    await writeAudit(`Perfil retirado sin borrar datos: ${r.email||uid}`);
+    toast('Perfil retirado. Los datos académicos permanecen conservados y existe una copia de archivo.');
+    await renderTeacherAdminList();
+  }catch(e){
+    console.error(e);
+    alert('No fue posible retirar el perfil. No se modificó ningún dato porque la copia de seguridad no pudo confirmarse.');
+  }
+}
+
+
+
+function transversalAvailablePrograms(){
+  return allPrograms();
+}
+function transversalSemesterCourses(pid,s){
+  const pr=allPrograms().find(x=>x.id===pid);
+  const sem=pr?.semesters?.[Number(s)]||[];
+  return sem.map((name,c)=>({pid,s:Number(s),c,name}))
+    .filter(x=>!isEnglish(x.name)&&!isProjectIntegrator(x.name));
+}
+function endpointFromControls(side){
+  const prefix=side==='source'?'transversalSource':'transversalTarget';
+  const pid=$(prefix+'Program')?.value||'';
+  const s=Number($(prefix+'Semester')?.value);
+  const c=Number($(prefix+'Subject')?.value);
+  return Number.isInteger(s)&&Number.isInteger(c)?courseLocation(pid,s,c):null;
+}
+function renderTransversalAdmin(){
+  const source=$('transversalSourceProgram'),target=$('transversalTargetProgram');
+  if(!source||!target)return;
+
+
+  const ps=transversalAvailablePrograms();
+  const oldSource=source.value,oldTarget=target.value;
+  source.innerHTML=ps.map(p=>`<option value="${p.id}">${escapeHtml(programAcronym(p))} · ${escapeHtml(p.name)} — ${escapeHtml(p.exit)}</option>`).join('');
+  if(oldSource&&ps.some(p=>p.id===oldSource))source.value=oldSource;
+
+
+  renderTransversalSemesterOptions('source',false);
+  syncTransversalDestinationPrograms(oldTarget);
+  renderTransversalRulesList();
+}
+window.syncTransversalDestinationPrograms=function(preferred=''){
+  const source=$('transversalSourceProgram'),target=$('transversalTargetProgram');
+  if(!source||!target)return;
+  const previous=preferred||target.value;
+  const candidates=transversalAvailablePrograms().filter(p=>p.id!==source.value);
+  target.innerHTML=candidates.map(p=>`<option value="${p.id}">${escapeHtml(programAcronym(p))} · ${escapeHtml(p.name)} — ${escapeHtml(p.exit)}</option>`).join('');
+  if(previous&&candidates.some(p=>p.id===previous))target.value=previous;
+  renderTransversalSemesterOptions('target',false);
+}
+window.renderTransversalSemesterOptions=function(side,resyncTarget=true){
+  const prefix=side==='source'?'transversalSource':'transversalTarget';
+  const program=$(prefix+'Program'),semester=$(prefix+'Semester');
+  if(!program||!semester)return;
+  const pr=allPrograms().find(x=>x.id===program.value);
+  const previous=Number(semester.value);
+  semester.innerHTML=(pr?.semesters||[]).map((sem,s)=>`<option value="${s}">${s+1}.° cuatrimestre</option>`).join('');
+  if(Number.isInteger(previous)&&pr?.semesters?.[previous])semester.value=String(previous);
+  renderTransversalCourseOptions(side);
+  if(side==='source'&&resyncTarget)syncTransversalDestinationPrograms();
+}
+window.renderTransversalCourseOptions=function(side){
+  const prefix=side==='source'?'transversalSource':'transversalTarget';
+  const program=$(prefix+'Program'),semester=$(prefix+'Semester'),subject=$(prefix+'Subject');
+  if(!program||!semester||!subject)return;
+  const previous=Number(subject.value);
+  const courses=transversalSemesterCourses(program.value,Number(semester.value));
+  subject.innerHTML=courses.map(x=>`<option value="${x.c}">${escapeHtml(subjectCase(x.name))}</option>`).join('');
+  if(Number.isInteger(previous)&&courses.some(x=>x.c===previous))subject.value=String(previous);
+}
+window.saveTransversalRule=function(){
+  if(!isAdmin())return;
+  const source=endpointFromControls('source');
+  const target=endpointFromControls('target');
+
+
+  if(!source||!target){toast('Seleccione completamente la materia de origen y la materia de destino.');return}
+  if(isProjectIntegrator(source.name)||isProjectIntegrator(target.name)){
+    toast('Proyecto integrador siempre debe permanecer autónomo.');
+    return;
+  }
+  if(source.pid===target.pid&&source.s===target.s&&source.c===target.c){
+    toast('La materia de origen y la de destino deben ser distintas.');
+    return;
+  }
+
+
+  const samePair=transversalRules.some(rule=>{
+    if(!rule.source||!rule.target)return false;
+    const a=rule.source,b=rule.target;
+    const direct=a.pid===source.pid&&a.s===source.s&&a.c===source.c&&b.pid===target.pid&&b.s===target.s&&b.c===target.c;
+    const reverse=b.pid===source.pid&&b.s===source.s&&b.c===source.c&&a.pid===target.pid&&a.s===target.s&&a.c===target.c;
+    return direct||reverse;
+  });
+  if(samePair){toast('Esta relación transversal ya está configurada.');return}
+
+
+  transversalRules.push({
+    id:`TR_${Date.now()}`,
+    source:{pid:source.pid,s:source.s,c:source.c},
+    target:{pid:target.pid,s:target.s,c:target.c},
+    sourceName:source.name,
+    targetName:target.name
+  });
+
+
+  store.transversalRules=transversalRules;
+  persist();
+  saveGlobalSettings('Relación transversal configurada');
+  renderTransversalRulesList();
+  renderAcademicRelationsTree();
+  renderCurrentProgram();
+  toast('Relación transversal guardada.');
+}
+window.deleteTransversalRule=function(id){
+  if(!isAdmin())return;
+  const rule=transversalRules.find(r=>r.id===id);
+  if(!rule)return;
+  if(!confirm('¿Quitar esta relación transversal? Las respuestas ya capturadas no se borrarán.'))return;
+  transversalRules=transversalRules.filter(r=>r.id!==id);
+  store.transversalRules=transversalRules;
+  persist();
+  saveGlobalSettings('Relación transversal eliminada');
+  renderTransversalRulesList();
+  renderAcademicRelationsTree();
+  renderCurrentProgram();
+  toast('Relación transversal eliminada.');
+}
+function renderTransversalRulesList(){
+  const root=$('transversalRulesList');
+  if(!root)return;
+  if(!transversalRules.length){
+    root.innerHTML='<div class="transversal-empty">No hay relaciones transversales configuradas.</div>';
+    return;
+  }
+  root.innerHTML=transversalRules.map(rule=>{
+    if(rule.source&&rule.target){
+      const a=normalizeTransversalEndpoint(rule.source);
+      const b=normalizeTransversalEndpoint(rule.target);
+      if(!a||!b)return '';
+      const pa=allPrograms().find(x=>x.id===a.pid),pb=allPrograms().find(x=>x.id===b.pid);
+      return `<div class="transversal-rule-row v60">
+        <div class="transversal-rule-endpoint">
+          <span class="endpoint-chip">Origen</span>
+          <strong>${escapeHtml(subjectCase(a.name))}</strong>
+          <small>${escapeHtml(pa?programAcronym(pa):a.pid)} · ${a.s+1}.° cuatrimestre</small>
+        </div>
+        <div class="transversal-rule-link">→</div>
+        <div class="transversal-rule-endpoint">
+          <span class="endpoint-chip target">Destino</span>
+          <strong>${escapeHtml(subjectCase(b.name))}</strong>
+          <small>${escapeHtml(pb?programAcronym(pb):b.pid)} · ${b.s+1}.° cuatrimestre</small>
+        </div>
+        <button type="button" onclick="deleteTransversalRule('${rule.id}')">Quitar</button>
+      </div>`;
+    }
+
+
+    // Compatibilidad con relaciones de V59 ya guardadas.
+    const source=allPrograms().find(x=>x.id===rule.sourceProgramId);
+    const targets=(rule.targetProgramIds||[]).map(id=>allPrograms().find(x=>x.id===id)).filter(Boolean);
+    return `<div class="transversal-rule-row legacy">
+      <div class="transversal-rule-name"><strong>${escapeHtml(subjectCase(rule.subjectName||rule.subjectNormalized||'Asignatura'))}</strong><span>Configuración anterior · ${escapeHtml(source?programAcronym(source):'')}</span></div>
+      <div class="transversal-rule-targets">${targets.map(p=>`<span>${escapeHtml(programAcronym(p))}</span>`).join('')}</div>
+      <button type="button" onclick="deleteTransversalRule('${rule.id}')">Quitar</button>
+    </div>`;
+  }).join('');
+}
+
+
+
+
+
+
+function academicProgramLabel(pid){
+  const p=allPrograms().find(x=>x.id===pid);
+  return p?`${programAcronym(p)} · ${p.name}`:pid;
+}
+function exactSameNameGroups(){
+  const map=new Map();
+  allPrograms().forEach(p=>p.semesters.forEach((sem,s)=>sem.forEach((name,c)=>{
+    if(isEnglish(name)||isProjectIntegrator(name))return;
+    const exact=strictSubjectKey(name);
+    if(!exact)return;
+    if(!map.has(exact))map.set(exact,{name,locations:[]});
+    map.get(exact).locations.push({pid:p.id,s,c,name});
+  })));
+  return [...map.values()]
+    .filter(x=>x.locations.length>1)
+    .sort((a,b)=>subjectCase(a.name).localeCompare(subjectCase(b.name),'es',{sensitivity:'base'}));
+}
+function renderAcademicRelationsTree(){
+  const root=$('academicRelationsTree');
+  if(!root)return;
+
+
+  const commonHtml=commonRules.length
+    ?commonRules.map(rule=>{
+      const sems=(rule.semesters||[]).map(s=>`${s+1}.°`).join(', ');
+      const children=(rule.programIds||[]).map(pid=>`<li><span class="tree-node program">${escapeHtml(academicProgramLabel(pid))}</span></li>`).join('');
+      return `<li class="tree-branch common"><div class="tree-line"><span class="tree-type common">Tronco común</span><strong>${escapeHtml(rule.name)}</strong><small>Cuatrimestres ${escapeHtml(sems)}</small></div><ul>${children}</ul></li>`;
+    }).join('')
+    :'<li class="tree-empty">No hay troncos comunes configurados.</li>';
+
+
+  const automaticGroups=exactSameNameGroups();
+  const automaticHtml=automaticGroups.length
+    ?automaticGroups.map(group=>{
+      const children=group.locations.map(loc=>`<li><span class="tree-node course">${escapeHtml(academicProgramLabel(loc.pid))}</span><small>${loc.s+1}.° cuatrimestre</small></li>`).join('');
+      return `<li class="tree-branch automatic"><div class="tree-line"><span class="tree-type automatic">Mismo nombre</span><strong>${escapeHtml(subjectCase(group.name))}</strong><small>${group.locations.length} apariciones vinculables</small></div><ul>${children}</ul></li>`;
+    }).join('')
+    :'<li class="tree-empty">No hay materias repetidas por nombre exacto.</li>';
+
+
+  const explicitHtml=transversalRules.length
+    ?transversalRules.map(rule=>{
+      if(rule.source&&rule.target){
+        const a=normalizeTransversalEndpoint(rule.source),b=normalizeTransversalEndpoint(rule.target);
+        if(!a||!b)return '';
+        return `<li class="tree-branch explicit"><div class="tree-line"><span class="tree-type explicit">Transversal 1 a 1</span><strong>${escapeHtml(subjectCase(a.name))}</strong></div><ul><li><span class="tree-node origin">Origen · ${escapeHtml(academicProgramLabel(a.pid))}</span><small>${a.s+1}.° cuatrimestre</small></li><li><span class="tree-link-arrow">↓</span></li><li><span class="tree-node target">Destino · ${escapeHtml(subjectCase(b.name))} · ${escapeHtml(academicProgramLabel(b.pid))}</span><small>${b.s+1}.° cuatrimestre</small></li></ul></li>`;
+      }
+      const source=allPrograms().find(x=>x.id===rule.sourceProgramId);
+      const targetLabels=(rule.targetProgramIds||[]).map(academicProgramLabel);
+      return `<li class="tree-branch explicit"><div class="tree-line"><span class="tree-type explicit">Transversal anterior</span><strong>${escapeHtml(subjectCase(rule.subjectName||rule.subjectNormalized||'Asignatura'))}</strong></div><ul><li><span class="tree-node origin">${escapeHtml(source?academicProgramLabel(source.id):rule.sourceProgramId||'Origen')}</span></li>${targetLabels.map(x=>`<li><span class="tree-node target">${escapeHtml(x)}</span></li>`).join('')}</ul></li>`;
+    }).join('')
+    :'<li class="tree-empty">No hay relaciones transversales 1 a 1 configuradas.</li>';
+
+
+  root.innerHTML=`
+    <section class="relation-tree-section"><h3>1. Troncos comunes</h3><ul class="relation-tree-root">${commonHtml}</ul></section>
+    <section class="relation-tree-section"><h3>2. Materias vinculadas automáticamente por mismo nombre</h3><p class="relation-tree-note">Se excluyen Inglés y Proyecto integrador. Deshabilitar una materia continúa siendo una decisión individual.</p><ul class="relation-tree-root">${automaticHtml}</ul></section>
+    <section class="relation-tree-section"><h3>3. Relaciones transversales configuradas</h3><ul class="relation-tree-root">${explicitHtml}</ul></section>`;
+}
+
+
+function renderAdmin(){
+  $('jefe').value=cfg.jefe;$('codigo').value=cfg.codigo;$('revisionCal').value=cfg.revision;$('fechaRevision').value=cfg.fechaRevision;$('periodoAdmin').value=cfg.periodo;
+  updatePlanningAvailability();
+  renderExcelExportOptions();
+  if($('captureDeadlineAdmin'))$('captureDeadlineAdmin').value=toLocalDateTimeValue(cfg.captureDeadline);updateCountdownUI();
+  const st=$('editModeStatus'),btn=$('editModeBtn');
+  if(st){st.textContent=cfg.editingLocked?'Edición desactivada':'Edición activa';st.className='edit-mode-status '+(cfg.editingLocked?'locked':'open')}
+  if(btn){btn.textContent=cfg.editingLocked?'Activar edición de perfiles':'Desactivar edición de perfiles';btn.className='edit-mode-btn '+(cfg.editingLocked?'activate':'deactivate')}
+  if(!editingProgramId && !$('newProgramSemesters')?.children?.length)renderSemesterEditors();
+  renderProgramAdminList();renderCustomPrograms();renderRules();renderTransversalAdmin();renderAcademicRelationsTree();applyEditState();if(!teacherAdminCacheLoaded)renderTeacherAdminList()
+}
+function normalizeEditorSemesterValues(values){
+  if(!Array.isArray(values))return [];
+  return values.map(sem=>{
+    if(Array.isArray(sem)){
+      return sem.map(item=>({
+        name:String(item?.name||''),
+        hours:item?.hours!==undefined&&item?.hours!==null?String(item.hours):''
+      }));
+    }
+    if(typeof sem==='string'){
+      return sem.split(/\n+/).map(parseCustomSubjectLine).filter(x=>x.name).map(x=>({name:x.name,hours:x.hours?String(x.hours):''}));
+    }
+    return [];
+  });
+}
+function ensureProgramEditorSemesters(){
+  while(programEditorSemesters.length<newSemesterCount)programEditorSemesters.push([{name:'',hours:''}]);
+  if(programEditorSemesters.length>newSemesterCount)programEditorSemesters.length=newSemesterCount;
+  programEditorSemesters=programEditorSemesters.map(sem=>Array.isArray(sem)&&sem.length?sem:[{name:'',hours:''}]);
+}
+function renderSemesterEditors(values=null){
+  if(values!==null)programEditorSemesters=normalizeEditorSemesterValues(values);
+  ensureProgramEditorSemesters();
+
+
+  $('newProgramSemesters').innerHTML=programEditorSemesters.map((sem,s)=>`
+    <section class="semester-subject-editor" data-semester="${s}">
+      <div class="semester-editor-head">
+        <div>
+          <b>${s+1}.° cuatrimestre</b>
+          <span>${sem.filter(x=>String(x.name||'').trim()).length} materia${sem.filter(x=>String(x.name||'').trim()).length===1?'':'s'}</span>
+        </div>
+        ${newSemesterCount>1?`<button type="button" class="semester-delete-btn" onclick="removeSemesterEditor(${s})">Borrar cuatrimestre</button>`:''}
+      </div>
+
+
+      <div class="subject-editor-labels">
+        <span>Materia</span><span>Horas</span><span>Acciones</span>
+      </div>
+
+
+      <div class="subject-editor-list">
+        ${sem.map((item,c)=>`
+          <div class="subject-editor-row" data-subject-row="${s}-${c}">
+            <input
+              id="subjectName_${s}_${c}"
+              class="subject-name-field"
+              value="${escapeHtml(item.name||'')}"
+              placeholder="Ej. Cálculo diferencial"
+              oninput="updateProgramSubject(${s},${c},'name',this.value)">
+            <input
+              id="subjectHours_${s}_${c}"
+              class="subject-hours-field"
+              type="number"
+              min="1"
+              step="1"
+              value="${escapeHtml(item.hours||'')}"
+              placeholder="Ej. 90"
+              oninput="updateProgramSubject(${s},${c},'hours',this.value)">
+            <div class="subject-row-actions">
+              <button type="button" class="subject-edit-btn" onclick="editProgramSubject(${s},${c})">Editar</button>
+              <button type="button" class="subject-remove-btn" onclick="removeProgramSubject(${s},${c})">Eliminar</button>
+            </div>
+          </div>`).join('')}
+      </div>
+
+
+      <button type="button" class="add-subject-btn" onclick="addProgramSubject(${s})">＋ Agregar materia</button>
+    </section>`).join('');
+}
+window.updateProgramSubject=function(s,c,field,value){
+  ensureProgramEditorSemesters();
+  if(!programEditorSemesters[s]?.[c])return;
+  programEditorSemesters[s][c][field]=value;
+}
+window.addProgramSubject=function(s){
+  ensureProgramEditorSemesters();
+  programEditorSemesters[s].push({name:'',hours:''});
+  const c=programEditorSemesters[s].length-1;
+  renderSemesterEditors();
+  setTimeout(()=>document.getElementById(`subjectName_${s}_${c}`)?.focus(),0);
+}
+window.removeProgramSubject=function(s,c){
+  ensureProgramEditorSemesters();
+  const row=programEditorSemesters[s]?.[c];
+  if(!row)return;
+  const hasData=String(row.name||'').trim()||String(row.hours||'').trim();
+  if(hasData&&!confirm('¿Eliminar esta materia del cuatrimestre?'))return;
+  programEditorSemesters[s].splice(c,1);
+  if(!programEditorSemesters[s].length)programEditorSemesters[s].push({name:'',hours:''});
+  renderSemesterEditors();
+}
+window.editProgramSubject=function(s,c){
+  const el=document.getElementById(`subjectName_${s}_${c}`);
+  if(el){
+    el.focus();
+    el.select();
+  }
+}
+window.addSemesterEditor=function(){
+  ensureProgramEditorSemesters();
+  programEditorSemesters.push([{name:'',hours:''}]);
+  newSemesterCount=programEditorSemesters.length;
+  renderSemesterEditors();
+  setTimeout(()=>document.getElementById(`subjectName_${newSemesterCount-1}_0`)?.focus(),0);
+}
+window.removeSemesterEditor=function(i){
+  ensureProgramEditorSemesters();
+  const sem=programEditorSemesters[i]||[];
+  if(sem.some(x=>String(x.name||'').trim())&&!confirm(`¿Borrar el ${i+1}.° cuatrimestre y todas sus materias?`))return;
+  programEditorSemesters.splice(i,1);
+  newSemesterCount=Math.max(1,programEditorSemesters.length);
+  if(!programEditorSemesters.length)programEditorSemesters=[[{name:'',hours:''}]];
+  renderSemesterEditors();
+}
+function slug(s){return 'custom_'+s.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/[^a-z0-9]+/g,'_')+'_'+Date.now()}
+function parseCustomSubjectLine(line){
+  const clean=String(line||'').trim();
+  const m=clean.match(/^(.*?)\s*[-–—]\s*(\d+(?:[.,]\d+)?)\s*(?:h|hrs?|horas?)?\s*$/i);
+  if(!m)return {name:clean,hours:0};
+  return {name:m[1].trim(),hours:Number(m[2].replace(',','.'))||0};
+}
+function formatProgramSemester(pr,s){
+  const sem=pr.semesters?.[s]||[],hrs=pr.hours?.[s]||[];
+  return sem.map((name,c)=>({
+    name:subjectCase(name),
+    hours:Number(hrs[c])||subjectHours(pr.id,s,c)||''
+  }));
+}
+function resetProgramEditor(){
+  editingProgramId=null;
+  newSemesterCount=5;
+  programEditorSemesters=Array.from({length:newSemesterCount},()=>[{name:'',hours:''}]);
+  $('newProgramName').value='';
+  $('newProgramExit').value='';
+  $('programEditorTitle').textContent='Agregar programa educativo';
+  $('programEditorHelp').textContent='Capture nombre y salida lateral. Agregue cada materia y sus horas dentro del cuatrimestre correspondiente.';
+  $('programEditorMode').textContent='Nuevo';
+  $('cancelProgramEditBtn').classList.add('hidden');
+  $('saveProgramEditorBtn').textContent='Guardar nuevo programa educativo';
+  renderSemesterEditors();
+}
+window.cancelProgramEdit=function(){
+  resetProgramEditor();
+  toast('Edición cancelada.');
+}
+function clearChangedCourseAnswers(pid,oldProgram,newProgram){
+  const maxS=Math.max(oldProgram?.semesters?.length||0,newProgram?.semesters?.length||0);
+  for(let s=0;s<maxS;s++){
+    const oldSem=oldProgram?.semesters?.[s]||[];
+    const newSem=newProgram?.semesters?.[s]||[];
+    const maxC=Math.max(oldSem.length,newSem.length);
+    for(let c=0;c<maxC;c++){
+      const oldName=normalizeSubjectName(oldSem[c]||'');
+      const newName=normalizeSubjectName(newSem[c]||'');
+      if(oldName!==newName){
+        delete answers[key(pid,s,c)];
+        const meta=programMeta[pid];
+        if(meta?.coordinators)meta.coordinators=meta.coordinators.filter(x=>x!==`${s}|${c}`);
+      }
+    }
+  }
+}
+window.openProgramEditor=function(id){
+  if(!isAdmin())return;
+  const pr=allPrograms().find(p=>p.id===id);
+  if(!pr)return;
+  editingProgramId=id;
+  $('newProgramName').value=pr.name||'';
+  $('newProgramExit').value=pr.exit||'';
+  newSemesterCount=Math.max(1,pr.semesters?.length||5);
+  programEditorSemesters=Array.from({length:newSemesterCount},(_,s)=>formatProgramSemester(pr,s));
+  renderSemesterEditors(programEditorSemesters);
+  $('programEditorTitle').textContent='Editar programa educativo';
+  $('programEditorHelp').textContent='Edite cada materia y sus horas directamente dentro de su cuatrimestre. También puede agregar o eliminar materias de forma independiente.';
+  $('programEditorMode').textContent='Edición';
+  $('cancelProgramEditBtn').classList.remove('hidden');
+  $('saveProgramEditorBtn').textContent='Guardar cambios';
+  $('programEditorCard').scrollIntoView({behavior:'smooth',block:'start'});
+}
+window.saveProgramEditor=function(){
+  const name=$('newProgramName').value.trim(),exit=$('newProgramExit').value.trim();
+  ensureProgramEditorSemesters();
+  const parsed=programEditorSemesters.map(rows=>rows
+    .map(x=>({name:String(x.name||'').trim(),hours:Number(x.hours)||0}))
+    .filter(x=>x.name||x.hours));
+  const semesters=parsed.map(rows=>rows.map(x=>x.name));
+  const hours=parsed.map(rows=>rows.map(x=>x.hours));
+
+
+  if(!name||!exit){toast('Complete el nombre del programa y la salida lateral.');return}
+  if(parsed.some(rows=>!rows.length)){toast('Cada cuatrimestre debe contener al menos una materia.');return}
+  if(parsed.some(rows=>rows.some(x=>!x.name||!x.hours))){
+    toast('Revise cada materia: debe tener nombre y horas.');
+    return;
+  }
+
+
+  if(editingProgramId){
+    const oldProgram=allPrograms().find(p=>p.id===editingProgramId);
+    const next={id:editingProgramId,name,exit,common:oldProgram?.common??null,semesters,hours};
+    clearChangedCourseAnswers(editingProgramId,oldProgram,next);
+    const customIndex=customPrograms.findIndex(p=>p.id===editingProgramId);
+    if(customIndex>=0){
+      customPrograms[customIndex]={...customPrograms[customIndex],name,exit,semesters,hours};
+    }else{
+      programOverrides[editingProgramId]={name,exit,semesters,hours};
+    }
+    persist();
+    saveGlobalSettings('Programa educativo actualizado');
+    renderAdmin();renderCurrentProgram();updateProgress();lockRevisionNav();
+    toast('Programa educativo actualizado.');
+    resetProgramEditor();
+    return;
+  }
+
+
+  const id=slug(name);
+  customPrograms.push({id,name,exit,common:null,semesters,hours});
+  persist();
+  saveGlobalSettings('Programa educativo agregado');
+  renderAdmin();renderCurrentProgram();
+  toast('Programa educativo agregado.');
+  resetProgramEditor();
+}
+window.saveNewProgram=window.saveProgramEditor;
+
+
+
+
+window.setProgramAcronym=function(id,value){
+  if(!isAdmin())return;
+  const clean=String(value||'').trim().toUpperCase();
+  if(!clean){toast('El acrónimo no puede quedar vacío.');renderProgramAdminList();return}
+  programAcronyms[id]=clean;persist();saveGlobalSettings('Acrónimo de programa actualizado');renderProgramAdminList();toast('Acrónimo actualizado.');
+}
+
+
+
+
+window.openCommonRuleEditor=function(pid){
+  if(!isAdmin())return;
+  const existing=commonRuleForProgram(pid);
+  editingCommonRuleId=existing?.id||null;
+  const base=existing?JSON.parse(JSON.stringify(existing)):{
+    id:'TC_'+Date.now(),
+    name:'Nuevo tronco común',
+    programIds:[pid],
+    semesters:[0,1,2]
+  };
+  const maxSem=Math.max(...allPrograms().map(p=>p.semesters.length),5);
+  const root=$('commonRuleEditor');
+  root.classList.remove('hidden');
+  root.innerHTML=`<div class="common-editor-head">
+      <div><b>Configurar tronco común</b><span>Seleccione qué programas comparten materias y en qué cuatrimestres.</span></div>
+      <button onclick="closeCommonRuleEditor()">Cerrar</button>
+    </div>
+    <label class="common-rule-name">Nombre del tronco<input id="commonRuleName" value="${base.name.replace(/"/g,'&quot;')}"></label>
+    <div class="common-editor-block"><b>Programas que lo comparten</b>
+      <div class="common-program-checks">${allPrograms().map(p=>`<label><input type="checkbox" data-common-program="${p.id}" ${base.programIds.includes(p.id)?'checked':''}>${programAcronym(p)} · ${p.exit}</label>`).join('')}</div>
+    </div>
+    <div class="common-editor-block"><b>Cuatrimestres sincronizados</b>
+      <div class="common-semester-checks">${Array.from({length:maxSem},(_,i)=>`<label><input type="checkbox" data-common-sem="${i}" ${base.semesters.includes(i)?'checked':''}>${i+1}.°</label>`).join('')}</div>
+    </div>
+    <div class="common-editor-warning">La sincronización se realiza por <b>nombre de asignatura</b>. Solo se copiará la respuesta entre materias con el mismo nombre en el mismo cuatrimestre.</div>
+    <div class="admin-actions compact-actions">
+      <button class="primary" onclick="saveCommonRule('${base.id}')">Guardar tronco común</button>
+      ${existing?`<button class="danger-soft" onclick="deleteCommonRule('${existing.id}')">Quitar este tronco común</button>`:''}
+    </div>`;
+  root.scrollIntoView({behavior:'smooth',block:'center'});
+}
+window.closeCommonRuleEditor=function(){
+  editingCommonRuleId=null;
+  const root=$('commonRuleEditor');if(root){root.classList.add('hidden');root.innerHTML=''}
+}
+window.saveCommonRule=function(id){
+  if(!isAdmin())return;
+  const name=($('commonRuleName')?.value||'Tronco común').trim()||'Tronco común';
+  const programIds=[...document.querySelectorAll('[data-common-program]:checked')].map(x=>x.dataset.commonProgram);
+  const semesters=[...document.querySelectorAll('[data-common-sem]:checked')].map(x=>Number(x.dataset.commonSem)).sort((a,b)=>a-b);
+  if(programIds.length<2){toast('Seleccione al menos dos programas educativos.');return}
+  if(!semesters.length){toast('Seleccione al menos un cuatrimestre.');return}
+  // Un programa solo puede pertenecer a un tronco común a la vez.
+  commonRules=commonRules
+    .filter(r=>r.id!==editingCommonRuleId&&r.id!==id)
+    .map(r=>({...r,programIds:(r.programIds||[]).filter(pid=>!programIds.includes(pid))}))
+    .filter(r=>(r.programIds||[]).length>=2);
+  commonRules.push({id,name,programIds,semesters});
+  persist();saveGlobalSettings('Tronco común actualizado');
+  renderAdmin();renderCurrentProgram();updateProgress();lockRevisionNav();
+  closeCommonRuleEditor();toast('Tronco común guardado.');
+}
+window.deleteCommonRule=function(id){
+  if(!isAdmin())return;
+  if(!confirm('¿Quitar esta configuración de tronco común? Los datos ya capturados no se eliminarán.'))return;
+  commonRules=commonRules.filter(r=>r.id!==id);
+  persist();saveGlobalSettings('Tronco común eliminado');
+  renderAdmin();renderCurrentProgram();updateProgress();lockRevisionNav();
+  closeCommonRuleEditor();toast('Tronco común eliminado.');
+}
+
+
+window.toggleProgramEnabled=function(id){
+  if(!isAdmin()){toast('Solo el administrador puede cambiar programas.');return}
+  if(disabledPrograms.includes(id))disabledPrograms=disabledPrograms.filter(x=>x!==id);
+  else disabledPrograms=[...new Set([...disabledPrograms,id])];
+  if(!programs().length){
+    disabledPrograms=disabledPrograms.filter(x=>x!==id);
+    toast('Debe permanecer al menos un programa educativo activo.');
+    return;
+  }
+  currentProgramIndex=Math.min(currentProgramIndex,programs().length-1);
+  persist();saveGlobalSettings(disabledPrograms.includes(id)?'Programa deshabilitado':'Programa habilitado');renderAdmin();renderCurrentProgram();updateProgress();lockRevisionNav();
+  toast(disabledPrograms.includes(id)?'Programa deshabilitado.':'Programa habilitado.');
+}
+function renderProgramAdminList(){
+  const root=$('programAdminList'); if(!root)return;
+  root.innerHTML=allPrograms().map(p=>{
+    const enabled=!disabledPrograms.includes(p.id);
+    const custom=p.id.startsWith('custom_');
+    const rule=commonRuleForProgram(p.id);
+    return `<div class="program-admin-item ${enabled?'':'disabled'}">
+      <div class="program-admin-name"><b>${p.name}</b><small>${p.exit}${custom?' · Programa agregado':''}${rule?` · <strong>Tronco común</strong>`:''}</small></div>
+      <label class="acronym-edit acronym-only"><input aria-label="Acrónimo del programa" value="${programAcronym(p)}" maxlength="18" onchange="setProgramAcronym('${p.id}',this.value)"></label>
+      <button class="edit-program-btn program-action-btn" onclick="openProgramEditor('${p.id}')"><span class="admin-icon edit-icon">✎</span>Editar</button>
+      <button class="common-program-btn program-action-btn ${rule?'active':''}" onclick="openCommonRuleEditor('${p.id}')"><span class="admin-icon common-icon">↔</span>${rule?'Tronco común':'Configurar tronco'}</button>
+      <button class="program-action-btn ${enabled?'disable-program':'enable-program'}" onclick="toggleProgramEnabled('${p.id}')"><span class="admin-icon state-icon">${enabled?'−':'+'}</span>${enabled?'Deshabilitar':'Habilitar'}</button>
+    </div>`
+  }).join('');
+}
+
+
+window.deleteCustomProgram=function(id){if(!confirm('¿Eliminar este programa?'))return;customPrograms=customPrograms.filter(p=>p.id!==id);disabledPrograms=disabledPrograms.filter(x=>x!==id);currentProgramIndex=Math.min(currentProgramIndex,Math.max(0,programs().length-1));persist();saveGlobalSettings('Programa educativo eliminado');renderAdmin();renderCurrentProgram()}
+function renderCustomPrograms(){
+  $('customProgramsList').innerHTML=customPrograms.length?`<h3 style="margin-top:16px">Programas agregados</h3>`+customPrograms.map(p=>`<div class="custom-program-item"><div><b>${p.name}</b><br>${p.exit}<br><small>${p.semesters.reduce((n,s)=>n+s.length,0)} materias · horas configuradas</small></div><div class="custom-program-actions"><button onclick="openProgramEditor('${p.id}')">Editar</button><button onclick="deleteCustomProgram('${p.id}')">Eliminar</button></div></div>`).join(''):''
+}
+
+
+function renderRules(){
+  const root=$('commonRules');if(!root)return;
+  root.innerHTML=commonRules.length?commonRules.map((r,i)=>{
+    const programsText=(r.programIds||[]).map(id=>{
+      const p=allPrograms().find(x=>x.id===id);
+      return p?programAcronym(p):id;
+    }).join(' · ');
+    const sems=(r.semesters||[]).map(x=>`${x+1}.°`).join(' · ');
+    return `<div class="common-rule-summary common-rule-tone-${(i%4)+1}">
+      <b>${r.name}</b>
+      <span class="common-programs">${programsText}</span>
+      <span class="common-semesters">${sems}</span>
+    </div>`;
+  }).join(''):'<div class="coord-empty">No hay troncos comunes configurados.</div>';
+}
+
+
+
+
+function excelCategoryAbbreviation(category){
+  const raw=String(category||'').trim();
+  const norm=raw.toLowerCase()
+    .normalize('NFD').replace(/[\u0300-\u036f]/g,'')
+    .replace(/\s+/g,' ');
+  const map=[
+    [/profesor de tiempo completo titular c/, 'PTC TC'],
+    [/profesor de tiempo completo titular b/, 'PTC TB'],
+    [/profesor de tiempo completo titular a/, 'PTC TA'],
+    [/profesor de tiempo completo asociado c/, 'PTC AC'],
+    [/profesor de tiempo completo asociado b/, 'PTC AB'],
+    [/profesor de tiempo completo asociado a/, 'PTC AA'],
+    [/tecnico academico c/, 'TA C'],
+    [/profesor de asignatura.*honorarios|honorarios/, 'Honorarios'],
+    [/profesor de asignatura/, 'PA']
+  ];
+  for(const [rx,abbr] of map){
+    if(rx.test(norm))return abbr;
+  }
+  return raw;
+}
+
+
+
+
+const EXCEL_SHEET_OPTIONS=[
+  {id:'concentrado',label:'Concentrado perfiles'},
+  {id:'comisiones',label:'Comisiones'},
+  {id:'base',label:'Base maestra'},
+  {id:'catalogo',label:'Catálogo'},
+  {id:'resumen',label:'Resumen por asignatura'}
+];
+function renderExcelExportOptions(){
+  const sheets=$('excelSheetOptions'),quarters=$('excelQuarterOptions');
+  if(sheets){
+    sheets.innerHTML=EXCEL_SHEET_OPTIONS.map(x=>`<label class="excel-check-chip"><input type="checkbox" data-excel-sheet="${x.id}" checked> <span>${x.label}</span></label>`).join('');
+  }
+  if(quarters){
+    const maxQ=Math.max(1,...allPrograms().map(p=>p.semesters?.length||0));
+    quarters.innerHTML=`<label class="excel-check-chip all"><input id="excelQuarterAll" type="checkbox" checked onchange="toggleAllExcelQuarters(this.checked)"> <span>Todos</span></label>`+
+      Array.from({length:maxQ},(_,i)=>`<label class="excel-check-chip"><input type="checkbox" data-excel-quarter="${i+1}" checked onchange="syncExcelQuarterAll()"> <span>${i+1}.°</span></label>`).join('');
+  }
+}
+window.toggleAllExcelQuarters=function(checked){
+  document.querySelectorAll('[data-excel-quarter]').forEach(x=>x.checked=checked);
+}
+window.syncExcelQuarterAll=function(){
+  const items=[...document.querySelectorAll('[data-excel-quarter]')];
+  const all=$('excelQuarterAll');
+  if(all)all.checked=items.length>0&&items.every(x=>x.checked);
+}
+function selectedExcelSheets(){
+  const items=[...document.querySelectorAll('[data-excel-sheet]:checked')].map(x=>x.dataset.excelSheet);
+  return new Set(items.length?items:EXCEL_SHEET_OPTIONS.map(x=>x.id));
+}
+function selectedExcelQuarters(){
+  const items=[...document.querySelectorAll('[data-excel-quarter]:checked')].map(x=>Number(x.dataset.excelQuarter)).filter(Number.isFinite);
+  if(items.length)return new Set(items);
+  const maxQ=Math.max(1,...allPrograms().map(p=>p.semesters?.length||0));
+  return new Set(Array.from({length:maxQ},(_,i)=>i+1));
+}
+
+
+async function exportWorkbook(){
+  const ready=await ensureExcelLibrary();
+  const XLSX=window.XLSX;
+  if(!ready||!XLSX||!XLSX.utils){
+    throw new Error('No fue posible cargar el módulo de Excel. Revise la conexión e intente nuevamente.');
+  }
+
+
+  collectProfile();
+  const p=store.profile||{};
+  const ps=programs();
+
+
+  const teachers=await loadTeachersForExport();
+  const exportSheets=selectedExcelSheets();
+  const exportQuarters=selectedExcelQuarters();
+  const includeQuarter=(semesterIndex)=>exportQuarters.has(semesterIndex+1);
+
+
+  // --- Hoja 1: concentrado horizontal similar al archivo operativo ---
+  const headerRows=6;
+  const aoa=Array.from({length:headerRows+teachers.length},()=>[]);
+  aoa[0][0]='PROGRAMA EDUCATIVO';
+  aoa[0][1]='Leyenda: ✔ = Coordinó la asignatura · ★ = Favorita · las marcas se muestran en negrita';
+  aoa[1][0]='ASIGNATURA';
+  aoa[2][0]='HORAS AL CUATRIMESTRE';
+  aoa[3][0]='HORAS A LA SEMANA';
+  aoa[4][0]='CUATRIMESTRE';
+  aoa[5][0]='PROFESOR';
+  aoa[5][1]='CATEGORÍA';
+
+
+  let col=2;
+  const merges=[];
+  const programRanges=[];
+  ps.forEach((pr,pi)=>{
+    const startCol=col;
+    pr.semesters.forEach((sem,s)=>{ if(!includeQuarter(s))return; sem.forEach((name,c)=>{
+      aoa[1][col]=subjectCase(name);
+      aoa[2][col]=subjectHours(pr.id,s,c)||'';
+      aoa[3][col]=weeklyHours(pr.id,s,c)||'';
+      aoa[4][col]=s+1;
+      teachers.forEach((t,ti)=>{
+        const a=teacherAnswer(t,pr.id,s,c,name);
+        const level=['X','XX'].includes(a.status)?a.status:'';
+        const fav=!!a.ideal;
+        const coord=teacherCoordinator(t,pr.id,s,c);
+        aoa[headerRows+ti][0]=t.name;
+        aoa[headerRows+ti][1]=excelCategoryAbbreviation(t.category);
+        aoa[headerRows+ti][col]=level?`${level}${coord?' ✔':''}${fav?' ★':''}`:'';
+      });
+      col++;
+    });});
+    const endCol=col-1;
+    if(endCol>=startCol){
+      merges.push({s:{r:0,c:startCol},e:{r:0,c:endCol}});
+      aoa[0][startCol]=`${pr.name} (${programAcronym(pr)})`;
+      programRanges.push({start:startCol,end:endCol,index:pi});
+    }
+  });
+
+
+  const ws=XLSX.utils.aoa_to_sheet(aoa);
+  ws['!merges']=merges;
+  ws['!freeze']={xSplit:2,ySplit:6,topLeftCell:'C7',activePane:'bottomRight',state:'frozen'};
+  ws['!autofilter']={ref:`A6:${XLSX.utils.encode_col(col-1)}${aoa.length}`};
+  ws['!cols']=[{wch:30},{wch:32},...Array.from({length:col-2},()=>({wch:13}))];
+  ws['!rows']=[
+    {hpt:25},{hpt:86},{hpt:24},{hpt:24},{hpt:22},{hpt:28},
+    ...teachers.map(()=>({hpt:24}))
+  ];
+
+
+  const pastel=['DDEBF7','FCE4D6','E2F0D9','E4DFEC','FFF2CC','DDEBF7','F4CCCC','E2EFDA'];
+
+
+  function styleCell(addr,style){
+    if(!ws[addr])ws[addr]={t:'s',v:''};
+    ws[addr].s=style;
+  }
+
+
+  // Columnas Profesor y Categoría
+  for(let r=0;r<aoa.length;r++){
+    [0,1].forEach(c=>styleCell(XLSX.utils.encode_cell({r,c}),{
+      font:{bold:r<6,color:{rgb:'183B59'}},
+      fill:{fgColor:{rgb:r<6?'EAF2F8':'FFFFFF'}},
+      alignment:{vertical:'center',horizontal:r<6?'center':'left',wrapText:true},
+      border:{top:{style:'thin',color:{rgb:'AAB7C4'}},bottom:{style:'thin',color:{rgb:'AAB7C4'}},left:{style:'thin',color:{rgb:'AAB7C4'}},right:{style:'thin',color:{rgb:'AAB7C4'}}}
+    }));
+  }
+
+
+
+
+  // Formato tipo tabla desde la fila 6 (encabezado) hacia abajo.
+  // XLSX-JS-Style no crea el objeto nativo "Tabla" de Excel de forma estable,
+  // por lo que se replica visual y funcionalmente: encabezado, filtros,
+  // bandas alternas y bordes.
+  const tableHeaderRow=5;
+  const tableEndRow=aoa.length-1;
+  for(let c=0;c<col;c++){
+    const addr=XLSX.utils.encode_cell({r:tableHeaderRow,c});
+    styleCell(addr,{
+      font:{name:'Aptos',sz:10,bold:true,color:{rgb:'FFFFFF'}},
+      fill:{patternType:'solid',fgColor:{rgb:'1D5A78'}},
+      alignment:{horizontal:'center',vertical:'center',wrapText:true},
+      border:{
+        top:{style:'thin',color:{rgb:'B5C7D1'}},
+        bottom:{style:'thin',color:{rgb:'B5C7D1'}},
+        left:{style:'thin',color:{rgb:'B5C7D1'}},
+        right:{style:'thin',color:{rgb:'B5C7D1'}}
+      }
+    });
+  }
+  for(let r=6;r<=tableEndRow;r++){
+    const band=(r%2===0)?'F7FBFC':'FFFFFF';
+    for(let c=0;c<col;c++){
+      const addr=XLSX.utils.encode_cell({r,c});
+      const existing=ws[addr]?.s||{};
+      styleCell(addr,{
+        ...existing,
+        fill:existing.fill||{patternType:'solid',fgColor:{rgb:band}},
+        border:{
+          top:{style:'thin',color:{rgb:'D8E3E8'}},
+          bottom:{style:'thin',color:{rgb:'D8E3E8'}},
+          left:{style:'thin',color:{rgb:'D8E3E8'}},
+          right:{style:'thin',color:{rgb:'D8E3E8'}}
+        }
+      });
+    }
+  }
+
+
+  // Programas y materias
+  programRanges.forEach(range=>{
+    const fill=pastel[range.index%pastel.length];
+    for(let c=range.start;c<=range.end;c++){
+      // Encabezado de programa
+      styleCell(XLSX.utils.encode_cell({r:0,c}),{
+        font:{bold:true,color:{rgb:'173B57'}},
+        fill:{fgColor:{rgb:fill}},
+        alignment:{horizontal:'center',vertical:'center',wrapText:true},
+        border:{top:{style:'thin',color:{rgb:'7F8C8D'}},bottom:{style:'thin',color:{rgb:'7F8C8D'}},left:{style:'thin',color:{rgb:'7F8C8D'}},right:{style:'thin',color:{rgb:'7F8C8D'}}}
+      });
+      // Asignatura vertical
+      styleCell(XLSX.utils.encode_cell({r:1,c}),{
+        font:{bold:false,color:{rgb:'243746'}},
+        fill:{fgColor:{rgb:fill}},
+        alignment:{textRotation:90,horizontal:'center',vertical:'center',wrapText:true},
+        border:{top:{style:'thin',color:{rgb:'AAB7C4'}},bottom:{style:'thin',color:{rgb:'AAB7C4'}},left:{style:'thin',color:{rgb:'AAB7C4'}},right:{style:'thin',color:{rgb:'AAB7C4'}}}
+      });
+      for(let r=2;r<6;r++){
+        styleCell(XLSX.utils.encode_cell({r,c}),{
+          fill:{fgColor:{rgb:fill}},
+          alignment:{horizontal:'center',vertical:'center',wrapText:true},
+          border:{top:{style:'thin',color:{rgb:'AAB7C4'}},bottom:{style:'thin',color:{rgb:'AAB7C4'}},left:{style:'thin',color:{rgb:'AAB7C4'}},right:{style:'thin',color:{rgb:'AAB7C4'}}}
+        });
+      }
+      for(let r=6;r<aoa.length;r++){
+        styleCell(XLSX.utils.encode_cell({r,c}),{
+          font:{bold:false},
+          alignment:{horizontal:'center',vertical:'center'},
+          border:{top:{style:'thin',color:{rgb:'D4DCE3'}},bottom:{style:'thin',color:{rgb:'D4DCE3'}},left:{style:'thin',color:{rgb:'D4DCE3'}},right:{style:'thin',color:{rgb:'D4DCE3'}}}
+        });
+      }
+    }
+  });
+
+
+
+
+  // Marcas administrativas del concentrado:
+  // ✔ = Coordinó la asignatura; ★ = Favorita.
+  // Si existe cualquiera de las marcas, el contenido va en negrita.
+  // No se utilizan fondos especiales ni fuente roja.
+  for(let r=headerRows;r<aoa.length;r++){
+    const t=teachers[r-headerRows];
+    let matrixCol=2;
+    ps.forEach(pr=>pr.semesters.forEach((sem,s)=>{ if(!includeQuarter(s))return; sem.forEach((name,c)=>{
+      const addr=XLSX.utils.encode_cell({r,c:matrixCol});
+      const cell=ws[addr];
+      const value=String(cell?.v ?? aoa[r]?.[matrixCol] ?? '');
+      const coordinated=teacherCoordinator(t,pr.id,s,c);
+      const favorite=value.includes('★');
+      if(cell && value){
+        cell.s={
+          font:{
+            name:'Aptos',
+            sz:10,
+            bold:favorite || coordinated,
+            color:{rgb:'243746'}
+          },
+          fill:{patternType:'solid',fgColor:{rgb:'FFFFFF'},bgColor:{rgb:'FFFFFF'}},
+          alignment:{horizontal:'center',vertical:'center'},
+          border:{
+            top:{style:'thin',color:{rgb:'D4DCE3'}},
+            bottom:{style:'thin',color:{rgb:'D4DCE3'}},
+            left:{style:'thin',color:{rgb:'D4DCE3'}},
+            right:{style:'thin',color:{rgb:'D4DCE3'}}
+          }
+        };
+      }
+      matrixCol++;
+    });}));
+  }
+
+
+  // --- Hoja 2: Base maestra cruda (se conserva por compatibilidad) ---
+  const base=[];
+  teachers.forEach(t=>ps.forEach(pr=>pr.semesters.forEach((sem,s)=>{ if(!includeQuarter(s))return; sem.forEach((name,c)=>{
+    const a=teacherAnswer(t,pr.id,s,c,name);
+    base.push({
+      Profesor:t.name,
+      Categoria:excelCategoryAbbreviation(t.category),
+      Correo:t.email||'',
+      Periodo:cfg.periodo,
+      Programa:pr.name,
+      'Acrónimo PE':programAcronym(pr),
+      'Salida lateral':pr.exit,
+      Cuatrimestre:s+1,
+      Asignatura:subjectCase(name),
+      'Horas al cuatrimestre':subjectHours(pr.id,s,c)||'',
+      'Horas a la semana':weeklyHours(pr.id,s,c)||'',
+      'Estado interno':a.status,
+      'Nivel competencia':['X','XX'].includes(a.status)?a.status:'',
+      'Área conocimiento':(a.origins||[]).sort().join(''),
+      'Materia favorita':a.ideal?'★':'',
+      'Coordinador de academia':teacherCoordinator(t,pr.id,s,c)?'✔':''
+    });
+  });})));
+
+
+  const wsBase=XLSX.utils.json_to_sheet(base);
+  wsBase['!autofilter']={ref:wsBase['!ref']};
+  wsBase['!freeze']={xSplit:2,ySplit:1,topLeftCell:'C2',activePane:'bottomRight',state:'frozen'};
+  // Coordinación en Base maestra: ✔ en negrita, sin fuente roja.
+  if(base.length){
+    const coordHeader='Coordinador de academia';
+    const headers=Object.keys(base[0]);
+    const coordCol=headers.indexOf(coordHeader);
+    if(coordCol>=0){
+      for(let r=1;r<=base.length;r++){
+        const addr=XLSX.utils.encode_cell({r,c:coordCol});
+        if(wsBase[addr] && String(wsBase[addr].v||'')==='✔'){
+          wsBase[addr].s={
+            font:{name:'Aptos',sz:10,bold:true,color:{rgb:'243746'}},
+            fill:{patternType:'solid',fgColor:{rgb:'FFFFFF'}},
+            alignment:{horizontal:'center',vertical:'center'}
+          };
+        }
+      }
+    }
+  }
+
+
+
+
+  // Favorita en Base maestra: ★ en negrita.
+  if(base.length){
+    const headers=Object.keys(base[0]);
+    const favCol=headers.indexOf('Materia favorita');
+    if(favCol>=0){
+      for(let r=1;r<=base.length;r++){
+        const addr=XLSX.utils.encode_cell({r,c:favCol});
+        if(wsBase[addr] && String(wsBase[addr].v||'')==='★'){
+          wsBase[addr].s={
+            font:{name:'Aptos',sz:10,bold:true,color:{rgb:'243746'}},
+            fill:{patternType:'solid',fgColor:{rgb:'FFFFFF'}},
+            alignment:{horizontal:'center',vertical:'center'}
+          };
+        }
+      }
+    }
+  }
+
+
+  wsBase['!cols']=[
+    {wch:30},{wch:34},{wch:28},{wch:20},{wch:42},{wch:13},{wch:42},{wch:12},{wch:36},
+    {wch:18},{wch:16},{wch:14},{wch:17},{wch:18},{wch:16},{wch:24}
+  ];
+
+
+  // --- Hoja 3: Catálogo ---
+  const catalog=ps.flatMap(pr=>pr.semesters.flatMap((sem,s)=>includeQuarter(s)?sem.map((name,c)=>({
+    Programa:pr.name,
+    'Acrónimo PE':programAcronym(pr),
+    'Salida lateral':pr.exit,
+    Cuatrimestre:s+1,
+    Asignatura:subjectCase(name),
+    'Horas al cuatrimestre':subjectHours(pr.id,s,c)||'',
+    'Horas a la semana':weeklyHours(pr.id,s,c)||''
+  })):[]));
+  const wsCat=XLSX.utils.json_to_sheet(catalog);
+  wsCat['!cols']=[{wch:42},{wch:13},{wch:42},{wch:12},{wch:36},{wch:18},{wch:16}];
+
+
+
+
+  // --- Hoja 4: Resumen por asignatura ---
+  const summary=[];
+  ps.forEach(pr=>pr.semesters.forEach((sem,s)=>{ if(!includeQuarter(s))return; sem.forEach((name,c)=>{
+    let x=0,xx=0,fav=0,coord=0;
+    teachers.forEach(t=>{
+      const a=teacherAnswer(t,pr.id,s,c,name);
+      if(a.status==='X')x++;
+      if(a.status==='XX')xx++;
+      if(a.ideal)fav++;
+      if(teacherCoordinator(t,pr.id,s,c))coord++;
+    });
+    summary.push({
+      Programa:pr.name,
+      'Acrónimo PE':programAcronym(pr),
+      Cuatrimestre:s+1,
+      Asignatura:subjectCase(name),
+      'Horas al cuatrimestre':subjectHours(pr.id,s,c)||'',
+      'Horas a la semana':weeklyHours(pr.id,s,c)||'',
+      'Profesores X':x,
+      'Profesores XX':xx,
+      'Marcada favorita':fav,
+      'Coordinadores de academia':coord
+    });
+  });}));
+  const wsSummary=XLSX.utils.json_to_sheet(summary);
+  wsSummary['!autofilter']={ref:wsSummary['!ref']};
+  wsSummary['!freeze']={ySplit:1,topLeftCell:'A2',activePane:'bottomLeft',state:'frozen'};
+  wsSummary['!cols']=[{wch:42},{wch:16},{wch:12},{wch:38},{wch:18},{wch:16},{wch:14},{wch:14},{wch:16},{wch:23}];
+
+
+
+
+  // --- Hoja adicional: Planeación cuatrimestral ---
+  // --- Hoja adicional: Comisiones ---
+  const planningRows=teachers.map(t=>{
+    const rec=migratePlanningRecord(JSON.parse(JSON.stringify((t.planningByPeriod||{})[cfg.periodo]||{})));
+    const commissions=rec.commissionMode==='na'
+      ?'No aplica'
+      :(rec.commissions||[]).map((c,i)=>{
+          const base=`${i+1}. ${c.name||'(sin nombre)'} · ${c.authorizedHours||0} h`;
+          const schedule=c.scheduleRequired==='yes'?` · ${commissionScheduleSummary(c)}`:' · sin bloque específico';
+          return base+schedule;
+        }).join(' | ');
+    return {
+      Profesor:t.name,
+      Categoria:excelCategoryAbbreviation(t.category),
+      Correo:t.email||'',
+      Periodo:cfg.periodo,
+      'Comisiones autorizadas':rec.commissionMode==='na'?'No aplica':rec.commissionMode==='yes'?'Sí':'Sin captura',
+      'Detalle de comisiones':commissions||'Sin captura',
+      'Proyecto avalado':rec.projectMode==='na'?'No aplica':rec.projectMode==='yes'?'Sí':'Sin captura',
+      'Nombre del proyecto':rec.projectMode==='yes'?(rec.projectName||''):'',
+      'Responsabilidad':rec.projectMode==='yes'?(rec.projectRole||''):'',
+      'Horas autorizadas proyecto':rec.projectMode==='yes'?(rec.projectHours||''):'',
+      'Referencia / oficio':rec.projectMode==='yes'?(rec.projectReference||''):'',
+      'Observaciones':rec.comments||'',
+      'Información completa':rec.completedAtMs?'Sí':'',
+      'Fecha de guardado':rec.completedAtMs?formatLocalProfileDateTime(rec.completedAtMs):''
+    };
+  });
+  const wsPlanning=XLSX.utils.json_to_sheet(planningRows);
+  if(planningRows.length){
+    wsPlanning['!autofilter']={ref:wsPlanning['!ref']};
+    wsPlanning['!freeze']={ySplit:1,topLeftCell:'A2',activePane:'bottomLeft',state:'frozen'};
+    wsPlanning['!cols']=[
+      {wch:30},{wch:32},{wch:28},{wch:20},{wch:20},{wch:72},{wch:18},
+      {wch:38},{wch:28},{wch:22},{wch:30},{wch:52},{wch:18},{wch:24}
+    ];
+    const pHeaders=Object.keys(planningRows[0]);
+    pHeaders.forEach((_,c)=>{
+      const addr=XLSX.utils.encode_cell({r:0,c});
+      if(wsPlanning[addr])wsPlanning[addr].s={
+        font:{name:'Aptos',sz:10,bold:true,color:{rgb:'FFFFFF'}},
+        fill:{patternType:'solid',fgColor:{rgb:'185C6B'}},
+        alignment:{horizontal:'center',vertical:'center',wrapText:true},
+        border:{
+          top:{style:'thin',color:{rgb:'9FB6C2'}},
+          bottom:{style:'thin',color:{rgb:'9FB6C2'}},
+          left:{style:'thin',color:{rgb:'9FB6C2'}},
+          right:{style:'thin',color:{rgb:'9FB6C2'}}
+        }
+      };
+    });
+    for(let r=1;r<=planningRows.length;r++){
+      pHeaders.forEach((_,c)=>{
+        const addr=XLSX.utils.encode_cell({r,c});
+        if(wsPlanning[addr])wsPlanning[addr].s={
+          font:{name:'Aptos',sz:10,color:{rgb:'243746'}},
+          alignment:{vertical:'top',horizontal:'left',wrapText:true},
+          border:{
+            top:{style:'thin',color:{rgb:'D8E1E6'}},
+            bottom:{style:'thin',color:{rgb:'D8E1E6'}},
+            left:{style:'thin',color:{rgb:'D8E1E6'}},
+            right:{style:'thin',color:{rgb:'D8E1E6'}}
+          }
+        };
+      });
+    }
+  }
+
+
+  const wb=XLSX.utils.book_new();
+  if(exportSheets.has('concentrado'))XLSX.utils.book_append_sheet(wb,ws,'Concentrado perfiles');
+  if(exportSheets.has('comisiones'))XLSX.utils.book_append_sheet(wb,wsPlanning,'Comisiones');
+  if(exportSheets.has('base'))XLSX.utils.book_append_sheet(wb,wsBase,'Base maestra');
+  if(exportSheets.has('catalogo'))XLSX.utils.book_append_sheet(wb,wsCat,'Catálogo');
+  if(exportSheets.has('resumen'))XLSX.utils.book_append_sheet(wb,wsSummary,'Resumen por asignatura');
+  if(!wb.SheetNames.length)throw new Error('Seleccione al menos una hoja para exportar.');
+
+
+  XLSX.writeFile(wb,`Concentrado_Perfiles_DIN_${cfg.periodo.replace(/[^a-z0-9]+/gi,'_')}.xlsx`,{cellStyles:true,bookSST:true});
+}
+window.exportExcel=function(){if(!isAdmin()){toast('Solo el administrador puede exportar la base maestra.');return}exportWorkbook().catch(e=>alert('No fue posible generar Excel: '+e.message))}
+
+
+
+
+function updateProfileStepIndicator(){
+  const pBtn=document.querySelector('.main-nav button[data-view="perfil"]');
+  if(pBtn)pBtn.classList.toggle('complete',profileLooksComplete());
+}
+function setupAutoSave(){
+  let timer=null;
+  const isProfileField=target=>target.matches('#perfil input,#perfil select,#perfil textarea')&&!target.closest('#commissionsBlock');
+  document.addEventListener('input',e=>{
+    if(!editingAllowed()||!isProfileField(e.target))return;
+    e.target.classList.remove('required-field-error');
+    const wrap=e.target.closest('label,.form-row');if(wrap)wrap.classList.remove('required-wrap-error');
+    clearTimeout(timer);
+    timer=setTimeout(()=>{
+      store.profile=profileFromInputs();
+      persist({schedule:false});
+      updateProfileStepIndicator();
+    },550);
+  });
+  document.addEventListener('change',e=>{
+    if(!editingAllowed()||!isProfileField(e.target))return;
+    clearTimeout(timer);
+    store.profile=profileFromInputs();
+    persist({schedule:false});
+    updateProfileStepIndicator();
+  });
+}
+
+function setupPlanningAutoSave(){
+  let timer=null;
+  const isPlanningField=target=>target.matches('#commissionsBlock input,#commissionsBlock textarea');
+  const saveLocalDraft=()=>{
+    try{
+      if($('commissionEditor'))collectCommissionEditorFromDom();
+      collectPlanning();
+      persist({schedule:false});
+    }catch(e){
+      console.warn('No fue posible conservar el borrador local de Comisiones',e);
+    }
+  };
+  document.addEventListener('input',e=>{
+    if(!planningEditingAllowed()||!isPlanningField(e.target))return;
+    if(e.target.closest('#commissionEditor')){
+      try{collectCommissionEditorFromDom()}catch(_){}
+    }
+    clearTimeout(timer);
+    timer=setTimeout(saveLocalDraft,1200);
+  });
+  document.addEventListener('change',e=>{
+    if(!planningEditingAllowed()||!isPlanningField(e.target))return;
+    if(e.target.closest('#commissionEditor')){
+      try{collectCommissionEditorFromDom()}catch(_){}
+    }
+    clearTimeout(timer);
+    timer=setTimeout(saveLocalDraft,700);
+  });
+}
+function setupResilienceGuards(){
+  window.addEventListener('online',()=>{
+    if(store.syncPending){
+      updateCloudStatus('Conexión recuperada · cambios pendientes de guardado manual','warn');
+    }
+  });
+
+  window.addEventListener('offline',()=>{
+    if(currentUser)updateCloudStatus('Sin conexión · guardado local activo','warn');
+  });
+
+  window.addEventListener('beforeprint',()=>{
+    if($('revision')?.classList.contains('active'))buildPrint(false);
+  });
+
+  window.addEventListener('pagehide',()=>{
+    try{
+      if(currentUser)captureProfileLocallyWithoutCloud();
+    }catch(_){}
+  });
+
+  window.addEventListener('beforeunload',e=>{
+    try{
+      if(currentUser)captureProfileLocallyWithoutCloud();
+      if(currentUser&&teacherHasUnsavedCloudChanges()){
+        e.preventDefault();
+        e.returnValue='';
+      }
+    }catch(_){}
+  });
+}
+
+function mobileClientBlocked(){
+  const ua=navigator.userAgent||'';
+  const uaMobile=!!navigator.userAgentData?.mobile;
+  const classic=/Android|iPhone|iPad|iPod|Mobile|Silk|Kindle|Windows Phone/i.test(ua);
+  const ipadOs=navigator.platform==='MacIntel' && Number(navigator.maxTouchPoints||0)>1;
+  const coarseSmall=window.matchMedia?.('(pointer: coarse) and (max-width: 1100px)')?.matches===true;
+  return uaMobile || classic || ipadOs || coarseSmall;
+}
+function showDesktopOnlyGate(){
+  document.body.classList.add('desktop-only-active');
+  const gate=$('desktopOnlyGate');
+  if(gate)gate.classList.remove('hidden');
+}
+function init(){
+  if(mobileClientBlocked()){showDesktopOnlyGate();return;}
+  loadProfile();
+  resetWorkflowState();
+  updatePeriodBadges();
+  initAuth();
+  renderCurrentProgram();
+  renderPlanning();
+  updatePlanningAvailability();
+  renderAdmin();
+  applyEditState();
+  lockRevisionNav();
+  setupAutoSave();
+  setupPlanningAutoSave();
+  setupResilienceGuards();
+  updateLastSavedUI();
+  startCountdown();
+  updateNavState();
+
+
+  let resizeTimer=null;
+  window.addEventListener('resize',()=>{
+    clearTimeout(resizeTimer);
+    resizeTimer=setTimeout(adjustSemesterColumnWidths,120);
+  });
+}
+init();
+
+
+
+
+/* V38: enlace robusto del botón de avance en escritorio y móvil */
+document.addEventListener('DOMContentLoaded',()=>{
+  const btn=document.getElementById('continueProfileBtn');
+  if(!btn||btn.dataset.boundContinue==='1')return;
+  btn.dataset.boundContinue='1';
+  btn.addEventListener('click',async ev=>{
+    ev.preventDefault();
+    ev.stopPropagation();
+    if(btn.disabled)return;
+    btn.disabled=true;
+    try{
+      await window.continueToCapture();
+    }finally{
+      btn.disabled=false;
+    }
+  },{passive:false});
 });
