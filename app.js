@@ -3901,33 +3901,31 @@ const sheets=[...document.querySelectorAll('#printArea .sheet')];
 const totalPages=sheets.length;
 
 sheets.forEach((sheet,index)=>{
-  sheet.style.position='relative';
+  const stamp=sheet.querySelector('.stamp-box');
+  if(!stamp)return;
 
-  // Evita duplicados si se reconstruye la vista de impresión
-  sheet.querySelector('.page-number')?.remove();
+  stamp.querySelector('.page-number')?.remove();
 
-  const pageNumber=document.createElement('div');
+  stamp.style.display='flex';
+  stamp.style.flexDirection='column';
+  stamp.style.alignItems='center';
+  stamp.style.justifyContent='center';
+  stamp.style.gap='2px';
+
+  const pageNumber=document.createElement('span');
   pageNumber.className='page-number';
-
-  // Numeración automática: 1 de X, 2 de X, 3 de X...
-  pageNumber.textContent=`${index + 1} de ${totalPages}`;
+  pageNumber.textContent=`${index+1} de ${totalPages}`;
 
   pageNumber.style.cssText=`
-    position:absolute;
-    right:3mm;
-    bottom:1.5mm;
-    z-index:9999;
+    display:block;
     font-size:8px;
     font-weight:400;
     line-height:1;
+    text-align:center;
     color:#444;
-    background:#fff;
-    padding:1px 3px;
-    white-space:nowrap;
-    pointer-events:none;
   `;
 
-  sheet.appendChild(pageNumber);
+  stamp.appendChild(pageNumber);
 });
 
 const draft=!profileFormallyFinalized();
