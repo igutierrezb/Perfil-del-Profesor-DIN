@@ -3903,13 +3903,29 @@ const totalPages=sheets.length;
 sheets.forEach((sheet,index)=>{
   sheet.style.position='relative';
 
+  // Evita duplicados si se reconstruye la vista de impresión
   sheet.querySelector('.page-number')?.remove();
 
   const pageNumber=document.createElement('div');
   pageNumber.className='page-number';
-  pageNumber.textContent=`${index+1} de ${totalPages}`;
-  pageNumber.style.cssText=
-    'position:absolute;left:0;right:0;bottom:3mm;text-align:center;font-size:9px;font-weight:400;color:#444;';
+
+  // Numeración automática: 1 de X, 2 de X, 3 de X...
+  pageNumber.textContent=`${index + 1} de ${totalPages}`;
+
+  pageNumber.style.cssText=`
+    position:absolute;
+    right:3mm;
+    bottom:1.5mm;
+    z-index:9999;
+    font-size:8px;
+    font-weight:400;
+    line-height:1;
+    color:#444;
+    background:#fff;
+    padding:1px 3px;
+    white-space:nowrap;
+    pointer-events:none;
+  `;
 
   sheet.appendChild(pageNumber);
 });
