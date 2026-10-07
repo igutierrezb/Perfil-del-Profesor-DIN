@@ -3895,9 +3895,27 @@ function buildPrint(collectCurrent=true){
     const sheetClass=`sheet program-trio${isLast&&remaining<3?' compact-last':''}`;
     html+=`<div class="${sheetClass}" data-program-count="${remaining}">${printHeader()}${metaCentered()}${printProgram(ps[i],i)}${ps[i+1]?printProgram(ps[i+1],i+1):''}${ps[i+2]?printProgram(ps[i+2],i+2):''}${signatures()}</div>`
   }
-  $('printArea').innerHTML=html;
-  const draft=!profileFormallyFinalized();
-  document.querySelectorAll('#printArea .sheet').forEach(sheet=>{
+ $('printArea').innerHTML=html;
+
+const sheets=[...document.querySelectorAll('#printArea .sheet')];
+const totalPages=sheets.length;
+
+sheets.forEach((sheet,index)=>{
+  sheet.style.position='relative';
+
+  sheet.querySelector('.page-number')?.remove();
+
+  const pageNumber=document.createElement('div');
+  pageNumber.className='page-number';
+  pageNumber.textContent=`${index+1} de ${totalPages}`;
+  pageNumber.style.cssText=
+    'position:absolute;left:0;right:0;bottom:3mm;text-align:center;font-size:9px;font-weight:400;color:#444;';
+
+  sheet.appendChild(pageNumber);
+});
+
+const draft=!profileFormallyFinalized();
+sheets.forEach(sheet=>{
     sheet.classList.toggle('draft-document',draft);
     sheet.querySelector('.draft-watermark')?.remove();
     if(draft){
