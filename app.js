@@ -5751,13 +5751,23 @@ async function exportWorkbook(){
   });
 
 
+  // Agregar correo institucional al final del Concentrado de perfiles.
+  // No se modifica ninguna columna de asignaturas existente.
+  aoa[5][col]='CORREO INSTITUCIONAL';
+  teachers.forEach((t,ti)=>{
+    aoa[headerRows+ti][col]=t.email||'';
+  });
+  col++;
+
 
 
   const ws=XLSX.utils.aoa_to_sheet(aoa);
   ws['!merges']=merges;
   ws['!freeze']={xSplit:2,ySplit:6,topLeftCell:'C7',activePane:'bottomRight',state:'frozen'};
   ws['!autofilter']={ref:`A6:${XLSX.utils.encode_col(col-1)}${aoa.length}`};
-  ws['!cols']=[{wch:30},{wch:32},...Array.from({length:col-2},()=>({wch:13}))];
+  
+ws['!cols']=[{wch:30},{wch:32},...Array.from({length:col-3},()=>({wch:13})),{wch:34}];
+
   ws['!rows']=[
     {hpt:25},{hpt:86},{hpt:24},{hpt:24},{hpt:22},{hpt:28},
     ...teachers.map(()=>({hpt:24}))
