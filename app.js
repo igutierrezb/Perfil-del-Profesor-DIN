@@ -1458,7 +1458,8 @@ async function initCloud(){
 }
 async function loadTeachersForExport(){
   if(!db||!isAdmin()){
-    return [{name:fullName()||'(Profesor sin nombre)',category:store.profile?.categoria||'',answers,programMeta,planningByPeriod,email:currentUser?.email||''}];
+    return [{name:fullName()||'(Profesor sin nombre)',category:store.profile?.categoria||'',profile:store.profile||{},answers,programMeta,planningByPeriod,email:currentUser?.email||''}];
+
   }
   const snap=await getDocs(collection(db,'profiles'));
   const rows=[];
@@ -1469,7 +1470,8 @@ async function loadTeachersForExport(){
     const p=d.profile||{};
     const cached=previousTeacherAdminCache[ds.id]||teacherAdminCache[ds.id]||{};
     const name=[p.apPat,p.apMat,p.nombres].filter(Boolean).join(' ')||cached.name||d.displayName||d.email||'(Sin nombre)';
-    rows.push({name,category:p.categoria||cached.categoria||'',answers:d.answers||{},programMeta:d.programMeta||{},planningByPeriod:d.planningByPeriod||{},email:d.email||cached.email||'',uid:ds.id,submittedPeriod:d.submittedPeriod||null,finalizedAtMs:Number(d.finalizedAtMs)||null});
+    rows.push({name,category:p.categoria||cached.categoria||'',profile:p,answers:d.answers||{},programMeta:d.programMeta||{},planningByPeriod:d.planningByPeriod||{},email:d.email||cached.email||'',uid:ds.id,submittedPeriod:d.submittedPeriod||null,finalizedAtMs:Number(d.finalizedAtMs)||null});
+
   });
   if(!rows.length)throw new Error('Firestore respondió, pero no devolvió perfiles con información. No se generará un Excel vacío.');
   return rows;
@@ -6070,7 +6072,34 @@ ws['!cols']=[{wch:30},{wch:32},...Array.from({length:col-3},()=>({wch:13})),{wch
 
   // --- Hoja adicional: Planeación cuatrimestral ---
   // --- Hoja adicional: Comisiones ---
+
+  // --- Hoja: Comisiones, con información académica y profesional ---
+  // Solo se leen datos ya incluidos en cada documento de perfil.
   const planningRows=teachers.map(t=>{
+    const profile=t.profile||{};
+    const extra=profile.extra||{};
+
+    // Formación: estudio e institución (f1...f11).
+    const formacion=[];
+    for(let i=1;i<=PROFILE_ROW_CONFIG.formation.max;i++){
+      const estudio=String(extra[`f${i}a`]||'').trim();
+      const institucion=String(extra[`f${i}b`]||'').trim();
+      if(estudio||institucion){
+        formacion.push([estudio,institucion].filter(Boolean).join(' — '));
+      }
+    }
+
+    // Experiencia profesional: organización, cargo y periodo.
+    const experiencia=[];
+    for(let i=1;i<=PROFILE_ROW_CONFIG.laboral.max;i++){
+      const organizacion=String(extra[`l${i}a`]||'').trim();
+      const cargo=String(extra[`l${i}b`]||'').trim();
+      const periodo=String(extra[`l${i}c`]||'').trim();
+      if(organizacion||cargo||periodo){
+        experiencia.push([organizacion,cargo,periodo].filter(Boolean).join(' · '));
+      }
+    }
+
     const rec=migratePlanningRecord(JSON.parse(JSON.stringify((t.planningByPeriod||{})[cfg.periodo]||{})));
     const commissions=rec.commissionMode==='na'
       ?'No aplica'
@@ -6079,10 +6108,14 @@ ws['!cols']=[{wch:30},{wch:32},...Array.from({length:col-3},()=>({wch:13})),{wch
           const schedule=c.scheduleRequired==='yes'?` · ${commissionScheduleSummary(c)}`:' · sin bloque específico';
           return base+schedule;
         }).join(' | ');
+
     return {
       Profesor:t.name,
       Categoria:excelCategoryAbbreviation(t.category),
       Correo:t.email||'',
+      'Grado académico':String(profile.gradoAcademico||'').trim(),
+      'Formación académica':formacion.join('\n'),
+      'Experiencia profesional':experiencia.join('\n'),
       Periodo:cfg.periodo,
       'Comisiones autorizadas':rec.commissionMode==='na'?'No aplica':rec.commissionMode==='yes'?'Sí':'Sin captura',
       'Detalle de comisiones':commissions||'Sin captura',
@@ -6096,46 +6129,97 @@ ws['!cols']=[{wch:30},{wch:32},...Array.from({length:col-3},()=>({wch:13})),{wch
       'Fecha de guardado':rec.completedAtMs?formatLocalProfileDateTime(rec.completedAtMs):''
     };
   });
+
   const wsPlanning=XLSX.utils.json_to_sheet(planningRows);
   if(planningRows.length){
+    // Filtros y columnas inmovilizadas.
     wsPlanning['!autofilter']={ref:wsPlanning['!ref']};
-    wsPlanning['!freeze']={ySplit:1,topLeftCell:'A2',activePane:'bottomLeft',state:'frozen'};
+    wsPlanning['!freeze']={xSplit:2,ySplit:1,topLeftCell:'C2',activePane:'bottomRight',state:'frozen'};
+
     wsPlanning['!cols']=[
-      {wch:30},{wch:32},{wch:28},{wch:20},{wch:20},{wch:72},{wch:18},
-      {wch:38},{wch:28},{wch:22},{wch:30},{wch:52},{wch:18},{wch:24}
+      {wch:32}, // Profesor
+      {wch:19}, // Categoría
+      {wch:34}, // Correo
+      {wch:19}, // Grado académico
+      {wch:58}, // Formación académica
+      {wch:65}, // Experiencia profesional
+      {wch:21}, // Periodo
+      {wch:22}, // Comisiones autorizadas
+      {wch:76}, // Detalle de comisiones
+      {wch:19}, // Proyecto avalado
+      {wch:38}, // Nombre del proyecto
+      {wch:29}, // Responsabilidad
+      {wch:23}, // Horas autorizadas proyecto
+      {wch:32}, // Referencia / oficio
+      {wch:54}, // Observaciones
+      {wch:20}, // Información completa
+      {wch:26}  // Fecha de guardado
     ];
+
     const pHeaders=Object.keys(planningRows[0]);
+    const border={
+      top:{style:'thin',color:{rgb:'D8E3E8'}},
+      bottom:{style:'thin',color:{rgb:'D8E3E8'}},
+      left:{style:'thin',color:{rgb:'D8E3E8'}},
+      right:{style:'thin',color:{rgb:'D8E3E8'}}
+    };
+
+    // Encabezados con colores según el tipo de información.
     pHeaders.forEach((_,c)=>{
       const addr=XLSX.utils.encode_cell({r:0,c});
-      if(wsPlanning[addr])wsPlanning[addr].s={
+      const cell=wsPlanning[addr];
+      if(!cell)return;
+
+      const color=c<=6?'20475A':c<=8?'176877':c<=13?'345E79':'516B7A';
+
+      cell.s={
         font:{name:'Aptos',sz:10,bold:true,color:{rgb:'FFFFFF'}},
-        fill:{patternType:'solid',fgColor:{rgb:'185C6B'}},
+        fill:{patternType:'solid',fgColor:{rgb:color}},
         alignment:{horizontal:'center',vertical:'center',wrapText:true},
-        border:{
-          top:{style:'thin',color:{rgb:'9FB6C2'}},
-          bottom:{style:'thin',color:{rgb:'9FB6C2'}},
-          left:{style:'thin',color:{rgb:'9FB6C2'}},
-          right:{style:'thin',color:{rgb:'9FB6C2'}}
-        }
+        border
       };
     });
+
+    // Filas alternadas y contenido multilínea.
     for(let r=1;r<=planningRows.length;r++){
+      const background=r%2===0?'F4F8FA':'FFFFFF';
+
       pHeaders.forEach((_,c)=>{
         const addr=XLSX.utils.encode_cell({r,c});
-        if(wsPlanning[addr])wsPlanning[addr].s={
-          font:{name:'Aptos',sz:10,color:{rgb:'243746'}},
-          alignment:{vertical:'top',horizontal:'left',wrapText:true},
-          border:{
-            top:{style:'thin',color:{rgb:'D8E1E6'}},
-            bottom:{style:'thin',color:{rgb:'D8E1E6'}},
-            left:{style:'thin',color:{rgb:'D8E1E6'}},
-            right:{style:'thin',color:{rgb:'D8E1E6'}}
-          }
+        const cell=wsPlanning[addr]||(wsPlanning[addr]={t:'s',v:''});
+
+        cell.s={
+          font:{name:'Aptos',sz:10,color:{rgb:'243746'},bold:c===0},
+          fill:{patternType:'solid',fgColor:{rgb:background}},
+          alignment:{
+            vertical:'top',
+            horizontal:[1,3,7,9,12,15,16].includes(c)?'center':'left',
+            wrapText:true
+          },
+          border
         };
       });
     }
-  }
 
+    // Altura de fila adaptada al volumen de información.
+    const lines=(value,width)=>String(value||'').split('\n').reduce(
+      (count,line)=>count+Math.max(1,Math.ceil(line.length/width)),0
+    );
+
+    wsPlanning['!rows']=[
+      {hpt:43},
+      ...planningRows.map(row=>({
+        hpt:Math.min(230,Math.max(32,
+          Math.max(
+            lines(row['Formación académica'],54),
+            lines(row['Experiencia profesional'],60),
+            lines(row['Detalle de comisiones'],73),
+            lines(row['Observaciones'],50)
+          )*17+12
+        ))
+      }))
+    ];
+  }
 
 
 
